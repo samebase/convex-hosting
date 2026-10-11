@@ -28,7 +28,7 @@ describe("CLI argument parsing", () => {
       "site",
       "--cdn",
       "--cdn-delete-function",
-      "staticHosting:deleteCdnBlobs",
+      "convexHosting:deleteCdnBlobs",
       "--no-spa",
     ]);
 
@@ -41,7 +41,7 @@ describe("CLI argument parsing", () => {
       "--prod",
       "--cdn",
       "--cdn-delete-function",
-      "staticHosting:deleteCdnBlobs",
+      "convexHosting:deleteCdnBlobs",
       "--no-spa",
     ]);
   });

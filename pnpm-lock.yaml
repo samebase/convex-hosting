@@ -72,7 +72,7 @@ importers:
 
   examples/spa:
     dependencies:
-      '@convex-dev/static-hosting':
+      '@samebase/convex-hosting':
         specifier: workspace:*
         version: link:../../packages/convex-hosting
       convex:
@@ -112,7 +112,7 @@ importers:
       '@convex-dev/react-query':
         specifier: 0.1.0
         version: 0.1.0(@tanstack/react-query@5.103.1(react@19.2.3))(convex@1.46.0(react@19.2.3))
-      '@convex-dev/static-hosting':
+      '@samebase/convex-hosting':
         specifier: workspace:*
         version: link:../../packages/convex-hosting
       '@samebase/convex-tanstack-start':

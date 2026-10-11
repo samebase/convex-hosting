@@ -185,7 +185,7 @@ export const resolveAssetForHttp = query({
 
 // Returns the deployment URLs visible to this component:
 //   siteUrl  - CONVEX_SITE_URL (includes the component's mount prefix). Used
-//              by the CLI to derive STATIC_HOSTING_BASE_PATH and to show
+//              by the CLI to derive CONVEX_HOSTING_BASE_PATH and to show
 //              where the deployed app lives.
 //   cloudUrl - CONVEX_CLOUD_URL. Used by the CLI as VITE_CONVEX_URL when
 //              building the frontend.

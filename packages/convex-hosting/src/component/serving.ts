@@ -30,7 +30,7 @@ export function getSetupHtml(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Convex Static Hosting</title>
+  <title>Convex Hosting</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -87,14 +87,14 @@ export function getSetupHtml(): string {
   <div class="step">
     <span class="step-num">2</span>
     <strong>Deploy your static files</strong>
-    <pre>npx @convex-dev/static-hosting deploy</pre>
+    <pre>npx @samebase/convex-hosting deploy</pre>
   </div>
 
   <p>Or deploy everything in one command:</p>
   <pre>npm run deploy</pre>
 
   <p style="margin-top: 32px; color: #666; font-size: 14px;">
-    Learn more at <a href="https://github.com/get-convex/static-hosting">github.com/get-convex/static-hosting</a>
+    Learn more at <a href="https://github.com/samebase/convex-hosting">github.com/samebase/convex-hosting</a>
   </p>
 </body>
 </html>`;

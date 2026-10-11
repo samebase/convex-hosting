@@ -30,7 +30,7 @@ type CdnBaseUrl = string | ((request: Request) => string);
 type AssetServingCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "storage">;
 
 /**
- * Register app-owned HTTP routes for static hosting.
+ * Register app-owned HTTP routes for the hosted site.
  *
  * Prefer mounting the component's own HTTP routes when it can own the URL
  * prefix. Use this compatibility mode when existing app HTTP routes must stay
@@ -41,12 +41,12 @@ type AssetServingCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "st
  * ```typescript
  * // convex/convex.config.ts
  * const app = defineApp();
- * app.use(staticHosting); // no httpPrefix: the app owns HTTP routing
+ * app.use(convexHosting); // no httpPrefix: the app owns HTTP routing
  *
  * // convex/http.ts
  * const http = httpRouter();
  * auth.addHttpRoutes(http);
- * registerStaticRoutes(http, components.staticHosting);
+ * registerStaticRoutes(http, components.convexHosting);
  * export default http;
  * ```
  */
@@ -149,7 +149,7 @@ export function registerStaticRoutes(
  *   pathPrefix: "/",
  *   method: "GET",
  *   handler: httpAction(async (ctx, request) => {
- *     const file = await serveStaticAsset(ctx, components.staticHosting, request);
+ *     const file = await serveStaticAsset(ctx, components.convexHosting, request);
  *     if (file) return file;
  *     return await renderPage(request);
  *   }),
@@ -297,17 +297,17 @@ async function serveAsset(
 /**
  * Expose a query that clients can subscribe to for live reload on deploy.
  * This is only needed if you use `UpdateBanner` / `useDeploymentUpdates` from
- * `@convex-dev/static-hosting/react`. If you don't surface deployment updates
+ * `@samebase/convex-hosting/react`. If you don't surface deployment updates
  * in your app, you don't need to call this.
  *
  * @example
  * ```typescript
- * // convex/staticHosting.ts
- * import { exposeDeploymentQuery } from "@convex-dev/static-hosting";
+ * // convex/convexHosting.ts
+ * import { exposeDeploymentQuery } from "@samebase/convex-hosting";
  * import { components } from "./_generated/api";
  *
  * export const { getCurrentDeployment } = exposeDeploymentQuery(
- *   components.staticHosting,
+ *   components.convexHosting,
  * );
  * ```
  */
@@ -333,12 +333,12 @@ export function exposeDeploymentQuery(component: ComponentApi) {
 
 /**
  * Derive the Convex cloud URL from a `.convex.site` hostname.
- * Useful when your frontend is served from Convex static hosting and needs
+ * Useful when your frontend is served by this component and needs
  * to connect to its own Convex backend without an explicit env var.
  *
  * @example
  * ```typescript
- * import { getConvexUrl } from "@convex-dev/static-hosting";
+ * import { getConvexUrl } from "@samebase/convex-hosting";
  *
  * const convexUrl = import.meta.env.VITE_CONVEX_URL ?? getConvexUrl();
  * const convex = new ConvexReactClient(convexUrl);

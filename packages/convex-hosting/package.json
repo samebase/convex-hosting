@@ -1,22 +1,24 @@
 {
-  "name": "@convex-dev/static-hosting",
-  "version": "0.2.1",
-  "description": "A static hosting component for Convex.",
+  "name": "@samebase/convex-hosting",
+  "version": "0.3.0",
+  "description": "A Convex component that hosts a web app: static files, with optional server rendering.",
   "keywords": [
     "component",
-    "convex"
+    "convex",
+    "hosting"
   ],
-  "homepage": "https://github.com/get-convex/static-hosting#readme",
+  "homepage": "https://github.com/samebase/convex-hosting#readme",
   "bugs": {
-    "url": "https://github.com/get-convex/static-hosting/issues"
+    "url": "https://github.com/samebase/convex-hosting/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/get-convex/static-hosting.git"
+    "url": "git+https://github.com/samebase/convex-hosting.git",
+    "directory": "packages/convex-hosting"
   },
   "bin": {
-    "static-hosting": "dist/cli/index.js"
+    "convex-hosting": "dist/cli/index.js"
   },
   "files": [
     "dist",

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CLI for Convex Static Hosting
+ * CLI for Convex Hosting
  *
  * Commands:
  *   deploy              One-shot deployment (Convex backend + static files)
@@ -39,10 +39,10 @@ async function main() {
 
 function printHelp() {
   console.log(`
-Convex Static Hosting CLI
+Convex Hosting CLI
 
 Usage:
-  npx @convex-dev/static-hosting <command> [options]
+  npx @samebase/convex-hosting <command> [options]
 
 Commands:
   deploy              One-shot deployment (Convex backend + static files)
@@ -50,10 +50,10 @@ Commands:
 
 Examples:
   # One-shot deployment
-  npx @convex-dev/static-hosting deploy
+  npx @samebase/convex-hosting deploy
 
   # Upload only (no Convex backend deploy)
-  npx @convex-dev/static-hosting upload --build --prod
+  npx @samebase/convex-hosting upload --build --prod
 
 Run '<command> --help' for more information on a specific command.
 `);

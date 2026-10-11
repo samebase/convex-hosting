@@ -11,7 +11,7 @@ Changes offered back to upstream live on branches in
 - `packages/convex-hosting`: the published component and CLI.
   - `src/component`: code that runs inside the component on Convex.
   - `src/client`: the API that apps import (`registerStaticRoutes`, `serveStaticAsset`, and more).
-  - `src/cli`: the `static-hosting` command.
+  - `src/cli`: the `convex-hosting` command.
   - `src/react`: `UpdateBanner` and `useDeploymentUpdates`.
 - `packages/convex-tanstack-start`: the Vite plugin and server entry that render TanStack Start
   pages in a Convex HTTP action.
