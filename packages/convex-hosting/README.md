@@ -158,8 +158,8 @@ The `deploy` command:
 
 1. Builds your frontend with the production `VITE_CONVEX_URL`.
 2. Deploys the Convex backend.
-3. Uploads `dist/` to Convex. It skips `_headers` and `_redirects` at the root of `dist/`: Cloudflare
-   and Netlify read these files as hosting rules, and this package does not apply them.
+3. Uploads `dist/` to Convex. It skips `_headers` and `_redirects` at the root of `dist/`:
+   Cloudflare and Netlify read these files as hosting rules, and this package does not apply them.
 
 For more control, you can run the two halves separately:
 
