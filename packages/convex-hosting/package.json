@@ -25,7 +25,8 @@
     "src",
     "CHANGELOG.md",
     "INTEGRATION.md",
-    "MIGRATION.md"
+    "MIGRATION.md",
+    "NOTICE"
   ],
   "type": "module",
   "module": "./dist/client/index.js",

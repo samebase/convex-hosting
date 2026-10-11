@@ -4,7 +4,11 @@
 
 A Convex component for hosting static React/Vite apps directly on Convex: no separate hosting
 provider, no DNS to wire up, no second deploy target. Run one command and your frontend is live at
-`https://<deployment>.convex.site` alongside your backend.
+`https://<deployment>.convex.site` alongside your backend. For server-rendered TanStack Start pages,
+add [`@samebase/convex-tanstack-start`](./packages/convex-tanstack-start).
+
+This is Samebase's fork of [get-convex/static-hosting](https://github.com/get-convex/static-hosting)
+(Apache-2.0). It is not affiliated with or endorsed by Convex.
 
 ## Features
 
