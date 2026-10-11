@@ -24,19 +24,23 @@ export default defineConfig({
     ],
     rules: {
       "typescript/no-floating-promises": "error",
+      // The react plugin does not turn this on by itself.
+      "react/rules-of-hooks": "error",
     },
     overrides: [
       {
         files: ["packages/convex-hosting/src/component/**/*.ts", "examples/*/convex/**/*.ts"],
-        // The plugin's recommended rules without the ones that need TypeScript type information
-        // (explicit-table-ids, no-filter-in-query, no-collect-in-query, no-process-env): oxlint
-        // JS plugins get no type information, so those rules would run without effect.
+        // The plugin's recommended rules. oxlint JS plugins get no type information, so
+        // explicit-table-ids and no-filter-in-query use their syntax-only checks.
         rules: {
           "@convex-dev/no-old-registered-function-syntax": "error",
           "@convex-dev/require-args-validator": "error",
+          "@convex-dev/explicit-table-ids": "error",
+          "@convex-dev/no-filter-in-query": "warn",
           "@convex-dev/no-top-of-hour-crons": "warn",
           "@convex-dev/no-schema-import-cycle": "error",
           "@convex-dev/no-duplicate-indexes": "error",
+          "@convex-dev/no-process-env": "error",
         },
       },
     ],
