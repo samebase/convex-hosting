@@ -8,16 +8,15 @@ app directly on Convex.
 From the root of the repository:
 
 ```bash
-# Install dependencies and start dev server
-npm install
-npm run dev
+pnpm install
+cd examples/spa
+pnpm run dev
 ```
 
 This starts:
 
 - The Convex backend development server
 - The Vite frontend development server
-- A file watcher for rebuilding the component
 
 ## Deploying Static Files
 
@@ -25,8 +24,8 @@ Once you have a Convex deployment, build and upload the static files with the CL
 the right `VITE_CONVEX_URL`, deploys the backend, and uploads `dist/`):
 
 ```bash
-# From the repo root
-npm run deploy:static
+# From examples/spa
+pnpm run deploy
 ```
 
 Your app will then be available at `https://your-deployment.convex.site`.

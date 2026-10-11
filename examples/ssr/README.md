@@ -20,12 +20,12 @@ count from a Convex query, and after React hydrates, the count stays live.
 This example has its own schema, so use a separate Convex project. From the repository root:
 
 ```bash
-npm install
-cd example-ssr
-npm run dev
+pnpm install
+cd examples/ssr
+pnpm run dev
 ```
 
-The first run asks you to choose a Convex project. `npm run dev` then keeps the dev deployment in
+The first run asks you to choose a Convex project. `pnpm run dev` then keeps the dev deployment in
 sync: each change rebuilds the page bundles, pushes the backend, and uploads the browser files. Open
 the `.convex.site` URL it prints. The page source contains the count and the render time. Open the
 page in two tabs: a click in one updates both.

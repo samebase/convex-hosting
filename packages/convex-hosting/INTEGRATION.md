@@ -410,7 +410,8 @@ Browser-only. Returns `https://<deployment>.convex.cloud` when the page is serve
 
 ## Additional Resources
 
-- [README.md](./README.md)
+- [README](https://github.com/samebase/convex-hosting#readme)
 - [0.1.x to 0.2.x migration guide](./MIGRATION.md)
-- [`example/`](./example): Working example app
-- [Component source](./src/component)
+- [`examples/spa`](https://github.com/samebase/convex-hosting/tree/main/examples/spa): Working
+  example app
+- [Component source](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting/src/component)

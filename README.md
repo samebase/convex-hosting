@@ -26,9 +26,9 @@ https://github.com/user-attachments/assets/5eaf781f-87da-4292-9f96-38070c86cd39
 ## Quick Start
 
 > **Upgrading an existing 0.1.x app?** This is not a package-only update. Point your coding agent at
-> the [0.1.x to 0.2.x migration guide](./MIGRATION.md) before it changes anything. The guide covers
-> the storage-breaking re-upload, preserving auth and webhook URLs, historical v1 blob auditing,
-> deployment sequencing, and verification.
+> the [0.1.x to 0.2.x migration guide](./packages/convex-hosting/MIGRATION.md) before it changes
+> anything. The guide covers the storage-breaking re-upload, preserving auth and webhook URLs,
+> historical v1 blob auditing, deployment sequencing, and verification.
 
 ```bash
 npm install @convex-dev/static-hosting
@@ -239,8 +239,8 @@ production `CONVEX_DEPLOY_KEY` takes precedence over it.
 Each upload is published atomically, so visitors never see a page that refers to assets that are not
 available yet. Failed uploads leave the previous deployment live. Replaced non-HTML files stay
 available for at least seven days, so pages that are already open can still load their scripts. A
-later upload removes expired files. See [INTEGRATION.md](./INTEGRATION.md) for upload limits and
-lifecycle details.
+later upload removes expired files. See [INTEGRATION.md](./packages/convex-hosting/INTEGRATION.md)
+for upload limits and lifecycle details.
 
 Convex HTTP routes currently support GET but not HEAD. Configure uptime checks to make a lightweight
 GET request rather than a HEAD request.
@@ -410,7 +410,7 @@ the 404.
 Use `decodeRequestPath` for your own path checks, so an encoded request such as `/%61ssets/app.js`
 still matches `/assets/`.
 
-See [`example-ssr/`](./example-ssr) for TanStack Start pages rendered in a Convex HTTP action this
+See [`examples/ssr/`](./examples/ssr) for TanStack Start pages rendered in a Convex HTTP action this
 way.
 
 ## Upgrading from 0.1.x
@@ -428,8 +428,8 @@ You can then choose either serving mode:
   call. The 0.2 implementation reads the new component-owned files without changing those route
   URLs.
 
-See the dedicated [0.1.x to 0.2.x migration guide](./MIGRATION.md) for exact steps, verification,
-rollback, and the optional staged cutover.
+See the dedicated [0.1.x to 0.2.x migration guide](./packages/convex-hosting/MIGRATION.md) for exact
+steps, verification, rollback, and the optional staged cutover.
 
 ## How it works
 
@@ -442,12 +442,13 @@ rollback, and the optional staged cutover.
 
 ## Example
 
-See [`example/`](./example) for a complete Vite + React app, and [`example-ssr/`](./example-ssr) for
-server rendering with TanStack Start.
+See [`examples/spa/`](./examples/spa) for a complete Vite + React app, and
+[`examples/ssr/`](./examples/ssr) for server rendering with TanStack Start.
 
 ```bash
-npm install
-npm run dev
+pnpm install
+cd examples/spa
+pnpm run dev
 ```
 
 ## Contributing
