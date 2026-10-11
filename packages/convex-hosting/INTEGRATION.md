@@ -17,18 +17,9 @@ served alongside your Convex backend with SPA routing and smart caching.
 
 ```bash
 npm install @convex-dev/static-hosting
-npx @convex-dev/static-hosting setup
 ```
 
-For a new app, the setup script:
-
-- Adds the component to `convex/convex.config.ts`
-- Adds a `deploy` script to `package.json`
-
-It preserves an existing `convex/convex.config.ts` or `deploy` script. Complete any manual edits it
-prints, and confirm the existing script invokes `@convex-dev/static-hosting deploy`. Otherwise run
-the package command directly or add a separate static-hosting deploy script.
-
+Register the component and add a `deploy` script as described in [Manual Setup](#manual-setup).
 Then:
 
 ```bash
@@ -245,9 +236,6 @@ This means unauthorized users cannot upload files, even if they know your Convex
 ## CLI Reference
 
 ```bash
-npx @convex-dev/static-hosting setup
-  # Adds the component to convex.config.ts and a deploy script to package.json.
-
 npx @convex-dev/static-hosting deploy [options]
   -d, --dist <path>         Path to dist directory (default: ./dist)
   -c, --component <name>    Component instance name (default: staticHosting)

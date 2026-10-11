@@ -30,15 +30,7 @@ https://github.com/user-attachments/assets/5eaf781f-87da-4292-9f96-38070c86cd39
 > anything. The guide covers the storage-breaking re-upload, preserving auth and webhook URLs,
 > historical v1 blob auditing, deployment sequencing, and verification.
 
-```bash
-npm install @convex-dev/static-hosting
-npx @convex-dev/static-hosting setup
-```
-
-For a new setup, the command adds the component to `convex/convex.config.ts` and creates a `deploy`
-script in `package.json`. It does not overwrite an existing Convex config or `deploy` script.
-Complete any manual edits printed by the command, and confirm that `npm run deploy` invokes this
-package before running:
+Follow the three [setup steps](#setup), then run:
 
 ```bash
 npm run deploy

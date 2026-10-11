@@ -5,17 +5,12 @@
  * Commands:
  *   deploy              One-shot deployment (Convex backend + static files)
  *   upload              Upload static files to Convex storage
- *   init                Print setup instructions
  */
 
 const command = process.argv[2];
 
 async function main() {
   switch (command) {
-    case "setup":
-      await import("./setup.js");
-      break;
-
     case "deploy":
       // Pass remaining args to deploy command
       process.argv.splice(2, 1);
@@ -26,10 +21,6 @@ async function main() {
       // Pass remaining args to upload command
       process.argv.splice(2, 1);
       await import("./upload.js");
-      break;
-
-    case "init":
-      printInitInstructions();
       break;
 
     case "--help":
@@ -54,15 +45,10 @@ Usage:
   npx @convex-dev/static-hosting <command> [options]
 
 Commands:
-  setup               Configure the component and add a deploy script
   deploy              One-shot deployment (Convex backend + static files)
   upload              Upload static files to Convex storage
-  init                Print setup instructions for integration
 
 Examples:
-  # Quick setup (recommended for first-time users)
-  npx @convex-dev/static-hosting setup
-
   # One-shot deployment
   npx @convex-dev/static-hosting deploy
 
@@ -70,23 +56,6 @@ Examples:
   npx @convex-dev/static-hosting upload --build --prod
 
 Run '<command> --help' for more information on a specific command.
-`);
-}
-
-function printInitInstructions() {
-  console.log(`
-📦 Convex Static Hosting
-
-Quick Start:
-  npx @convex-dev/static-hosting setup    # Configure files and scripts
-
-For LLMs:
-  Read INTEGRATION.md in this package for complete integration instructions
-
-Manual Setup:
-  See README.md at https://github.com/get-convex/static-hosting#readme
-
-This component hosts your static files in Convex storage and serves them via HTTP actions.
 `);
 }
 
