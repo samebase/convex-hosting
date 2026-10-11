@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { internal } from "./_generated/api.js";
 import { initConvexTest } from "./setup.test.js";
 import { getMountPrefix } from "./http.js";

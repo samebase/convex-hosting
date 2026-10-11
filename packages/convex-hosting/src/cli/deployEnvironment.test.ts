@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "vite-plus/test";
 import { buildEnvironmentChanged } from "./deployEnvironment.js";
 
 describe("deploy build environment", () => {

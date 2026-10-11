@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import schema from "./schema.js";
 import component from "@convex-dev/static-hosting/test";
