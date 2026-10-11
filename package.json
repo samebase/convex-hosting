@@ -14,6 +14,7 @@
     "@convex-dev/eslint-plugin": "5.0.0",
     "@edge-runtime/vm": "catalog:",
     "@types/node": "catalog:",
+    "pkg-pr-new": "0.0.88",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
