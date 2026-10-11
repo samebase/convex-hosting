@@ -16,7 +16,7 @@ function run() {
     return;
   }
   running = true;
-  spawn("npm run build && npm run upload", {
+  spawn("pnpm run build && pnpm run upload", {
     shell: true,
     stdio: "inherit",
   }).on("exit", () => {

@@ -1,0 +1,27 @@
+{
+  "name": "static-hosting-example-spa",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev --typecheck-components --start \"vp dev --clearScreen false\"",
+    "build": "vp build",
+    "upload": "static-hosting upload --dist ./dist --component staticHosting",
+    "deploy": "static-hosting deploy --dist ./dist --component staticHosting --build-command \"pnpm run build\"",
+    "typecheck": "tsc -p . && tsc -p convex"
+  },
+  "dependencies": {
+    "@convex-dev/static-hosting": "workspace:*",
+    "convex": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "convex-test": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
