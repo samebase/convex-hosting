@@ -40,4 +40,6 @@ Run from the repository root with pnpm 11 and the Node version in `.node-version
 - Give every Convex function argument and return validators. Use `internalQuery`,
   `internalMutation`, and `internalAction` for functions that apps must not call directly.
 - Shared dependency versions live in the `catalog` in `pnpm-workspace.yaml`.
+- Releases: a version bump on `main` makes `release.yml` stage the package on npm; a maintainer
+  approves it with 2FA. See `CONTRIBUTING.md`.
 - Never use the U+2014 em dash character. Use commas, colons, parentheses, or separate sentences.
