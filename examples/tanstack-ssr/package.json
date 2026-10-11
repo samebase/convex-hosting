@@ -1,5 +1,5 @@
 {
-  "name": "static-hosting-example-tanstack-ssr",
+  "name": "example-tanstack-ssr",
   "private": true,
   "type": "module",
   "scripts": {

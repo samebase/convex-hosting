@@ -17,6 +17,7 @@ This starts:
 
 - The Convex backend development server
 - The Vite frontend development server
+- A TypeScript watcher that rebuilds the component when its source changes
 
 ## Deploying Static Files
 

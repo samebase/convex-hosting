@@ -1,9 +1,10 @@
 {
-  "name": "static-hosting-example-spa",
+  "name": "example-spa",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "convex dev --typecheck-components --start \"vp dev --clearScreen false\"",
+    "dev": "convex dev --typecheck-components --start \"pnpm --parallel --filter @convex-dev/static-hosting --filter example-spa run watch\"",
+    "watch": "vp dev --clearScreen false",
     "build": "vp build",
     "upload": "static-hosting upload --dist ./dist --component staticHosting",
     "deploy": "static-hosting deploy --dist ./dist --component staticHosting --build-command \"pnpm run build\"",

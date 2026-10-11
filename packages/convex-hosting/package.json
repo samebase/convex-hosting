@@ -57,8 +57,9 @@
   "scripts": {
     "build": "tsc --build ./tsconfig.build.json --force",
     "build:codegen": "convex codegen --component-dir ./src/component && pnpm run build",
+    "prepare": "pnpm run build",
     "typecheck": "tsc --noEmit",
-    "prepare": "pnpm run build"
+    "watch": "tsc --build ./tsconfig.build.json --watch --preserveWatchOutput"
   },
   "devDependencies": {
     "@types/node": "catalog:",
