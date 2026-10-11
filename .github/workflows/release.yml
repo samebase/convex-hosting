@@ -1,0 +1,94 @@
+# Stages a release of each public package whose package.json version is not on npm yet. CI runs
+# first for the same commit. The npm trusted publishers for both packages name this file and allow
+# only staged publishing, so a maintainer approves each staged version with 2FA on npmjs.com
+# (Staged Packages) before it becomes installable.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  ci:
+    name: ci
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  stage:
+    name: stage ${{ matrix.package }}
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Create the release tag through the GitHub API.
+      contents: write
+      # npm trusted publishing.
+      id-token: write
+    strategy:
+      # Each package stages and tags on its own, so a failed package can be re-run alone.
+      fail-fast: false
+      matrix:
+        package: [packages/convex-hosting, packages/convex-hosting-tanstack-start]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.18.0
+
+      # No dependency cache in a job that publishes.
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          registry-url: https://registry.npmjs.org
+
+      - name: Read the package version
+        id: version
+        env:
+          PACKAGE_DIR: ${{ matrix.package }}
+        run: |
+          name=$(node -p "require('./$PACKAGE_DIR/package.json').name")
+          version=$(node -p "require('./$PACKAGE_DIR/package.json').version")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "stage=false" >> "$GITHUB_OUTPUT"
+            echo "$name@$version is already on npm; nothing to stage"
+          else
+            echo "stage=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.version.outputs.stage == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # pnpm pack replaces catalog: and workspace: versions with real ones. Staging needs npm 11.15
+      # or later.
+      - name: Stage the release
+        if: steps.version.outputs.stage == 'true'
+        env:
+          PACKAGE_DIR: ${{ matrix.package }}
+        run: |
+          tarball=$(cd "$PACKAGE_DIR" && pnpm pack --pack-destination "$RUNNER_TEMP" | tail -n 1)
+          npx --yes npm@11.21.0 stage publish "$tarball" --access public --provenance
+
+      - name: Tag the release
+        if: steps.version.outputs.stage == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.name }}@${{ steps.version.outputs.version }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"
