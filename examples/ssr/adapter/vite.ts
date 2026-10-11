@@ -14,9 +14,7 @@ export function convexSsr(): Plugin {
         resolve: { conditions: ["worker", "browser", "module", "import"] },
       },
       resolve: {
-        alias: [
-          { find: /^react-dom\/server$/, replacement: "react-dom/server.edge" },
-        ],
+        alias: [{ find: /^react-dom\/server$/, replacement: "react-dom/server.edge" }],
       },
     }),
   };

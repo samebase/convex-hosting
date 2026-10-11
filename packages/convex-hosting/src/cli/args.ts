@@ -143,14 +143,7 @@ export function parseDeployArgs(args: string[]): DeployArgs {
 }
 
 export function buildDeployUploadArgs(args: DeployArgs): string[] {
-  const uploadArgs = [
-    "upload",
-    "--dist",
-    args.dist,
-    "--component",
-    args.component,
-    "--prod",
-  ];
+  const uploadArgs = ["upload", "--dist", args.dist, "--component", args.component, "--prod"];
   if (args.cdn) uploadArgs.push("--cdn");
   if (args.cdnDeleteFunction) {
     uploadArgs.push("--cdn-delete-function", args.cdnDeleteFunction);

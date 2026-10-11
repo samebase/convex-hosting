@@ -23,10 +23,7 @@ import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, relative, extname, resolve } from "path";
 import { randomUUID } from "crypto";
 import { runConvexAsync, spawnShell } from "./commands.js";
-import {
-  chunkBySerializedArgument,
-  MAX_CONVEX_ARGUMENT_BYTES,
-} from "./argumentChunks.js";
+import { chunkBySerializedArgument, MAX_CONVEX_ARGUMENT_BYTES } from "./argumentChunks.js";
 import { parseUploadArgs } from "./args.js";
 import {
   componentNameCandidates,
@@ -128,12 +125,7 @@ async function fetchUrls(
   const candidates = componentNameCandidates(requested);
   for (const name of candidates) {
     try {
-      const out = await convexRunAsync(
-        name,
-        "lib:getUrls",
-        {},
-        { quiet: true },
-      );
+      const out = await convexRunAsync(name, "lib:getUrls", {}, { quiet: true });
       const urls: DeploymentUrls = JSON.parse(out);
       if (isLegacyAutoDetected(requested, name)) {
         console.warn(legacyComponentNameWarning(name));
@@ -206,16 +198,11 @@ async function cleanUpPendingCdnBlobs(
 
   let cleaned = 0;
   for (let page = 0; page < MAX_MAINTENANCE_PAGES; page++) {
-    const output = await convexRunAsync(
-      componentName,
-      "lib:listPendingBlobCleanup",
-      { limit: 250 },
-    );
+    const output = await convexRunAsync(componentName, "lib:listPendingBlobCleanup", {
+      limit: 250,
+    });
     const blobIds = JSON.parse(output) as unknown;
-    if (
-      !Array.isArray(blobIds) ||
-      !blobIds.every((blobId) => typeof blobId === "string")
-    ) {
+    if (!Array.isArray(blobIds) || !blobIds.every((blobId) => typeof blobId === "string")) {
       throw new Error("Component returned invalid pending CDN cleanup data");
     }
     if (blobIds.length === 0) return cleaned;
@@ -248,11 +235,9 @@ async function cleanUpAbandonedUploads(
   try {
     let stagingDrained = false;
     for (let page = 0; page < MAX_MAINTENANCE_PAGES; page++) {
-      const output = await convexRunAsync(
-        componentName,
-        "lib:cleanupAbandonedStaging",
-        { limit: MAINTENANCE_PAGE_SIZE },
-      );
+      const output = await convexRunAsync(componentName, "lib:cleanupAbandonedStaging", {
+        limit: MAINTENANCE_PAGE_SIZE,
+      });
       const result = JSON.parse(output) as {
         discarded?: unknown;
         deletedFiles?: unknown;
@@ -280,16 +265,8 @@ async function cleanUpAbandonedUploads(
     }
 
     deletedFiles += await cleanUpPendingStorage(componentName);
-    deletedFiles += await cleanUpUnreferencedStorage(
-      componentName,
-      undefined,
-      "desc",
-    );
-    deletedFiles += await cleanUpUnreferencedStorage(
-      componentName,
-      undefined,
-      "asc",
-    );
+    deletedFiles += await cleanUpUnreferencedStorage(componentName, undefined, "desc");
+    deletedFiles += await cleanUpUnreferencedStorage(componentName, undefined, "asc");
 
     if (discarded > 0 || deletedFiles > 0 || queuedBlobIds > 0) {
       console.log(
@@ -298,18 +275,14 @@ async function cleanUpAbandonedUploads(
     }
 
     if (cdnDeleteFunction) {
-      const cleaned = await cleanUpPendingCdnBlobs(
-        componentName,
-        cdnDeleteFunction,
-      );
+      const cleaned = await cleanUpPendingCdnBlobs(componentName, cdnDeleteFunction);
       if (cleaned > 0) {
         console.log(`Cleaned up ${cleaned} pending CDN blob(s).`);
       }
     }
   } catch (cleanupError) {
     console.warn(
-      "Warning: Could not finish abandoned-upload maintenance: " +
-        errorMessage(cleanupError),
+      "Warning: Could not finish abandoned-upload maintenance: " + errorMessage(cleanupError),
     );
   }
 }
@@ -321,23 +294,16 @@ async function cleanUpUnreferencedStorage(
 ): Promise<number> {
   let deleted = 0;
   for (let page = 0; page < MAX_MAINTENANCE_PAGES; page++) {
-    const output = await convexRunAsync(
-      componentName,
-      "lib:cleanupUnreferencedStorage",
-      {
-        limit: MAINTENANCE_PAGE_SIZE,
-        order,
-        ...(before === undefined ? {} : { before }),
-      },
-    );
+    const output = await convexRunAsync(componentName, "lib:cleanupUnreferencedStorage", {
+      limit: MAINTENANCE_PAGE_SIZE,
+      order,
+      ...(before === undefined ? {} : { before }),
+    });
     const result = JSON.parse(output) as {
       deleted?: unknown;
       needsAnotherPass?: unknown;
     };
-    if (
-      typeof result.deleted !== "number" ||
-      typeof result.needsAnotherPass !== "boolean"
-    ) {
+    if (typeof result.deleted !== "number" || typeof result.needsAnotherPass !== "boolean") {
       throw new Error("Component returned invalid storage cleanup data");
     }
     deleted += result.deleted;
@@ -352,22 +318,15 @@ async function cleanUpUnreferencedStorage(
 async function cleanUpPendingStorage(componentName: string): Promise<number> {
   let deleted = 0;
   for (let page = 0; page < MAX_MAINTENANCE_PAGES; page++) {
-    const output = await convexRunAsync(
-      componentName,
-      "lib:cleanupPendingStorage",
-      { limit: MAINTENANCE_PAGE_SIZE },
-    );
+    const output = await convexRunAsync(componentName, "lib:cleanupPendingStorage", {
+      limit: MAINTENANCE_PAGE_SIZE,
+    });
     const result = JSON.parse(output) as {
       deleted?: unknown;
       needsAnotherPass?: unknown;
     };
-    if (
-      typeof result.deleted !== "number" ||
-      typeof result.needsAnotherPass !== "boolean"
-    ) {
-      throw new Error(
-        "Component returned invalid pending-storage cleanup data",
-      );
+    if (typeof result.deleted !== "number" || typeof result.needsAnotherPass !== "boolean") {
+      throw new Error("Component returned invalid pending-storage cleanup data");
     }
     deleted += result.deleted;
     if (!result.needsAnotherPass) return deleted;
@@ -413,11 +372,9 @@ async function cleanUpFailedUpload(
   let discardSucceeded = false;
   let discarded = 0;
   try {
-    const output = await convexRunAsync(
-      componentName,
-      "lib:discardStagedDeployment",
-      { deploymentId },
-    );
+    const output = await convexRunAsync(componentName, "lib:discardStagedDeployment", {
+      deploymentId,
+    });
     const result = JSON.parse(output) as { discarded?: unknown };
     if (typeof result.discarded !== "number") {
       throw new Error("Component returned an invalid discard result");
@@ -425,10 +382,7 @@ async function cleanUpFailedUpload(
     discardSucceeded = true;
     discarded = result.discarded;
   } catch (cleanupError) {
-    console.warn(
-      "Warning: Could not discard the staged manifest: " +
-        errorMessage(cleanupError),
-    );
+    console.warn("Warning: Could not discard the staged manifest: " + errorMessage(cleanupError));
   }
 
   // Convex mutations have a single transaction order. If discard succeeds,
@@ -440,16 +394,13 @@ async function cleanUpFailedUpload(
     try {
       let deleted = 0;
       let stillReferenced = 0;
-      const chunks = chunkBySerializedArgument(
-        uploaded.storageIds,
-        (storageIds) => ({ storageIds }),
-      );
+      const chunks = chunkBySerializedArgument(uploaded.storageIds, (storageIds) => ({
+        storageIds,
+      }));
       for (const storageIds of chunks) {
-        const output = await convexRunAsync(
-          componentName,
-          "lib:deleteUploadedFiles",
-          { storageIds },
-        );
+        const output = await convexRunAsync(componentName, "lib:deleteUploadedFiles", {
+          storageIds,
+        });
         const result = JSON.parse(output) as {
           deleted?: unknown;
           stillReferenced?: unknown;
@@ -480,8 +431,7 @@ async function cleanUpFailedUpload(
   // The app-level CDN delete function cannot inspect component-private live
   // references. Only delete CDN blobs when no publish was attempted, or when
   // discard removed staged rows and therefore won the transaction race.
-  const canDeleteCdnBlobs =
-    !publishAttempted || (discardSucceeded && discarded > 0);
+  const canDeleteCdnBlobs = !publishAttempted || (discardSucceeded && discarded > 0);
   if (uploaded.blobIds.length > 0 && canDeleteCdnBlobs) {
     try {
       // Record these IDs before calling app-owned deletion. If that call fails
@@ -496,10 +446,7 @@ async function cleanUpFailedUpload(
       }
 
       if (cdnDeleteFunction) {
-        const cleaned = await cleanUpPendingCdnBlobs(
-          componentName,
-          cdnDeleteFunction,
-        );
+        const cleaned = await cleanUpPendingCdnBlobs(componentName, cdnDeleteFunction);
         console.log(`Removed ${cleaned} pending CDN blob(s).`);
       } else {
         console.warn(
@@ -561,20 +508,9 @@ async function uploadWithConcurrency(
       // bounded, even for a deployment with thousands of files.
       console.log(`  Generating ${storageFiles.length} upload URLs...`);
       const uploadUrls: string[] = [];
-      for (
-        let offset = 0;
-        offset < storageFiles.length;
-        offset += UPLOAD_URL_BATCH_SIZE
-      ) {
-        const count = Math.min(
-          UPLOAD_URL_BATCH_SIZE,
-          storageFiles.length - offset,
-        );
-        const urlsOutput = await convexRunAsync(
-          componentName,
-          "lib:generateUploadUrls",
-          { count },
-        );
+      for (let offset = 0; offset < storageFiles.length; offset += UPLOAD_URL_BATCH_SIZE) {
+        const count = Math.min(UPLOAD_URL_BATCH_SIZE, storageFiles.length - offset);
+        const urlsOutput = await convexRunAsync(componentName, "lib:generateUploadUrls", { count });
         const batch = JSON.parse(urlsOutput) as unknown;
         if (
           !Array.isArray(batch) ||
@@ -588,43 +524,37 @@ async function uploadWithConcurrency(
 
       // Step 2: Upload all files in parallel via fetch
       const storageIds: string[] = new Array(storageFiles.length);
-      await forEachWithConcurrency(
-        storageFiles,
-        concurrency,
-        async (file, idx) => {
-          const content = readFileSync(file.localPath);
-          const response = await fetch(uploadUrls[idx], {
-            method: "POST",
-            headers: { "Content-Type": file.contentType },
-            body: content,
-          });
-          if (!response.ok) {
-            throw new Error(
-              "Storage upload failed for " +
-                file.path +
-                ": " +
-                response.status +
-                " " +
-                response.statusText,
-            );
-          }
-          const { storageId } = (await response.json()) as {
-            storageId?: unknown;
-          };
-          if (typeof storageId !== "string") {
-            throw new Error(
-              "Storage upload returned no storageId for " + file.path,
-            );
-          }
-          storageIds[idx] = storageId;
-          uploaded.storageIds.push(storageId);
-          completed++;
-          const isHtml = file.contentType.startsWith("text/html");
-          console.log(
-            `  [${completed}/${total}] ${file.path} (${isHtml ? "storage/html" : "storage"})`,
+      await forEachWithConcurrency(storageFiles, concurrency, async (file, idx) => {
+        const content = readFileSync(file.localPath);
+        const response = await fetch(uploadUrls[idx], {
+          method: "POST",
+          headers: { "Content-Type": file.contentType },
+          body: content,
+        });
+        if (!response.ok) {
+          throw new Error(
+            "Storage upload failed for " +
+              file.path +
+              ": " +
+              response.status +
+              " " +
+              response.statusText,
           );
-        },
-      );
+        }
+        const { storageId } = (await response.json()) as {
+          storageId?: unknown;
+        };
+        if (typeof storageId !== "string") {
+          throw new Error("Storage upload returned no storageId for " + file.path);
+        }
+        storageIds[idx] = storageId;
+        uploaded.storageIds.push(storageId);
+        completed++;
+        const isHtml = file.contentType.startsWith("text/html");
+        console.log(
+          `  [${completed}/${total}] ${file.path} (${isHtml ? "storage/html" : "storage"})`,
+        );
+      });
 
       for (let i = 0; i < storageFiles.length; i++) {
         allAssets.push({
@@ -646,9 +576,7 @@ async function uploadWithConcurrency(
           body: content,
         });
         if (!uploadResponse.ok) {
-          throw new Error(
-            `CDN upload failed for ${file.path}: ${uploadResponse.status}`,
-          );
+          throw new Error(`CDN upload failed for ${file.path}: ${uploadResponse.status}`);
         }
         const { blobId } = (await uploadResponse.json()) as {
           blobId?: unknown;
@@ -674,9 +602,7 @@ async function uploadWithConcurrency(
       assets,
     }));
     for (let index = 0; index < manifestChunks.length; index++) {
-      console.log(
-        `  Staging manifest chunk ${index + 1}/${manifestChunks.length}...`,
-      );
+      console.log(`  Staging manifest chunk ${index + 1}/${manifestChunks.length}...`);
       await convexRunAsync(componentName, "lib:stageAssets", {
         assets: manifestChunks[index],
       });
@@ -686,23 +612,16 @@ async function uploadWithConcurrency(
     // mutation. The previous deployment stays intact if this call fails.
     console.log("  Publishing deployment...");
     publishAttempted = true;
-    const output = await convexRunAsync(
-      componentName,
-      "lib:publishDeployment",
-      {
-        currentDeploymentId: deploymentId,
-        expectedAssetCount: allAssets.length,
-        spaFallback,
-      },
-    );
+    const output = await convexRunAsync(componentName, "lib:publishDeployment", {
+      currentDeploymentId: deploymentId,
+      expectedAssetCount: allAssets.length,
+      spaFallback,
+    });
     const result = JSON.parse(output) as {
       deleted?: unknown;
       pendingBlobCleanup?: unknown;
     };
-    if (
-      typeof result.deleted !== "number" ||
-      typeof result.pendingBlobCleanup !== "number"
-    ) {
+    if (typeof result.deleted !== "number" || typeof result.pendingBlobCleanup !== "number") {
       throw new Error("Component returned an invalid publish result");
     }
     return {
@@ -712,10 +631,7 @@ async function uploadWithConcurrency(
   } catch (error) {
     if (publishAttempted) {
       try {
-        const output = await convexRunAsync(
-          componentName,
-          "lib:getCurrentDeployment",
-        );
+        const output = await convexRunAsync(componentName, "lib:getCurrentDeployment");
         const current = JSON.parse(output) as {
           currentDeploymentId?: unknown;
           pendingBlobCleanupCount?: unknown;
@@ -822,11 +738,7 @@ async function main(): Promise<void> {
     const basePath = new URL(componentSiteUrl).pathname || "/";
 
     const envLabel =
-      previewName === null
-        ? useProd
-          ? "production"
-          : "development"
-        : `preview (${previewName})`;
+      previewName === null ? (useProd ? "production" : "development") : `preview (${previewName})`;
     console.log(`🔨 Building for ${envLabel}...`);
     console.log(`   Build command: ${args.buildCommand}`);
     console.log(`   VITE_CONVEX_URL=${convexUrl}`);
@@ -855,9 +767,7 @@ async function main(): Promise<void> {
 
   if (!existsSync(distDir)) {
     console.error(`Error: dist directory not found: ${distDir}`);
-    console.error(
-      "Run your build command first (e.g., 'npm run build' or add --build flag)",
-    );
+    console.error("Run your build command first (e.g., 'npm run build' or add --build flag)");
     process.exit(1);
   }
 
@@ -900,19 +810,13 @@ async function main(): Promise<void> {
   await cleanUpAbandonedUploads(componentName, args.cdnDeleteFunction);
 
   const envLabel =
-    previewName === null
-      ? useProd
-        ? "production"
-        : "development"
-      : `preview (${previewName})`;
+    previewName === null ? (useProd ? "production" : "development") : `preview (${previewName})`;
   console.log(`🚀 Deploying to ${envLabel} environment`);
   if (useCdn) {
     console.log("☁️  CDN mode: non-HTML assets will be uploaded to convex-fs");
   }
   console.log("🔒 Using secure internal functions (requires Convex CLI auth)");
-  console.log(
-    `Uploading ${files.length} files with deployment ID: ${deploymentId}`,
-  );
+  console.log(`Uploading ${files.length} files with deployment ID: ${deploymentId}`);
   console.log(`Component: ${componentName}`);
   console.log("");
 
@@ -942,23 +846,16 @@ async function main(): Promise<void> {
   }
 
   if (deletedCount > 0) {
-    console.log(
-      `Cleaned up ${deletedCount} old storage file(s) from previous deployments`,
-    );
+    console.log(`Cleaned up ${deletedCount} old storage file(s) from previous deployments`);
   }
 
   // Old CDN IDs are persisted by the component until the app-level delete
   // function succeeds, including when the publish response was lost.
   if (args.cdnDeleteFunction) {
     try {
-      const cleaned = await cleanUpPendingCdnBlobs(
-        componentName,
-        args.cdnDeleteFunction,
-      );
+      const cleaned = await cleanUpPendingCdnBlobs(componentName, args.cdnDeleteFunction);
       if (cleaned > 0) {
-        console.log(
-          `Cleaned up ${cleaned} old CDN blob(s) from previous deployments`,
-        );
+        console.log(`Cleaned up ${cleaned} old CDN blob(s) from previous deployments`);
       }
     } catch (error) {
       console.warn(

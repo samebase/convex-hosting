@@ -1,7 +1,6 @@
 # Welcome to your Convex functions directory!
 
-Write your Convex functions here.
-See https://docs.convex.dev/functions for more.
+Write your Convex functions here. See https://docs.convex.dev/functions for more.
 
 A query function that takes two arguments looks like:
 
@@ -79,12 +78,10 @@ function handleButtonPress() {
   mutation({ first: "Hello!", second: "me" });
   // OR
   // use the result once the mutation has completed
-  mutation({ first: "Hello!", second: "me" }).then((result) =>
-    console.log(result),
-  );
+  mutation({ first: "Hello!", second: "me" }).then((result) => console.log(result));
 }
 ```
 
-Use the Convex CLI to push your functions to a deployment. See everything
-the Convex CLI can do by running `npx convex -h` in your project root
-directory. To learn more, launch the docs with `npx convex docs`.
+Use the Convex CLI to push your functions to a deployment. See everything the Convex CLI can do by
+running `npx convex -h` in your project root directory. To learn more, launch the docs with
+`npx convex docs`.

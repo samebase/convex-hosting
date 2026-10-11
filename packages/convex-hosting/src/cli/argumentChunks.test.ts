@@ -1,8 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import {
-  chunkBySerializedArgument,
-  MAX_CONVEX_ARGUMENT_BYTES,
-} from "./argumentChunks.js";
+import { chunkBySerializedArgument, MAX_CONVEX_ARGUMENT_BYTES } from "./argumentChunks.js";
 
 describe("chunkBySerializedArgument", () => {
   test("keeps every serialized command argument within the portable limit", () => {
@@ -24,11 +21,7 @@ describe("chunkBySerializedArgument", () => {
 
   test("rejects one record that cannot fit safely", () => {
     expect(() =>
-      chunkBySerializedArgument(
-        ["x".repeat(200)],
-        (values) => ({ values }),
-        100,
-      ),
+      chunkBySerializedArgument(["x".repeat(200)], (values) => ({ values }), 100),
     ).toThrow("Shorten the asset path");
   });
 });

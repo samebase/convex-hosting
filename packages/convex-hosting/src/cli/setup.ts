@@ -47,13 +47,9 @@ function createConvexConfig(): ConfigSetupResult {
       return { needsStaticRoutes: false, requiresManualConfig: true };
     }
     console.log("\n⚠️  convex/convex.config.ts exists. Add manually:");
-    console.log(
-      '   import staticHosting from "@convex-dev/static-hosting/convex.config";',
-    );
+    console.log('   import staticHosting from "@convex-dev/static-hosting/convex.config";');
     if (httpPath) {
-      console.log(
-        "   app.use(staticHosting); // keep app HTTP routes at root\n",
-      );
+      console.log("   app.use(staticHosting); // keep app HTTP routes at root\n");
       return { needsStaticRoutes: true, requiresManualConfig: true };
     }
     console.log('   app.use(staticHosting, { httpPrefix: "/" });\n');
@@ -126,19 +122,13 @@ function main(): void {
 
   console.log("\n✨ Setup complete!\n");
   if (needsStaticRoutes) {
-    console.log(
-      "Keep existing HTTP routes at the root by adding this to convex/http.ts:\n",
-    );
-    console.log(
-      '   import { registerStaticRoutes } from "@convex-dev/static-hosting";',
-    );
+    console.log("Keep existing HTTP routes at the root by adding this to convex/http.ts:\n");
+    console.log('   import { registerStaticRoutes } from "@convex-dev/static-hosting";');
     console.log('   import { components } from "./_generated/api";');
     console.log("   registerStaticRoutes(http, components.staticHosting);\n");
   }
   if (requiresManualConfig) {
-    console.log(
-      "Before deploying, complete the configuration and routing checks printed above.\n",
-    );
+    console.log("Before deploying, complete the configuration and routing checks printed above.\n");
   }
   console.log("Next steps:\n");
   console.log("  1. npx convex dev          # Generate types");
@@ -148,17 +138,11 @@ function main(): void {
       : "  2. npx @convex-dev/static-hosting deploy  # Build and deploy\n",
   );
   console.log("Your app will be at: https://<deployment>.convex.site\n");
-  console.log(
-    "Optional: to use <UpdateBanner /> from @convex-dev/static-hosting/react,",
-  );
+  console.log("Optional: to use <UpdateBanner /> from @convex-dev/static-hosting/react,");
   console.log("create convex/staticHosting.ts:\n");
-  console.log(
-    '   import { exposeDeploymentQuery } from "@convex-dev/static-hosting";',
-  );
+  console.log('   import { exposeDeploymentQuery } from "@convex-dev/static-hosting";');
   console.log('   import { components } from "./_generated/api";');
-  console.log(
-    "   export const { getCurrentDeployment } = exposeDeploymentQuery(",
-  );
+  console.log("   export const { getCurrentDeployment } = exposeDeploymentQuery(");
   console.log("     components.staticHosting,");
   console.log("   );\n");
   console.log(

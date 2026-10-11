@@ -2,7 +2,6 @@
   "name": "convex-hosting-workspace",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.18.0",
   "scripts": {
     "build": "pnpm -r run build",
     "check": "vp fmt --check && vp lint && pnpm run typecheck && vp test run",
@@ -17,5 +16,6 @@
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
-  }
+  },
+  "packageManager": "pnpm@11.18.0"
 }

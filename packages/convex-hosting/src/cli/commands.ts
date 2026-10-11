@@ -23,10 +23,7 @@ export function runConvex(args: string[]): string {
   }).trim();
 }
 
-export function runConvexAsync(
-  args: string[],
-  options: { quiet?: boolean } = {},
-): Promise<string> {
+export function runConvexAsync(args: string[], options: { quiet?: boolean } = {}): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
@@ -55,10 +52,7 @@ export function spawnConvex(args: string[]): number | null {
   }).status;
 }
 
-export function spawnShell(
-  command: string,
-  env: NodeJS.ProcessEnv = process.env,
-): number | null {
+export function spawnShell(command: string, env: NodeJS.ProcessEnv = process.env): number | null {
   const cmd = shellCommand(command);
   return spawnSync(cmd.command, cmd.args, {
     env,

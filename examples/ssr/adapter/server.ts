@@ -27,15 +27,10 @@ export default {
       render: async () => {
         // Await Suspense with React's Web Stream renderer. TanStack's stream
         // handler also imports node:stream, which Convex cannot bundle.
-        const stream = await renderToReadableStream(
-          createElement(StartServer, { router }),
-          {
-            signal: request.signal,
-            ...(router.options.ssr?.nonce === undefined
-              ? {}
-              : { nonce: router.options.ssr.nonce }),
-          },
-        );
+        const stream = await renderToReadableStream(createElement(StartServer, { router }), {
+          signal: request.signal,
+          ...(router.options.ssr?.nonce === undefined ? {} : { nonce: router.options.ssr.nonce }),
+        });
         await stream.allReady;
         const html = await new Response(stream).text();
         // React emits a doctype; TanStack's HTML helper adds its own.

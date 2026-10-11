@@ -15,17 +15,8 @@
 
 import { existsSync } from "fs";
 import { resolve } from "path";
-import {
-  runConvex,
-  spawnConvex,
-  spawnShell,
-  spawnStaticHostingCli,
-} from "./commands.js";
-import {
-  buildDeployUploadArgs,
-  parseDeployArgs,
-  type DeployArgs,
-} from "./args.js";
+import { runConvex, spawnConvex, spawnShell, spawnStaticHostingCli } from "./commands.js";
+import { buildDeployUploadArgs, parseDeployArgs, type DeployArgs } from "./args.js";
 import {
   buildEnvironment,
   buildEnvironmentChanged,
@@ -201,9 +192,7 @@ async function main(): Promise<void> {
   let backendAlreadyDeployed = false;
 
   if (!urls && !args.skipConvex) {
-    console.log(
-      "   Component not yet deployed. Will fetch URLs after deploying backend.",
-    );
+    console.log("   Component not yet deployed. Will fetch URLs after deploying backend.");
   } else if (urls) {
     console.log(`   ✓ ${urls.siteUrl}`);
   }
@@ -297,9 +286,7 @@ async function main(): Promise<void> {
     urls = deployedUrls;
   } else {
     console.log("");
-    console.log(
-      "Step 3: Skipping Convex deployment (--skip-convex or already deployed)",
-    );
+    console.log("Step 3: Skipping Convex deployment (--skip-convex or already deployed)");
   }
 
   // Step 4: Deploy static files

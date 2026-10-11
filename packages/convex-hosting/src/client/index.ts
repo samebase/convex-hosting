@@ -27,10 +27,7 @@ const deploymentInfoValidator = v.object({
 type CdnBaseUrl = string | ((request: Request) => string);
 
 /** The parts of an action context needed to serve a static file. */
-type AssetServingCtx = Pick<
-  GenericActionCtx<GenericDataModel>,
-  "runQuery" | "storage"
->;
+type AssetServingCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "storage">;
 
 /**
  * Register app-owned HTTP routes for static hosting.
@@ -73,8 +70,7 @@ export function registerStaticRoutes(
     throw new Error("pathPrefix must start with /");
   }
 
-  const normalizedPrefix =
-    pathPrefix === "/" ? "" : pathPrefix.replace(/\/$/, "");
+  const normalizedPrefix = pathPrefix === "/" ? "" : pathPrefix.replace(/\/$/, "");
 
   const serveStaticFile = httpActionGeneric(async (ctx, request) => {
     const decodedPath = decodeRequestPath(new URL(request.url).pathname);
@@ -222,8 +218,7 @@ async function serveAsset(
   const cacheControl = cacheControlFor(path);
 
   if (asset.blobId && !isHtmlContentType(contentType)) {
-    const configuredBase =
-      typeof cdnBaseUrl === "function" ? cdnBaseUrl(request) : cdnBaseUrl;
+    const configuredBase = typeof cdnBaseUrl === "function" ? cdnBaseUrl(request) : cdnBaseUrl;
     const baseUrl = configuredBase ?? `${new URL(request.url).origin}/fs/blobs`;
     return new Response(null, {
       status: 302,
@@ -240,18 +235,13 @@ async function serveAsset(
   // storage so the site stays up during migration with no re-upload. Once v1
   // app-storage assets are no longer supported, delete this branch.
   if (asset.appStorageId) {
-    if (
-      asset.etag &&
-      etagMatches(request.headers.get("If-None-Match"), asset.etag)
-    ) {
+    if (asset.etag && etagMatches(request.headers.get("If-None-Match"), asset.etag)) {
       return new Response(null, {
         status: 304,
         headers: { ETag: asset.etag, "Cache-Control": cacheControl },
       });
     }
-    const blob = await ctx.storage.get(
-      asset.appStorageId as GenericId<"_storage">,
-    );
+    const blob = await ctx.storage.get(asset.appStorageId as GenericId<"_storage">);
     if (!blob) {
       // The component surfaces appStorageId whenever it can't resolve a
       // storage URL, which also covers a genuinely deleted file (the two are
@@ -278,10 +268,7 @@ async function serveAsset(
     });
   }
 
-  if (
-    asset.etag &&
-    etagMatches(request.headers.get("If-None-Match"), asset.etag)
-  ) {
+  if (asset.etag && etagMatches(request.headers.get("If-None-Match"), asset.etag)) {
     return new Response(null, {
       status: 304,
       headers: { ETag: asset.etag, "Cache-Control": cacheControl },
@@ -330,18 +317,14 @@ export function exposeDeploymentQuery(component: ComponentApi) {
       args: {},
       returns: v.union(deploymentInfoValidator, v.null()),
       handler: async (ctx) => {
-        const deployment = await ctx.runQuery(
-          component.lib.getCurrentDeployment,
-          {},
-        );
+        const deployment = await ctx.runQuery(component.lib.getCurrentDeployment, {});
         if (!deployment) return null;
         // Cleanup accounting is private component state. Returning it through
         // this public wrapper would fail the narrower response validator.
         const deploymentWithCleanup = deployment as typeof deployment & {
           pendingBlobCleanupCount?: number;
         };
-        const { pendingBlobCleanupCount: _pending, ...publicDeployment } =
-          deploymentWithCleanup;
+        const { pendingBlobCleanupCount: _pending, ...publicDeployment } = deploymentWithCleanup;
         return publicDeployment;
       },
     }),
@@ -368,7 +351,5 @@ export function getConvexUrl(): string {
   if (window.location.hostname.endsWith(".convex.site")) {
     return `https://${window.location.hostname.replace(".convex.site", ".convex.cloud")}`;
   }
-  throw new Error(
-    "Unable to derive Convex URL. Please set VITE_CONVEX_URL environment variable.",
-  );
+  throw new Error("Unable to derive Convex URL. Please set VITE_CONVEX_URL environment variable.");
 }

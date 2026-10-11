@@ -13,9 +13,7 @@ export function chunkBySerializedArgument<T>(
 
   for (const item of items) {
     const candidate = [...current, item];
-    const candidateBytes = Buffer.byteLength(
-      JSON.stringify(makeArgs(candidate)),
-    );
+    const candidateBytes = Buffer.byteLength(JSON.stringify(makeArgs(candidate)));
     if (candidateBytes <= maxBytes) {
       current = candidate;
       continue;

@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import {
-  componentsGeneric,
-  httpActionGeneric,
-  httpRouter,
-} from "convex/server";
+import { componentsGeneric, httpActionGeneric, httpRouter } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
 import {
   decodeRequestPath,
@@ -17,10 +13,7 @@ const components = componentsGeneric() as unknown as {
 };
 
 type TestHttpAction = {
-  _handler: (
-    ctx: { runQuery: ReturnType<typeof vi.fn> },
-    request: Request,
-  ) => Promise<Response>;
+  _handler: (ctx: { runQuery: ReturnType<typeof vi.fn> }, request: Request) => Promise<Response>;
 };
 
 type TestQuery = {
@@ -30,11 +23,7 @@ type TestQuery = {
   ) => Promise<unknown>;
 };
 
-function invokeHandler(
-  handler: object,
-  runQuery: ReturnType<typeof vi.fn>,
-  request: Request,
-) {
+function invokeHandler(handler: object, runQuery: ReturnType<typeof vi.fn>, request: Request) {
   return (handler as TestHttpAction)._handler({ runQuery }, request);
 }
 
@@ -70,10 +59,7 @@ describe("registerStaticRoutes", () => {
       contentType: "text/html; charset=utf-8",
       etag: '"storage-id"',
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response("<h1>Hello</h1>")),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<h1>Hello</h1>")));
 
     const response = await invokeHandler(
       handler,
@@ -81,10 +67,9 @@ describe("registerStaticRoutes", () => {
       new Request("https://app.convex.site/"),
     );
 
-    expect(runQuery).toHaveBeenCalledWith(
-      components.staticHosting.lib.resolveAssetForHttp,
-      { path: "/index.html" },
-    );
+    expect(runQuery).toHaveBeenCalledWith(components.staticHosting.lib.resolveAssetForHttp, {
+      path: "/index.html",
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get("ETag")).toBe('"storage-id"');
     expect(await response.text()).toBe("<h1>Hello</h1>");
@@ -180,9 +165,7 @@ describe("registerStaticRoutes", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("Retry-After")).toBe("5");
-    expect(await response.text()).toContain(
-      "no static files have been deployed",
-    );
+    expect(await response.text()).toContain("no static files have been deployed");
   });
 
   test("returns the setup page at the exact compatibility prefix", async () => {
@@ -214,10 +197,9 @@ describe("registerStaticRoutes", () => {
       new Request("https://app.convex.site/docs/hello%20world.txt"),
     );
 
-    expect(runQuery).toHaveBeenCalledWith(
-      components.staticHosting.lib.resolveAssetForHttp,
-      { path: "/docs/hello world.txt" },
-    );
+    expect(runQuery).toHaveBeenCalledWith(components.staticHosting.lib.resolveAssetForHttp, {
+      path: "/docs/hello world.txt",
+    });
   });
 
   test("rejects malformed percent encoding before querying the component", async () => {
@@ -250,10 +232,10 @@ describe("registerStaticRoutes", () => {
       new Request("https://app.convex.site/app/dashboard"),
     );
 
-    expect(runQuery).toHaveBeenCalledWith(
-      components.staticHosting.lib.resolveAssetForHttp,
-      { path: "/dashboard", spaFallback: false },
-    );
+    expect(runQuery).toHaveBeenCalledWith(components.staticHosting.lib.resolveAssetForHttp, {
+      path: "/dashboard",
+      spaFallback: false,
+    });
     expect(response.status).toBe(404);
   });
 
@@ -300,9 +282,7 @@ describe("registerStaticRoutes", () => {
     );
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(
-      "https://cdn.example/blobs/blob-1",
-    );
+    expect(response.headers.get("Location")).toBe("https://cdn.example/blobs/blob-1");
   });
 });
 
@@ -330,14 +310,12 @@ describe("serveStaticAsset", () => {
       new Request("https://app.convex.site/assets/app-B71cUw87.js"),
     );
 
-    expect(runQuery).toHaveBeenCalledWith(
-      components.staticHosting.lib.resolveAssetForHttp,
-      { path: "/assets/app-B71cUw87.js", spaFallback: false },
-    );
+    expect(runQuery).toHaveBeenCalledWith(components.staticHosting.lib.resolveAssetForHttp, {
+      path: "/assets/app-B71cUw87.js",
+      spaFallback: false,
+    });
     expect(response?.status).toBe(200);
-    expect(response?.headers.get("Cache-Control")).toBe(
-      "public, max-age=31536000, immutable",
-    );
+    expect(response?.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
     expect(response?.headers.get("ETag")).toBe('"storage-id"');
     expect(response?.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(await response?.text()).toBe("app()");
@@ -355,10 +333,10 @@ describe("serveStaticAsset", () => {
       expect(response).toBeNull();
     }
     // An exact lookup: `/` is not mapped to `/index.html`.
-    expect(runQuery).toHaveBeenCalledWith(
-      components.staticHosting.lib.resolveAssetForHttp,
-      { path: "/", spaFallback: false },
-    );
+    expect(runQuery).toHaveBeenCalledWith(components.staticHosting.lib.resolveAssetForHttp, {
+      path: "/",
+      spaFallback: false,
+    });
   });
 
   test("serves the SPA shell only for an explicit path", async () => {
@@ -367,10 +345,7 @@ describe("serveStaticAsset", () => {
       contentType: "text/html; charset=utf-8",
       etag: '"index-id"',
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response("<div id=root>")),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<div id=root>")));
 
     const response = await serveStaticAsset(
       serveCtx(runQuery),
@@ -379,14 +354,12 @@ describe("serveStaticAsset", () => {
       { path: "/index.html" },
     );
 
-    expect(runQuery).toHaveBeenCalledWith(
-      components.staticHosting.lib.resolveAssetForHttp,
-      { path: "/index.html", spaFallback: false },
-    );
+    expect(runQuery).toHaveBeenCalledWith(components.staticHosting.lib.resolveAssetForHttp, {
+      path: "/index.html",
+      spaFallback: false,
+    });
     expect(response?.status).toBe(200);
-    expect(response?.headers.get("Cache-Control")).toBe(
-      "public, max-age=0, must-revalidate",
-    );
+    expect(response?.headers.get("Cache-Control")).toBe("public, max-age=0, must-revalidate");
   });
 
   test("forwards an explicit SPA fallback opt-in", async () => {
@@ -399,10 +372,10 @@ describe("serveStaticAsset", () => {
       { spaFallback: true },
     );
 
-    expect(runQuery).toHaveBeenCalledWith(
-      components.staticHosting.lib.resolveAssetForHttp,
-      { path: "/dashboard", spaFallback: true },
-    );
+    expect(runQuery).toHaveBeenCalledWith(components.staticHosting.lib.resolveAssetForHttp, {
+      path: "/dashboard",
+      spaFallback: true,
+    });
   });
 
   test("returns null for malformed percent-encoding without querying", async () => {
@@ -458,9 +431,7 @@ describe("serveStaticAsset", () => {
 
     expect(revalidated?.status).toBe(304);
     expect(redirected?.status).toBe(302);
-    expect(redirected?.headers.get("Location")).toBe(
-      "https://cdn.example/blobs/blob-1",
-    );
+    expect(redirected?.headers.get("Location")).toBe("https://cdn.example/blobs/blob-1");
   });
 
   test("returns null for an inherited v1 file missing from app storage", async () => {
@@ -483,15 +454,10 @@ describe("serveStaticAsset", () => {
 
   test("lets an app action fall through to its own rendering", async () => {
     const render = vi.fn(
-      async (request: Request) =>
-        new Response(`rendered ${new URL(request.url).pathname}`),
+      async (request: Request) => new Response(`rendered ${new URL(request.url).pathname}`),
     );
     const handler = httpActionGeneric(async (ctx, request) => {
-      const file = await serveStaticAsset(
-        ctx,
-        components.staticHosting,
-        request,
-      );
+      const file = await serveStaticAsset(ctx, components.staticHosting, request);
       if (file) return file;
       const path = decodeRequestPath(new URL(request.url).pathname);
       if (path === null || path.startsWith("/assets/")) {
@@ -521,9 +487,7 @@ describe("serveStaticAsset", () => {
 
 describe("exposeDeploymentQuery", () => {
   test("strips private cleanup accounting from the public result", async () => {
-    const { getCurrentDeployment } = exposeDeploymentQuery(
-      components.staticHosting,
-    );
+    const { getCurrentDeployment } = exposeDeploymentQuery(components.staticHosting);
     const runQuery = vi.fn().mockResolvedValue({
       _id: "deployment-info-id",
       _creationTime: 1,
@@ -533,9 +497,7 @@ describe("exposeDeploymentQuery", () => {
       pendingBlobCleanupCount: 4,
     });
 
-    const result = await (
-      getCurrentDeployment as unknown as TestQuery
-    )._handler({ runQuery }, {});
+    const result = await (getCurrentDeployment as unknown as TestQuery)._handler({ runQuery }, {});
 
     expect(result).toEqual({
       _id: "deployment-info-id",

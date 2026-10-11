@@ -1,8 +1,5 @@
 import { httpRouter } from "convex/server";
-import {
-  decodeRequestPath,
-  serveStaticAsset,
-} from "@convex-dev/static-hosting";
+import { decodeRequestPath, serveStaticAsset } from "@convex-dev/static-hosting";
 import { components } from "./_generated/api.js";
 import { httpAction } from "./_generated/server.js";
 

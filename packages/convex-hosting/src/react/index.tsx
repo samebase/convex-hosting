@@ -19,11 +19,9 @@ type DeploymentQueryRef = FunctionReference<
   DeploymentInfo
 >;
 
-const DEFAULT_QUERY_REF = makeFunctionReference<
-  "query",
-  Record<string, never>,
-  DeploymentInfo
->("staticHosting:getCurrentDeployment") as DeploymentQueryRef;
+const DEFAULT_QUERY_REF = makeFunctionReference<"query", Record<string, never>, DeploymentInfo>(
+  "staticHosting:getCurrentDeployment",
+) as DeploymentQueryRef;
 
 /* eslint-disable react-refresh/only-export-components */
 
@@ -45,9 +43,7 @@ const DEFAULT_QUERY_REF = makeFunctionReference<
  * }
  * ```
  */
-export function useDeploymentUpdates(
-  getCurrentDeployment?: DeploymentQueryRef,
-) {
+export function useDeploymentUpdates(getCurrentDeployment?: DeploymentQueryRef) {
   const result = useQuery_experimental({
     query: getCurrentDeployment ?? DEFAULT_QUERY_REF,
     args: {},
@@ -55,16 +51,10 @@ export function useDeploymentUpdates(
 
   const deployment = result.status === "success" ? result.data : null;
   const setupError =
-    result.status === "error"
-      ? deploymentQuerySetupHelp(getCurrentDeployment)
-      : null;
+    result.status === "error" ? deploymentQuerySetupHelp(getCurrentDeployment) : null;
 
-  const [initialDeploymentId, setInitialDeploymentId] = useState<string | null>(
-    null,
-  );
-  const [dismissedDeploymentId, setDismissedDeploymentId] = useState<
-    string | null
-  >(null);
+  const [initialDeploymentId, setInitialDeploymentId] = useState<string | null>(null);
+  const [dismissedDeploymentId, setDismissedDeploymentId] = useState<string | null>(null);
 
   if (deployment && initialDeploymentId === null) {
     setInitialDeploymentId(deployment.currentDeploymentId);
@@ -73,8 +63,7 @@ export function useDeploymentUpdates(
   const updateAvailable = useMemo(() => {
     if (!deployment || initialDeploymentId === null) return false;
     const hasNew = deployment.currentDeploymentId !== initialDeploymentId;
-    const isDismissed =
-      deployment.currentDeploymentId === dismissedDeploymentId;
+    const isDismissed = deployment.currentDeploymentId === dismissedDeploymentId;
     return hasNew && !isDismissed;
   }, [deployment, initialDeploymentId, dismissedDeploymentId]);
 

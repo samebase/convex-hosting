@@ -19,8 +19,8 @@ function App() {
         <div className="card">
           <h2>It works!</h2>
           <p>
-            This React app is being served directly from Convex HTTP actions and
-            file storage. No external hosting required!
+            This React app is being served directly from Convex HTTP actions and file storage. No
+            external hosting required!
           </p>
 
           <div className="counter">
@@ -35,26 +35,20 @@ function App() {
             <span className="icon">📦</span>
             <h3>Simple Upload</h3>
             <p>
-              Run <code>npm run deploy:static</code> to upload your built files
-              to Convex storage
+              Run <code>npm run deploy:static</code> to upload your built files to Convex storage
             </p>
           </div>
 
           <div className="feature">
             <span className="icon">🔄</span>
             <h3>Live Reload</h3>
-            <p>
-              Connected clients are notified when you deploy - with a prompt to
-              reload
-            </p>
+            <p>Connected clients are notified when you deploy - with a prompt to reload</p>
           </div>
 
           <div className="feature">
             <span className="icon">⚡</span>
             <h3>Smart Caching</h3>
-            <p>
-              Hashed assets get long-term caching, while HTML is always fresh
-            </p>
+            <p>Hashed assets get long-term caching, while HTML is always fresh</p>
           </div>
         </div>
 
@@ -73,11 +67,7 @@ function App() {
       <footer className="footer">
         <p>
           Built with{" "}
-          <a
-            href="https://convex.dev"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href="https://convex.dev" target="_blank" rel="noopener noreferrer">
             Convex
           </a>{" "}
           +{" "}

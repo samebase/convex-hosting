@@ -1,29 +1,22 @@
 {
   "name": "@convex-dev/static-hosting",
+  "version": "0.2.1",
   "description": "A static hosting component for Convex.",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/get-convex/static-hosting.git"
-  },
+  "keywords": [
+    "component",
+    "convex"
+  ],
   "homepage": "https://github.com/get-convex/static-hosting#readme",
   "bugs": {
     "url": "https://github.com/get-convex/static-hosting/issues"
   },
-  "version": "0.2.1",
   "license": "Apache-2.0",
-  "keywords": [
-    "convex",
-    "component"
-  ],
-  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/get-convex/static-hosting.git"
+  },
   "bin": {
     "static-hosting": "dist/cli/index.js"
-  },
-  "scripts": {
-    "build": "tsc --build ./tsconfig.build.json --force",
-    "build:codegen": "convex codegen --component-dir ./src/component && pnpm run build",
-    "typecheck": "tsc --noEmit",
-    "prepare": "pnpm run build"
   },
   "files": [
     "dist",
@@ -32,6 +25,9 @@
     "INTEGRATION.md",
     "MIGRATION.md"
   ],
+  "type": "module",
+  "module": "./dist/client/index.js",
+  "types": "./dist/client/index.d.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -58,9 +54,11 @@
       "default": "./dist/component/convex.config.js"
     }
   },
-  "peerDependencies": {
-    "convex": "^1.37.0",
-    "react": "^18.3.1 || ^19.0.0"
+  "scripts": {
+    "build": "tsc --build ./tsconfig.build.json --force",
+    "build:codegen": "convex codegen --component-dir ./src/component && pnpm run build",
+    "typecheck": "tsc --noEmit",
+    "prepare": "pnpm run build"
   },
   "devDependencies": {
     "@types/node": "catalog:",
@@ -74,6 +72,8 @@
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
-  "types": "./dist/client/index.d.ts",
-  "module": "./dist/client/index.js"
+  "peerDependencies": {
+    "convex": "^1.37.0",
+    "react": "^18.3.1 || ^19.0.0"
+  }
 }

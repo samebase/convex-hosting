@@ -1,10 +1,12 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this
+repository.
 
 ## Project Overview
 
-A Convex component that enables hosting static React/Vite apps using Convex HTTP actions and file storage. Published as `@convex-dev/static-hosting` on npm.
+A Convex component that enables hosting static React/Vite apps using Convex HTTP actions and file
+storage. Published as `@convex-dev/static-hosting` on npm.
 
 ## Commands
 
@@ -60,10 +62,12 @@ src/
 This project uses Convex components. Key patterns:
 
 - Component functions in `src/component/` are internal to the component
-- Client APIs in `src/client/` use `*Generic` helpers (e.g., `httpActionGeneric`, `internalMutationGeneric`) to create functions that work with the component
+- Client APIs in `src/client/` use `*Generic` helpers (e.g., `httpActionGeneric`,
+  `internalMutationGeneric`) to create functions that work with the component
 - The `exposeUploadApi()` returns **internal** functions (only callable via `npx convex run`)
 
 When working with Convex code, follow the patterns in `.cursor/rules/convex_rules.mdc`:
+
 - Always include argument and return validators
 - Use `v.null()` for functions that don't return values
 - Use `internalQuery`/`internalMutation`/`internalAction` for non-public functions
@@ -71,6 +75,7 @@ When working with Convex code, follow the patterns in `.cursor/rules/convex_rule
 ## Example App
 
 The `example/` directory contains a working Vite + React app demonstrating integration:
+
 - `example/convex/convex.config.ts` - Registers the component
 - `example/convex/http.ts` - Serves static files (Convex Storage mode)
 - `example/convex/staticHosting.ts` - Exposes upload API and deployment query

@@ -7,9 +7,7 @@ import { routeTree } from "./routeTree.gen.js";
 
 export function getRouter() {
   // Start calls this for each server request, so clients are never shared.
-  const convexQueryClient = new ConvexQueryClient(
-    import.meta.env.VITE_CONVEX_URL,
-  );
+  const convexQueryClient = new ConvexQueryClient(import.meta.env.VITE_CONVEX_URL);
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -24,9 +22,7 @@ export function getRouter() {
     context: { queryClient },
     scrollRestoration: true,
     Wrap: ({ children }) => (
-      <ConvexProvider client={convexQueryClient.convexClient}>
-        {children}
-      </ConvexProvider>
+      <ConvexProvider client={convexQueryClient.convexClient}>{children}</ConvexProvider>
     ),
   });
   setupRouterSsrQueryIntegration({ router, queryClient });

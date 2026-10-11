@@ -18,8 +18,8 @@ function Home() {
     <main>
       <h1>TanStack Start on Convex</h1>
       <p>
-        Rendered in a Convex HTTP action at {renderedAt} UTC. View the page
-        source to see the HTML the server sent.
+        Rendered in a Convex HTTP action at {renderedAt} UTC. View the page source to see the HTML
+        the server sent.
       </p>
       <div className="counter">
         <span className="count">{count}</span>
@@ -27,10 +27,7 @@ function Home() {
           Add a click
         </button>
       </div>
-      <p>
-        The count lives in Convex. Open this page in two tabs: a click in one
-        updates both.
-      </p>
+      <p>The count lives in Convex. Open this page in two tabs: a click in one updates both.</p>
     </main>
   );
 }

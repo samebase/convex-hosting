@@ -30,13 +30,8 @@ export function componentNameCandidates(requested: string): string[] {
  * command forwarding the resolved name to a subprocess) is left silent so a
  * single `deploy` warns at most once.
  */
-export function isLegacyAutoDetected(
-  requested: string,
-  resolved: string,
-): boolean {
-  return (
-    requested === DEFAULT_COMPONENT_NAME && resolved === LEGACY_COMPONENT_NAME
-  );
+export function isLegacyAutoDetected(requested: string, resolved: string): boolean {
+  return requested === DEFAULT_COMPONENT_NAME && resolved === LEGACY_COMPONENT_NAME;
 }
 
 /** Warning shown once when a command resolves to the legacy instance name. */

@@ -5,9 +5,5 @@ import { convexSsr } from "./adapter/vite.js";
 
 export default defineConfig({
   root: import.meta.dirname,
-  plugins: [
-    convexSsr(),
-    tanstackStart({ prerender: { enabled: false } }),
-    react(),
-  ],
+  plugins: [convexSsr(), tanstackStart({ prerender: { enabled: false } }), react()],
 });

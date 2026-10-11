@@ -10,13 +10,8 @@ export function buildEnvironment(urls: DeploymentUrls) {
   };
 }
 
-export function buildEnvironmentChanged(
-  before: DeploymentUrls,
-  after: DeploymentUrls,
-): boolean {
+export function buildEnvironmentChanged(before: DeploymentUrls, after: DeploymentUrls): boolean {
   const previous = buildEnvironment(before);
   const next = buildEnvironment(after);
-  return (
-    previous.cloudUrl !== next.cloudUrl || previous.basePath !== next.basePath
-  );
+  return previous.cloudUrl !== next.cloudUrl || previous.basePath !== next.basePath;
 }

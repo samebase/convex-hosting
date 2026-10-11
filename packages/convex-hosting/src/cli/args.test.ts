@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import {
-  buildDeployUploadArgs,
-  parseDeployArgs,
-  parseUploadArgs,
-} from "./args.js";
+import { buildDeployUploadArgs, parseDeployArgs, parseUploadArgs } from "./args.js";
 
 describe("CLI argument parsing", () => {
   test("targets named preview uploads without selecting production", () => {
@@ -11,9 +7,7 @@ describe("CLI argument parsing", () => {
       prod: false,
       previewName: null,
     });
-    expect(
-      parseUploadArgs(["--preview-name", "feature-routing"]),
-    ).toMatchObject({
+    expect(parseUploadArgs(["--preview-name", "feature-routing"])).toMatchObject({
       prod: false,
       previewName: "feature-routing",
     });
@@ -23,9 +17,7 @@ describe("CLI argument parsing", () => {
     ["--prod", "--preview-name", "feature-routing"],
     ["--preview-name", "feature-routing", "--prod"],
   ])("rejects conflicting upload destinations: %s", (...args) => {
-    expect(() => parseUploadArgs(args)).toThrow(
-      "--prod and --preview-name cannot be combined",
-    );
+    expect(() => parseUploadArgs(args)).toThrow("--prod and --preview-name cannot be combined");
   });
 
   test("parses and forwards deploy upload options exactly", () => {
@@ -76,10 +68,7 @@ describe("CLI argument parsing", () => {
 
   test.each([
     ["missing preview name", () => parseUploadArgs(["--preview-name"])],
-    [
-      "invalid preview name",
-      () => parseUploadArgs(["--preview-name", "--prod"]),
-    ],
+    ["invalid preview name", () => parseUploadArgs(["--preview-name", "--prod"])],
     ["upload", () => parseUploadArgs(["--dist", "--prod"])],
     ["deploy", () => parseDeployArgs(["--cdn-delete-function", "--no-spa"])],
     ["unknown upload", () => parseUploadArgs(["--wat"])],

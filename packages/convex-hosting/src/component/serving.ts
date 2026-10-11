@@ -145,10 +145,7 @@ export function decodeRequestPath(pathname: string): string | null {
  * If-None-Match uses weak comparison for GET and HEAD requests. Browsers and
  * proxies may send a weak validator or a comma-separated list of validators.
  */
-export function etagMatches(
-  ifNoneMatch: string | null,
-  currentEtag: string,
-): boolean {
+export function etagMatches(ifNoneMatch: string | null, currentEtag: string): boolean {
   if (!ifNoneMatch) return false;
 
   const normalize = (value: string) => value.trim().replace(/^W\//, "").trim();
@@ -156,8 +153,6 @@ export function etagMatches(
 
   return ifNoneMatch.split(",").some((candidate) => {
     const normalizedCandidate = normalize(candidate);
-    return (
-      normalizedCandidate === "*" || normalizedCandidate === normalizedCurrent
-    );
+    return normalizedCandidate === "*" || normalizedCandidate === normalizedCurrent;
   });
 }

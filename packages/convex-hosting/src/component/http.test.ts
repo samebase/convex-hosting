@@ -59,36 +59,22 @@ describe("static file serving", () => {
 
     const res = await t.fetch("/assets/index-B71cUw87.js", {});
     expect(res.status).toBe(200);
-    expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=31536000, immutable",
-    );
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
     expect(res.headers.get("ETag")).toBeTruthy();
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
   test("HTML is revalidated rather than cached immutably", async () => {
     const t = initConvexTest();
-    await storeAsset(
-      t,
-      "/index.html",
-      "<!doctype html>",
-      "text/html; charset=utf-8",
-    );
+    await storeAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8");
 
     const res = await t.fetch("/", {});
-    expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=0, must-revalidate",
-    );
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=0, must-revalidate");
   });
 
   test("returns 304 for weak or listed If-None-Match validators", async () => {
     const t = initConvexTest();
-    await storeAsset(
-      t,
-      "/assets/app-B71cUw87.js",
-      "x",
-      "application/javascript; charset=utf-8",
-    );
+    await storeAsset(t, "/assets/app-B71cUw87.js", "x", "application/javascript; charset=utf-8");
 
     const first = await t.fetch("/assets/app-B71cUw87.js", {});
     const etag = first.headers.get("ETag")!;
@@ -102,12 +88,7 @@ describe("static file serving", () => {
 
   test("decodes percent-encoded asset paths", async () => {
     const t = initConvexTest();
-    await storeAsset(
-      t,
-      "/docs/hello world.txt",
-      "hello",
-      "text/plain; charset=utf-8",
-    );
+    await storeAsset(t, "/docs/hello world.txt", "hello", "text/plain; charset=utf-8");
 
     const res = await t.fetch("/docs/hello%20world.txt", {});
     expect(res.status).toBe(200);
@@ -122,12 +103,7 @@ describe("static file serving", () => {
 
   test("SPA fallback serves index.html for extension-less misses", async () => {
     const t = initConvexTest();
-    await storeAsset(
-      t,
-      "/index.html",
-      "<!doctype html><div id=root>",
-      "text/html; charset=utf-8",
-    );
+    await storeAsset(t, "/index.html", "<!doctype html><div id=root>", "text/html; charset=utf-8");
 
     const res = await t.fetch("/dashboard/settings", {});
     expect(res.status).toBe(200);
@@ -136,12 +112,7 @@ describe("static file serving", () => {
 
   test("missing files with an extension 404 (no SPA fallback)", async () => {
     const t = initConvexTest();
-    await storeAsset(
-      t,
-      "/index.html",
-      "<!doctype html>",
-      "text/html; charset=utf-8",
-    );
+    await storeAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8");
 
     const res = await t.fetch("/missing.js", {});
     expect(res.status).toBe(404);
@@ -158,12 +129,7 @@ describe("static file serving", () => {
 
   test("shows the setup page for an inherited or deleted index storage row", async () => {
     const t = initConvexTest();
-    const storageId = await storeAsset(
-      t,
-      "/index.html",
-      "legacy",
-      "text/html; charset=utf-8",
-    );
+    const storageId = await storeAsset(t, "/index.html", "legacy", "text/html; charset=utf-8");
     await t.run(async (ctx) => {
       await ctx.storage.delete(storageId);
     });
@@ -176,12 +142,7 @@ describe("static file serving", () => {
 
   test("extension-less misses 404 when SPA fallback is disabled", async () => {
     const t = initConvexTest();
-    await storeAsset(
-      t,
-      "/index.html",
-      "<!doctype html>",
-      "text/html; charset=utf-8",
-    );
+    await storeAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8");
     // Record the deployment with SPA fallback off (what `upload --no-spa` does).
     await t.mutation(internal.lib.commitDeployment, {
       currentDeploymentId: "deploy-1",
@@ -224,12 +185,8 @@ describe("serving helpers", () => {
     expect(cacheControlFor("/assets/index-B71cUw87.js")).toBe(
       "public, max-age=31536000, immutable",
     );
-    expect(cacheControlFor("/index.html")).toBe(
-      "public, max-age=0, must-revalidate",
-    );
-    expect(cacheControlFor("/page-B71cUw87.html")).toBe(
-      "public, max-age=0, must-revalidate",
-    );
+    expect(cacheControlFor("/index.html")).toBe("public, max-age=0, must-revalidate");
+    expect(cacheControlFor("/page-B71cUw87.html")).toBe("public, max-age=0, must-revalidate");
   });
 
   test("decodeRequestPath handles encoded and malformed paths", () => {
