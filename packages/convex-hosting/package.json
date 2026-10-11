@@ -25,7 +25,6 @@
     "src",
     "CHANGELOG.md",
     "INTEGRATION.md",
-    "MIGRATION.md",
     "NOTICE"
   ],
   "type": "module",

@@ -314,18 +314,13 @@ The flag is stored on the deployment record (the `deploymentInfo` table), so the
 travels with the code you ship rather than living in a separate env var. Re-deploy without
 `--no-spa` or with `--spa` to turn it back on.
 
-## Upgrading from 0.1.x
+## Switching from @convex-dev/static-hosting
 
-0.2.0 is a **storage-breaking change**. Every existing app must remove its `exposeUploadApi`
-wrappers, choose a root-routing mode, regenerate the component API, and upload its assets again. The
-old app-storage blobs also need an explicit cleanup after the rollback window; component-private
-storage cannot delete them automatically. The current v1 manifest is only a lower bound because
-older v1 uploads may already have left historical blobs in app storage.
-
-Read the dedicated [0.1.x to 0.2.x migration guide](./MIGRATION.md) before upgrading. It includes
-both routing options, component-name and CLI changes, development verification, rollback steps, and
-a staged production cutover that avoids an asset-less window. It also shows how to audit app storage
-without mistaking unrelated application uploads for convex-hosting files.
+Follow
+[Switching from @convex-dev/static-hosting](./README.md#switching-from-convex-devstatic-hosting) in
+the README. Mount the component with `{ name: "staticHosting" }` to keep the uploaded files and
+URLs. An app on 0.1.x first follows upstream's
+[0.1.x to 0.2.x migration guide](https://github.com/get-convex/static-hosting/blob/main/MIGRATION.md).
 
 ## Troubleshooting
 
@@ -398,8 +393,8 @@ Browser-only. Returns `https://<deployment>.convex.cloud` when the page is serve
 
 ## Additional Resources
 
-- [README](https://github.com/samebase/convex-hosting#readme)
-- [0.1.x to 0.2.x migration guide](./MIGRATION.md)
+- [README](./README.md)
+- [Upstream 0.1.x to 0.2.x migration guide](https://github.com/get-convex/static-hosting/blob/main/MIGRATION.md)
 - [`examples/spa`](https://github.com/samebase/convex-hosting/tree/main/examples/spa): Working
   example app
 - [Component source](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting/src/component)

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0
+
+First release as `@samebase/convex-hosting`, Samebase's fork of `@convex-dev/static-hosting`. See
+"Switching from @convex-dev/static-hosting" in the README.
+
+- The package, the CLI command (`convex-hosting`), the component (`convexHosting`), and the
+  `CONVEX_HOSTING_BASE_PATH` build variable share one name. The CLI still finds an instance named
+  `staticHosting`.
+- `serveStaticAsset` serves one uploaded file from your own HTTP route, for custom routing and
+  server rendering.
+- `upload --preview-name` uploads to a named preview deployment.
+- Replaced files stay available for at least seven days, so pages that are already open can still
+  load their scripts.
+- The `setup` and `init` commands are removed. The README describes the setup steps.
+
+Versions up to 0.2.1 were released as `@convex-dev/static-hosting`.
+
 ## 0.2.1
 
 - Smoother migration story, with more automatic fallbacks to the old component name.
