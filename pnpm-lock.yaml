@@ -22,8 +22,8 @@ catalogs:
       specifier: 6.0.2
       version: 6.0.2
     convex:
-      specifier: 1.39.1
-      version: 1.39.1
+      specifier: 1.46.0
+      version: 1.46.0
     convex-test:
       specifier: 0.0.40
       version: 0.0.40
@@ -50,7 +50,7 @@ importers:
     devDependencies:
       '@convex-dev/eslint-plugin':
         specifier: 5.0.0
-        version: 5.0.0(convex@1.45.0(react@19.2.3))(eslint@10.12.0(jiti@2.7.0))(typescript@5.9.3)
+        version: 5.0.0(convex@1.46.0(react@19.2.3))(eslint@10.12.0(jiti@2.7.0))(typescript@5.9.3)
       '@edge-runtime/vm':
         specifier: 'catalog:'
         version: 5.0.0
@@ -71,7 +71,7 @@ importers:
         version: link:../../packages/convex-hosting
       convex:
         specifier: 'catalog:'
-        version: 1.39.1(react@19.2.3)
+        version: 1.46.0(react@19.2.3)
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -90,7 +90,7 @@ importers:
         version: 6.0.2(@voidzero-dev/vite-plus-core@0.3.3(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3))
       convex-test:
         specifier: 'catalog:'
-        version: 0.0.40(convex@1.39.1(react@19.2.3))
+        version: 0.0.40(convex@1.46.0(react@19.2.3))
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -105,7 +105,7 @@ importers:
     dependencies:
       '@convex-dev/react-query':
         specifier: 0.1.0
-        version: 0.1.0(@tanstack/react-query@5.103.1(react@19.2.3))(convex@1.39.1(react@19.2.3))
+        version: 0.1.0(@tanstack/react-query@5.103.1(react@19.2.3))(convex@1.46.0(react@19.2.3))
       '@convex-dev/static-hosting':
         specifier: workspace:*
         version: link:../../packages/convex-hosting
@@ -123,7 +123,7 @@ importers:
         version: 1.168.56(@voidzero-dev/vite-plus-core@0.3.3(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3))(esbuild@0.27.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       convex:
         specifier: 'catalog:'
-        version: 1.39.1(react@19.2.3)
+        version: 1.46.0(react@19.2.3)
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -163,10 +163,10 @@ importers:
         version: 19.2.3(@types/react@19.2.8)
       convex:
         specifier: 'catalog:'
-        version: 1.39.1(react@19.2.3)
+        version: 1.46.0(react@19.2.3)
       convex-test:
         specifier: 'catalog:'
-        version: 0.0.40(convex@1.39.1(react@19.2.3))
+        version: 0.0.40(convex@1.46.0(react@19.2.3))
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -1457,27 +1457,8 @@ packages:
     peerDependencies:
       convex: ^1.16.4
 
-  convex@1.39.1:
-    resolution: {integrity: sha512-W+gVXA7BpRF1xLlS1kGTtKVaqd5yonqbGESKiPtIUXjV744GdDz8IG7RVsSY5KzHbgxuJBHKaJYk+92OIHTskQ==}
-    engines: {node: '>=18.0.0', npm: '>=7.0.0'}
-    hasBin: true
-    peerDependencies:
-      '@auth0/auth0-react': ^2.0.1
-      '@clerk/clerk-react': ^4.12.8 || ^5.0.0
-      '@clerk/react': ^6.4.3
-      react: ^18.0.0 || ^19.0.0-0 || ^19.0.0
-    peerDependenciesMeta:
-      '@auth0/auth0-react':
-        optional: true
-      '@clerk/clerk-react':
-        optional: true
-      '@clerk/react':
-        optional: true
-      react:
-        optional: true
-
-  convex@1.45.0:
-    resolution: {integrity: sha512-AV3B56Ptu/14d76g3urBJ50dwpiZa6uJaLT84OWox5aCwZIJiuAamdjv3lLHDzs8vv5kC31anEZohhUe3qJ2bA==}
+  convex@1.46.0:
+    resolution: {integrity: sha512-dhBwDQTZDOhi5SUGAX17EWNehCdNq6/UFrSL0eLZuGfMkdsQbCVWVRZCzbZ5CF+/pgvoGxtApbEoTSipqL4JTw==}
     engines: {node: '>=20.0.0', npm: '>=7.0.0'}
     hasBin: true
     peerDependencies:
@@ -2179,18 +2160,6 @@ packages:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
 
-  ws@8.18.0:
-    resolution: {integrity: sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
     engines: {node: '>=10.0.0'}
@@ -2356,20 +2325,20 @@ snapshots:
       hashery: 1.5.1
       keyv: 5.6.0
 
-  '@convex-dev/eslint-plugin@5.0.0(convex@1.45.0(react@19.2.3))(eslint@10.12.0(jiti@2.7.0))(typescript@5.9.3)':
+  '@convex-dev/eslint-plugin@5.0.0(convex@1.46.0(react@19.2.3))(eslint@10.12.0(jiti@2.7.0))(typescript@5.9.3)':
     dependencies:
       '@typescript-eslint/types': 8.58.2
       '@typescript-eslint/utils': 8.58.2(eslint@10.12.0(jiti@2.7.0))(typescript@5.9.3)
-      convex: 1.45.0(react@19.2.3)
+      convex: 1.46.0(react@19.2.3)
     transitivePeerDependencies:
       - eslint
       - supports-color
       - typescript
 
-  '@convex-dev/react-query@0.1.0(@tanstack/react-query@5.103.1(react@19.2.3))(convex@1.39.1(react@19.2.3))':
+  '@convex-dev/react-query@0.1.0(@tanstack/react-query@5.103.1(react@19.2.3))(convex@1.46.0(react@19.2.3))':
     dependencies:
       '@tanstack/react-query': 5.103.1(react@19.2.3)
-      convex: 1.39.1(react@19.2.3)
+      convex: 1.46.0(react@19.2.3)
 
   '@edge-runtime/primitives@6.0.0': {}
 
@@ -3287,22 +3256,11 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
-  convex-test@0.0.40(convex@1.39.1(react@19.2.3)):
+  convex-test@0.0.40(convex@1.46.0(react@19.2.3)):
     dependencies:
-      convex: 1.39.1(react@19.2.3)
+      convex: 1.46.0(react@19.2.3)
 
-  convex@1.39.1(react@19.2.3):
-    dependencies:
-      esbuild: 0.27.0
-      prettier: 3.9.9
-      ws: 8.18.0
-    optionalDependencies:
-      react: 19.2.3
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  convex@1.45.0(react@19.2.3):
+  convex@1.46.0(react@19.2.3):
     dependencies:
       esbuild: 0.27.0
       prettier: 3.9.9
@@ -3929,8 +3887,6 @@ snapshots:
       stackback: 0.0.2
 
   word-wrap@1.2.5: {}
-
-  ws@8.18.0: {}
 
   ws@8.21.0: {}
 
