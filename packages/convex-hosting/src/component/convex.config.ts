@@ -1,3 +1,3 @@
 import { defineComponent } from "convex/server";
 
-export default defineComponent("convexHosting");
+export default defineComponent("hosting");

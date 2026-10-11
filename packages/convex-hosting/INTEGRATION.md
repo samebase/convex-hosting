@@ -35,12 +35,12 @@ The default setup mounts the component's HTTP handler at the root and moves app-
 
 ```typescript
 import { defineApp } from "convex/server";
-import convexHosting from "@samebase/convex-hosting/convex.config";
+import hosting from "@samebase/convex-hosting/convex.config";
 
 // Serve your own HTTP endpoints (convex/http.ts) under /api so the static
 // site can own the root.
 const app = defineApp({ httpPrefix: "/api" });
-app.use(convexHosting, { httpPrefix: "/" });
+app.use(hosting, { httpPrefix: "/" });
 
 export default app;
 ```
@@ -63,10 +63,10 @@ third-party callbacks.
 
 ```typescript
 import { defineApp } from "convex/server";
-import convexHosting from "@samebase/convex-hosting/convex.config";
+import hosting from "@samebase/convex-hosting/convex.config";
 
 const app = defineApp();
-app.use(convexHosting); // no httpPrefix
+app.use(hosting); // no httpPrefix
 
 export default app;
 ```
@@ -82,7 +82,7 @@ const http = httpRouter();
 
 // Keep existing exact routes at their current URLs.
 // auth.addHttpRoutes(http);
-registerStaticRoutes(http, components.convexHosting);
+registerStaticRoutes(http, components.hosting);
 
 export default http;
 ```
@@ -150,13 +150,13 @@ remains the one-command `deploy` flow.
 
 Show users a banner when a new version is deployed:
 
-### `convex/convexHosting.ts`
+### `convex/hosting.ts`
 
 ```typescript
 import { exposeDeploymentQuery } from "@samebase/convex-hosting";
 import { components } from "./_generated/api";
 
-export const { getCurrentDeployment } = exposeDeploymentQuery(components.convexHosting);
+export const { getCurrentDeployment } = exposeDeploymentQuery(components.hosting);
 ```
 
 ### Frontend
@@ -174,8 +174,8 @@ function App() {
 }
 ```
 
-`UpdateBanner` resolves `api.convexHosting.getCurrentDeployment` by default. To re-export the query
-under a different module, pass the reference explicitly:
+`UpdateBanner` resolves `api.hosting.getCurrentDeployment` by default. To re-export the query under
+a different module, pass the reference explicitly:
 
 ```tsx
 import { api } from "../convex/_generated/api";
@@ -238,7 +238,7 @@ This means unauthorized users cannot upload files, even if they know your Convex
 ```bash
 npx @samebase/convex-hosting deploy [options]
   -d, --dist <path>         Path to dist directory (default: ./dist)
-  -c, --component <name>    Component instance name (default: convexHosting)
+  -c, --component <name>    Component instance name (default: hosting)
       --skip-build          Skip the build step
       --skip-convex         Skip Convex backend deployment
       --build-command <cmd> Build command to run (default: 'npm run build')
@@ -249,7 +249,7 @@ npx @samebase/convex-hosting deploy [options]
 
 npx @samebase/convex-hosting upload [options]
   -d, --dist <path>         Path to dist directory (default: ./dist)
-  -c, --component <name>    Component instance name (default: convexHosting)
+  -c, --component <name>    Component instance name (default: hosting)
       --prod                Deploy to production deployment
       --preview-name <name> Upload to the named preview deployment
   -b, --build               Run 'npm run build' with VITE_CONVEX_URL set
@@ -280,7 +280,7 @@ GET request.
 To mount under `/app/` (for example, if you have other HTTP routes at the root):
 
 ```typescript
-app.use(convexHosting, { httpPrefix: "/app/" });
+app.use(hosting, { httpPrefix: "/app/" });
 ```
 
 The bundler also needs to know the base path so the emitted HTML references the right URLs. The CLI
@@ -350,9 +350,8 @@ npm install @samebase/convex-hosting
 
 ### Component name mismatch
 
-If you've renamed the component instance with `app.use(convexHosting, { name: "custom" })`, pass it
-to the CLI and replace every generated `components.convexHosting` reference with
-`components.custom`:
+If you've renamed the component instance with `app.use(hosting, { name: "custom" })`, pass it to the
+CLI and replace every generated `components.hosting` reference with `components.custom`:
 
 ```bash
 npx @samebase/convex-hosting upload --component custom

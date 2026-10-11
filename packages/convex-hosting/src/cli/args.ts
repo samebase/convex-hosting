@@ -35,7 +35,7 @@ function optionValue(args: string[], index: number, option: string): string {
 export function parseUploadArgs(args: string[]): UploadArgs {
   const result: UploadArgs = {
     dist: "./dist",
-    component: "convexHosting",
+    component: "hosting",
     prod: false,
     previewName: null,
     build: false,
@@ -99,7 +99,7 @@ export function parseUploadArgs(args: string[]): UploadArgs {
 export function parseDeployArgs(args: string[]): DeployArgs {
   const result: DeployArgs = {
     dist: "./dist",
-    component: "convexHosting",
+    component: "hosting",
     help: false,
     skipBuild: false,
     skipConvex: false,

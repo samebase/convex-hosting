@@ -10,7 +10,7 @@ http.route({
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     // Uploaded files first: scripts, styles, and everything in public/.
-    const file = await serveStaticAsset(ctx, components.convexHosting, request);
+    const file = await serveStaticAsset(ctx, components.hosting, request);
     if (file) return file;
 
     // A missing script from another build must stay a 404, not a page. Don't

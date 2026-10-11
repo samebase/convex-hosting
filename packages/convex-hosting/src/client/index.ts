@@ -41,12 +41,12 @@ type AssetServingCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "st
  * ```typescript
  * // convex/convex.config.ts
  * const app = defineApp();
- * app.use(convexHosting); // no httpPrefix: the app owns HTTP routing
+ * app.use(hosting); // no httpPrefix: the app owns HTTP routing
  *
  * // convex/http.ts
  * const http = httpRouter();
  * auth.addHttpRoutes(http);
- * registerStaticRoutes(http, components.convexHosting);
+ * registerStaticRoutes(http, components.hosting);
  * export default http;
  * ```
  */
@@ -149,7 +149,7 @@ export function registerStaticRoutes(
  *   pathPrefix: "/",
  *   method: "GET",
  *   handler: httpAction(async (ctx, request) => {
- *     const file = await serveStaticAsset(ctx, components.convexHosting, request);
+ *     const file = await serveStaticAsset(ctx, components.hosting, request);
  *     if (file) return file;
  *     return await renderPage(request);
  *   }),
@@ -302,12 +302,12 @@ async function serveAsset(
  *
  * @example
  * ```typescript
- * // convex/convexHosting.ts
+ * // convex/hosting.ts
  * import { exposeDeploymentQuery } from "@samebase/convex-hosting";
  * import { components } from "./_generated/api";
  *
  * export const { getCurrentDeployment } = exposeDeploymentQuery(
- *   components.convexHosting,
+ *   components.hosting,
  * );
  * ```
  */

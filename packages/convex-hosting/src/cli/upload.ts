@@ -7,7 +7,7 @@
  *
  * Options:
  *   --dist <path>            Path to dist directory (default: ./dist)
- *   --component <name>       Component instance name (default: convexHosting)
+ *   --component <name>       Component instance name (default: hosting)
  *   --prod                   Deploy to production deployment
  *   --preview-name <name>    Upload to the named preview deployment
  *   --build                  Run the frontend build before uploading
@@ -66,7 +66,7 @@ Upload static files from a dist directory to Convex storage.
 
 Options:
   -d, --dist <path>           Path to dist directory (default: ./dist)
-  -c, --component <name>      Static-hosting component instance name (default: convexHosting)
+  -c, --component <name>      Static-hosting component instance name (default: hosting)
       --prod                  Deploy to production deployment
       --preview-name <name>   Upload to the named preview deployment
   -b, --build                 Run the build command with VITE_CONVEX_URL +

@@ -9,7 +9,7 @@ import {
 } from "./index.js";
 
 const components = componentsGeneric() as unknown as {
-  convexHosting: ComponentApi;
+  hosting: ComponentApi;
 };
 
 type TestHttpAction = {
@@ -34,7 +34,7 @@ afterEach(() => {
 
 function staticHandler(path = "/") {
   const http = httpRouter();
-  registerStaticRoutes(http, components.convexHosting, { pathPrefix: path });
+  registerStaticRoutes(http, components.hosting, { pathPrefix: path });
   const route = http.lookup(path, "GET");
   if (!route) throw new Error(`No static route registered for ${path}`);
   return route[0];
@@ -46,7 +46,7 @@ describe("registerStaticRoutes", () => {
     const authHandler = httpActionGeneric(async () => new Response("auth"));
     http.route({ path: "/auth/callback", method: "GET", handler: authHandler });
 
-    registerStaticRoutes(http, components.convexHosting);
+    registerStaticRoutes(http, components.hosting);
 
     expect(http.lookup("/auth/callback", "GET")?.[0]).toBe(authHandler);
     expect(http.lookup("/dashboard", "GET")?.[0]).not.toBe(authHandler);
@@ -67,7 +67,7 @@ describe("registerStaticRoutes", () => {
       new Request("https://app.convex.site/"),
     );
 
-    expect(runQuery).toHaveBeenCalledWith(components.convexHosting.lib.resolveAssetForHttp, {
+    expect(runQuery).toHaveBeenCalledWith(components.hosting.lib.resolveAssetForHttp, {
       path: "/index.html",
     });
     expect(response.status).toBe(200);
@@ -170,7 +170,7 @@ describe("registerStaticRoutes", () => {
 
   test("returns the setup page at the exact compatibility prefix", async () => {
     const http = httpRouter();
-    registerStaticRoutes(http, components.convexHosting, {
+    registerStaticRoutes(http, components.hosting, {
       pathPrefix: "/app/",
     });
     const handler = http.lookup("/app", "GET")?.[0];
@@ -197,7 +197,7 @@ describe("registerStaticRoutes", () => {
       new Request("https://app.convex.site/docs/hello%20world.txt"),
     );
 
-    expect(runQuery).toHaveBeenCalledWith(components.convexHosting.lib.resolveAssetForHttp, {
+    expect(runQuery).toHaveBeenCalledWith(components.hosting.lib.resolveAssetForHttp, {
       path: "/docs/hello world.txt",
     });
   });
@@ -218,7 +218,7 @@ describe("registerStaticRoutes", () => {
 
   test("strips a path prefix and forwards the SPA override", async () => {
     const http = httpRouter();
-    registerStaticRoutes(http, components.convexHosting, {
+    registerStaticRoutes(http, components.hosting, {
       pathPrefix: "/app/",
       spaFallback: false,
     });
@@ -232,7 +232,7 @@ describe("registerStaticRoutes", () => {
       new Request("https://app.convex.site/app/dashboard"),
     );
 
-    expect(runQuery).toHaveBeenCalledWith(components.convexHosting.lib.resolveAssetForHttp, {
+    expect(runQuery).toHaveBeenCalledWith(components.hosting.lib.resolveAssetForHttp, {
       path: "/dashboard",
       spaFallback: false,
     });
@@ -265,7 +265,7 @@ describe("registerStaticRoutes", () => {
 
   test("preserves the custom CDN redirect option", async () => {
     const http = httpRouter();
-    registerStaticRoutes(http, components.convexHosting, {
+    registerStaticRoutes(http, components.hosting, {
       cdnBaseUrl: "https://cdn.example/blobs/",
     });
     const handler = http.lookup("/app-HASHED1.js", "GET")?.[0];
@@ -306,11 +306,11 @@ describe("serveStaticAsset", () => {
 
     const response = await serveStaticAsset(
       serveCtx(runQuery),
-      components.convexHosting,
+      components.hosting,
       new Request("https://app.convex.site/assets/app-B71cUw87.js"),
     );
 
-    expect(runQuery).toHaveBeenCalledWith(components.convexHosting.lib.resolveAssetForHttp, {
+    expect(runQuery).toHaveBeenCalledWith(components.hosting.lib.resolveAssetForHttp, {
       path: "/assets/app-B71cUw87.js",
       spaFallback: false,
     });
@@ -327,13 +327,13 @@ describe("serveStaticAsset", () => {
     for (const url of ["/", "/missing.js", "/dashboard"]) {
       const response = await serveStaticAsset(
         serveCtx(runQuery),
-        components.convexHosting,
+        components.hosting,
         new Request(`https://app.convex.site${url}`),
       );
       expect(response).toBeNull();
     }
     // An exact lookup: `/` is not mapped to `/index.html`.
-    expect(runQuery).toHaveBeenCalledWith(components.convexHosting.lib.resolveAssetForHttp, {
+    expect(runQuery).toHaveBeenCalledWith(components.hosting.lib.resolveAssetForHttp, {
       path: "/",
       spaFallback: false,
     });
@@ -349,12 +349,12 @@ describe("serveStaticAsset", () => {
 
     const response = await serveStaticAsset(
       serveCtx(runQuery),
-      components.convexHosting,
+      components.hosting,
       new Request("https://app.convex.site/dashboard/settings"),
       { path: "/index.html" },
     );
 
-    expect(runQuery).toHaveBeenCalledWith(components.convexHosting.lib.resolveAssetForHttp, {
+    expect(runQuery).toHaveBeenCalledWith(components.hosting.lib.resolveAssetForHttp, {
       path: "/index.html",
       spaFallback: false,
     });
@@ -367,12 +367,12 @@ describe("serveStaticAsset", () => {
 
     await serveStaticAsset(
       serveCtx(runQuery),
-      components.convexHosting,
+      components.hosting,
       new Request("https://app.convex.site/dashboard"),
       { spaFallback: true },
     );
 
-    expect(runQuery).toHaveBeenCalledWith(components.convexHosting.lib.resolveAssetForHttp, {
+    expect(runQuery).toHaveBeenCalledWith(components.hosting.lib.resolveAssetForHttp, {
       path: "/dashboard",
       spaFallback: true,
     });
@@ -383,7 +383,7 @@ describe("serveStaticAsset", () => {
 
     const response = await serveStaticAsset(
       serveCtx(runQuery),
-      components.convexHosting,
+      components.hosting,
       new Request("https://app.convex.site/caf%E9"),
     );
 
@@ -395,7 +395,7 @@ describe("serveStaticAsset", () => {
     await expect(
       serveStaticAsset(
         serveCtx(vi.fn()),
-        components.convexHosting,
+        components.hosting,
         new Request("https://app.convex.site/about"),
         { path: "about/index.html" },
       ),
@@ -417,14 +417,14 @@ describe("serveStaticAsset", () => {
 
     const revalidated = await serveStaticAsset(
       serveCtx(runQuery),
-      components.convexHosting,
+      components.hosting,
       new Request("https://app.convex.site/app.js", {
         headers: { "If-None-Match": '"storage-id"' },
       }),
     );
     const redirected = await serveStaticAsset(
       serveCtx(runQuery),
-      components.convexHosting,
+      components.hosting,
       new Request("https://app.convex.site/app-HASHED1.js"),
       { cdnBaseUrl: "https://cdn.example/blobs/" },
     );
@@ -444,7 +444,7 @@ describe("serveStaticAsset", () => {
 
     const response = await serveStaticAsset(
       serveCtx(runQuery, storageGet),
-      components.convexHosting,
+      components.hosting,
       new Request("https://app.convex.site/legacy.js"),
     );
 
@@ -457,7 +457,7 @@ describe("serveStaticAsset", () => {
       async (request: Request) => new Response(`rendered ${new URL(request.url).pathname}`),
     );
     const handler = httpActionGeneric(async (ctx, request) => {
-      const file = await serveStaticAsset(ctx, components.convexHosting, request);
+      const file = await serveStaticAsset(ctx, components.hosting, request);
       if (file) return file;
       const path = decodeRequestPath(new URL(request.url).pathname);
       if (path === null || path.startsWith("/assets/")) {
@@ -487,7 +487,7 @@ describe("serveStaticAsset", () => {
 
 describe("exposeDeploymentQuery", () => {
   test("strips private cleanup accounting from the public result", async () => {
-    const { getCurrentDeployment } = exposeDeploymentQuery(components.convexHosting);
+    const { getCurrentDeployment } = exposeDeploymentQuery(components.hosting);
     const runQuery = vi.fn().mockResolvedValue({
       _id: "deployment-info-id",
       _creationTime: 1,

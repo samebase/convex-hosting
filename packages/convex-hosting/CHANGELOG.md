@@ -5,9 +5,9 @@
 First release as `@samebase/convex-hosting`, Samebase's fork of `@convex-dev/static-hosting`. See
 "Switching from @convex-dev/static-hosting" in the README.
 
-- The package, the CLI command (`convex-hosting`), the component (`convexHosting`), the default
-  deployment query module (`convex/convexHosting.ts`), and the `CONVEX_HOSTING_BASE_PATH` build
-  variable share one name. The CLI still finds an instance named `staticHosting`.
+- The package, the CLI command (`convex-hosting`), the component (`hosting`), the default deployment
+  query module (`convex/hosting.ts`), and the `CONVEX_HOSTING_BASE_PATH` build variable share one
+  name. The CLI still finds an instance named `staticHosting`.
 - `serveStaticAsset` serves one uploaded file from your own HTTP route, for custom routing and
   server rendering.
 - `upload --preview-name` uploads to a named preview deployment.

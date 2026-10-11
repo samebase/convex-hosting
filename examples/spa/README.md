@@ -34,7 +34,7 @@ Your app will then be available at `https://your-deployment.convex.site`.
 ## Files
 
 - `convex/convex.config.ts` - Imports and uses the hosting component
-- `convex/convexHosting.ts` - Exposes the deployment query for `<UpdateBanner />`
+- `convex/hosting.ts` - Exposes the deployment query for `<UpdateBanner />`
 - `src/` - Example React application
 
 ## How It Works

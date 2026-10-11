@@ -49,5 +49,5 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
-  convexHosting: import("@samebase/convex-hosting/_generated/component.js").ComponentApi<"convexHosting">;
+  hosting: import("@samebase/convex-hosting/_generated/component.js").ComponentApi<"hosting">;
 };

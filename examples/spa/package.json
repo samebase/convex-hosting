@@ -6,8 +6,8 @@
     "dev": "convex dev --typecheck-components --start \"pnpm --parallel --filter @samebase/convex-hosting --filter example-spa run watch\"",
     "watch": "vp dev --clearScreen false",
     "build": "vp build",
-    "upload": "convex-hosting upload --dist ./dist --component convexHosting",
-    "deploy": "convex-hosting deploy --dist ./dist --component convexHosting --build-command \"pnpm run build\"",
+    "upload": "convex-hosting upload --dist ./dist --component hosting",
+    "deploy": "convex-hosting deploy --dist ./dist --component hosting --build-command \"pnpm run build\"",
     "typecheck": "tsc -p . && tsc -p convex"
   },
   "dependencies": {

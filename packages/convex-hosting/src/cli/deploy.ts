@@ -37,7 +37,7 @@ Minimizes the inconsistency window between backend and frontend updates.
 
 Options:
   -d, --dist <path>           Path to dist directory (default: ./dist)
-  -c, --component <name>      Convex component name (default: convexHosting)
+  -c, --component <name>      Convex component name (default: hosting)
       --skip-build            Skip the build step (use existing dist)
       --skip-convex           Skip Convex backend deployment
       --build-command <cmd>   Build command to run (default: 'npm run build')

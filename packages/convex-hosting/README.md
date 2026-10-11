@@ -50,12 +50,12 @@ npm install @samebase/convex-hosting
 
 ```ts
 import { defineApp } from "convex/server";
-import convexHosting from "@samebase/convex-hosting/convex.config";
+import hosting from "@samebase/convex-hosting/convex.config";
 
 // Your own HTTP endpoints (convex/http.ts) are served under /api so the
 // static site can own the root.
 const app = defineApp({ httpPrefix: "/api" });
-app.use(convexHosting, { httpPrefix: "/" });
+app.use(hosting, { httpPrefix: "/" });
 
 export default app;
 ```
@@ -88,10 +88,10 @@ unmounted and register the static catch-all in your existing router.
 
 ```ts
 import { defineApp } from "convex/server";
-import convexHosting from "@samebase/convex-hosting/convex.config";
+import hosting from "@samebase/convex-hosting/convex.config";
 
 const app = defineApp();
-app.use(convexHosting); // no httpPrefix
+app.use(hosting); // no httpPrefix
 
 export default app;
 ```
@@ -107,7 +107,7 @@ const http = httpRouter();
 
 // Register exact app routes first. Existing auth/webhook helpers can stay here.
 // auth.addHttpRoutes(http);
-registerStaticRoutes(http, components.convexHosting);
+registerStaticRoutes(http, components.hosting);
 
 export default http;
 ```
@@ -200,7 +200,7 @@ HTTP, caching, base-path, and SPA behavior before shipping.
 ```bash
 npx @samebase/convex-hosting deploy [options]
   -d, --dist <path>         Path to dist directory (default: ./dist)
-  -c, --component <name>    Component instance name (default: convexHosting)
+  -c, --component <name>    Component instance name (default: hosting)
       --skip-build          Skip the build step (use existing dist)
       --skip-convex         Skip Convex backend deployment
       --build-command <cmd> Build command to run (default: 'npm run build')
@@ -211,7 +211,7 @@ npx @samebase/convex-hosting deploy [options]
 
 npx @samebase/convex-hosting upload [options]
   -d, --dist <path>         Path to dist directory (default: ./dist)
-  -c, --component <name>    Component instance name (default: convexHosting)
+  -c, --component <name>    Component instance name (default: hosting)
       --prod                Deploy to production deployment
       --preview-name <name> Upload to the named preview deployment
   -b, --build               Run 'npm run build' with VITE_CONVEX_URL set
@@ -235,8 +235,8 @@ lifecycle details.
 Convex HTTP routes currently support GET but not HEAD. Configure uptime checks to make a lightweight
 GET request rather than a HEAD request.
 
-If you mount the component under a different name with `app.use(convexHosting, { name: "custom" })`,
-pass `--component custom` and replace every generated `components.convexHosting` reference with
+If you mount the component under a different name with `app.use(hosting, { name: "custom" })`, pass
+`--component custom` and replace every generated `components.hosting` reference with
 `components.custom`.
 
 Do not use `--cdn` for a new integration. It targets an older ConvexFS HTTP API and is retained only
@@ -258,13 +258,13 @@ URL.
 If you want a banner that prompts users to reload when a new deployment ships, expose the deployment
 query in your app and drop in `<UpdateBanner />`:
 
-`convex/convexHosting.ts`:
+`convex/hosting.ts`:
 
 ```ts
 import { exposeDeploymentQuery } from "@samebase/convex-hosting";
 import { components } from "./_generated/api";
 
-export const { getCurrentDeployment } = exposeDeploymentQuery(components.convexHosting);
+export const { getCurrentDeployment } = exposeDeploymentQuery(components.hosting);
 ```
 
 `src/App.tsx`:
@@ -282,8 +282,8 @@ function App() {
 }
 ```
 
-`UpdateBanner` resolves `api.convexHosting.getCurrentDeployment` automatically. If you re-export the
-query under a different module name, pass it explicitly:
+`UpdateBanner` resolves `api.hosting.getCurrentDeployment` automatically. If you re-export the query
+under a different module name, pass it explicitly:
 
 ```tsx
 import { api } from "../convex/_generated/api";
@@ -303,7 +303,7 @@ const { updateAvailable, reload, dismiss } = useDeploymentUpdates();
 Mount the static site under a sub-path if you have other routes at the root:
 
 ```ts
-app.use(convexHosting, { httpPrefix: "/app/" });
+app.use(hosting, { httpPrefix: "/app/" });
 ```
 
 You'll also need to tell your bundler about the base path so the emitted HTML references the right
@@ -355,7 +355,7 @@ http.route({
   pathPrefix: "/",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const file = await serveStaticAsset(ctx, components.convexHosting, request);
+    const file = await serveStaticAsset(ctx, components.hosting, request);
     if (file) return file;
 
     // A missing bundle file is a 404, not a page.
@@ -384,10 +384,10 @@ decoded path of the uploaded file, starting with `/`. If your route has a prefix
 `path`:
 
 ```ts
-const page = await serveStaticAsset(ctx, components.convexHosting, request, {
+const page = await serveStaticAsset(ctx, components.hosting, request, {
   path: "/about/index.html",
 });
-const shell = await serveStaticAsset(ctx, components.convexHosting, request, {
+const shell = await serveStaticAsset(ctx, components.hosting, request, {
   path: "/index.html",
 });
 ```
@@ -414,18 +414,18 @@ This package continues `@convex-dev/static-hosting` 0.2. To switch an app:
 2. Keep the existing component instance, so the uploaded files and the site URLs stay:
 
    ```ts
-   import convexHosting from "@samebase/convex-hosting/convex.config";
+   import hosting from "@samebase/convex-hosting/convex.config";
 
-   app.use(convexHosting, { name: "staticHosting", httpPrefix: "/" });
+   app.use(hosting, { name: "staticHosting", httpPrefix: "/" });
    ```
 
    Keep the `httpPrefix` the app used before. The code keeps using `components.staticHosting`, and
    the CLI finds this instance without `--component`. It prints a note that the default name is now
-   `convexHosting`.
+   `hosting`.
 
-3. Rename `convex/staticHosting.ts` to `convex/convexHosting.ts`. `<UpdateBanner />` and
-   `useDeploymentUpdates()` look up `api.convexHosting.getCurrentDeployment` by default. To keep the
-   old file, pass `api.staticHosting.getCurrentDeployment` to them instead.
+3. Rename `convex/staticHosting.ts` to `convex/hosting.ts`. `<UpdateBanner />` and
+   `useDeploymentUpdates()` look up `api.hosting.getCurrentDeployment` by default. To keep the old
+   file, pass `api.staticHosting.getCurrentDeployment` to them instead.
 4. In package scripts, replace `@convex-dev/static-hosting` with `@samebase/convex-hosting` (for
    example `npx @samebase/convex-hosting deploy`) and the bare `static-hosting` command with
    `convex-hosting`. In the bundler config, replace `STATIC_HOSTING_BASE_PATH` with
@@ -433,8 +433,8 @@ This package continues `@convex-dev/static-hosting` 0.2. To switch an app:
 5. Deploy as usual.
 
 To use the new default name instead, remove `name: "staticHosting"`, replace
-`components.staticHosting` with `components.convexHosting`, and deploy. The new instance starts
-empty, so the deploy uploads the files again.
+`components.staticHosting` with `components.hosting`, and deploy. The new instance starts empty, so
+the deploy uploads the files again.
 
 An app on `@convex-dev/static-hosting` 0.1.x first follows upstream's
 [0.1.x to 0.2.x migration guide](https://github.com/get-convex/static-hosting/blob/main/MIGRATION.md),

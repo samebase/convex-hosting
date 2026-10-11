@@ -20,7 +20,7 @@ type DeploymentQueryRef = FunctionReference<
 >;
 
 const DEFAULT_QUERY_REF = makeFunctionReference<"query", Record<string, never>, DeploymentInfo>(
-  "convexHosting:getCurrentDeployment",
+  "hosting:getCurrentDeployment",
 ) as DeploymentQueryRef;
 
 /* eslint-disable react-refresh/only-export-components */
@@ -29,7 +29,7 @@ const DEFAULT_QUERY_REF = makeFunctionReference<"query", Record<string, never>, 
  * Hook to detect when a new deployment is available.
  *
  * @param getCurrentDeployment - Optional query reference. Defaults to
- *   `api.convexHosting.getCurrentDeployment` (resolved by path). If you've
+ *   `api.hosting.getCurrentDeployment` (resolved by path). If you've
  *   re-exported the deployment query under a different module name, pass the
  *   reference explicitly.
  *
@@ -97,12 +97,12 @@ function deploymentQuerySetupHelp(ref: DeploymentQueryRef | undefined): string {
   }
   return [
     "@samebase/convex-hosting: UpdateBanner requires you to expose the deployment query.",
-    "Create convex/convexHosting.ts:",
+    "Create convex/hosting.ts:",
     "",
     '  import { exposeDeploymentQuery } from "@samebase/convex-hosting";',
     '  import { components } from "./_generated/api";',
     "  export const { getCurrentDeployment } = exposeDeploymentQuery(",
-    "    components.convexHosting,",
+    "    components.hosting,",
     "  );",
   ].join("\n");
 }

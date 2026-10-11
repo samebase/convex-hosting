@@ -7,7 +7,7 @@ function App() {
 
   return (
     <div className="app">
-      {/* Resolves convex/convexHosting.ts:getCurrentDeployment by default. */}
+      {/* Resolves convex/hosting.ts:getCurrentDeployment by default. */}
       <UpdateBanner message="🚀 New version deployed!" buttonText="Refresh" />
 
       <header className="header">

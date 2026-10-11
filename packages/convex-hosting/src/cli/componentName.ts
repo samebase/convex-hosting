@@ -2,14 +2,14 @@
  * Component instance name resolution shared by the deploy and upload commands.
  *
  * `@convex-dev/static-hosting` mounted the component as `staticHosting`; this
- * package defaults to `convexHosting`. An app that switches packages but keeps
- * its existing instance (`app.use(convexHosting, { name: "staticHosting" })`)
+ * package defaults to `hosting`. An app that switches packages but keeps
+ * its existing instance (`app.use(hosting, { name: "staticHosting" })`)
  * keeps its uploaded files and URLs. Without the probe it would have to pass
  * `--component staticHosting` on every command. Instead the CLI probes both
  * names when the caller relied on the default, and warns when it lands on the
  * legacy one.
  */
-export const DEFAULT_COMPONENT_NAME = "convexHosting";
+export const DEFAULT_COMPONENT_NAME = "hosting";
 export const LEGACY_COMPONENT_NAME = "staticHosting";
 
 /**
