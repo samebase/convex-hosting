@@ -14,7 +14,7 @@ Changes offered back to upstream live on branches in
   - `src/cli`: the `static-hosting` command.
   - `src/react`: `UpdateBanner` and `useDeploymentUpdates`.
 - `examples/spa`: a Vite and React app that the component serves.
-- `examples/ssr`: TanStack Start pages rendered in a Convex HTTP action.
+- `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
 
 ## Commands
 

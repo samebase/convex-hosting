@@ -410,8 +410,8 @@ the 404.
 Use `decodeRequestPath` for your own path checks, so an encoded request such as `/%61ssets/app.js`
 still matches `/assets/`.
 
-See [`examples/ssr/`](./examples/ssr) for TanStack Start pages rendered in a Convex HTTP action this
-way.
+See [`examples/tanstack-ssr/`](./examples/tanstack-ssr) for TanStack Start pages rendered in a
+Convex HTTP action this way.
 
 ## Upgrading from 0.1.x
 
@@ -443,7 +443,7 @@ steps, verification, rollback, and the optional staged cutover.
 ## Example
 
 See [`examples/spa/`](./examples/spa) for a complete Vite + React app, and
-[`examples/ssr/`](./examples/ssr) for server rendering with TanStack Start.
+[`examples/tanstack-ssr/`](./examples/tanstack-ssr) for server rendering with TanStack Start.
 
 ```bash
 pnpm install

@@ -21,7 +21,7 @@ This example has its own schema, so use a separate Convex project. From the repo
 
 ```bash
 pnpm install
-cd examples/ssr
+cd examples/tanstack-ssr
 pnpm run dev
 ```
 

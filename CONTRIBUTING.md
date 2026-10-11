@@ -16,4 +16,4 @@ pnpm run dev
 ```
 
 The SSR example has its own schema, so it needs a separate Convex project. See
-[examples/ssr/README.md](./examples/ssr/README.md).
+[examples/tanstack-ssr/README.md](./examples/tanstack-ssr/README.md).
