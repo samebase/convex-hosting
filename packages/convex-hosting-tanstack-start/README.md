@@ -1,4 +1,4 @@
-# @samebase/convex-tanstack-start
+# @samebase/convex-hosting-tanstack-start
 
 Renders TanStack Start pages inside a Convex HTTP action, so the app needs no separate server host.
 The package has a Vite plugin and a server entry. It owns no tables and needs no `app.use(...)`. The
@@ -10,7 +10,7 @@ the browser files.
 Add the plugin to `vite.config.ts`:
 
 ```ts
-import { convexSsr } from "@samebase/convex-tanstack-start/vite";
+import { convexSsr } from "@samebase/convex-hosting-tanstack-start/vite";
 
 export default defineConfig({
   plugins: [convexSsr(), tanstackStart({ prerender: { enabled: false } }), react()],
@@ -20,7 +20,7 @@ export default defineConfig({
 Create `src/server.ts`:
 
 ```ts
-export { default } from "@samebase/convex-tanstack-start/server";
+export { default } from "@samebase/convex-hosting-tanstack-start/server";
 ```
 
 Build the app, then import `../dist/server/server.js` in `convex/http.ts`. Serve uploaded files with

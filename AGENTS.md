@@ -13,8 +13,8 @@ Changes offered back to upstream live on branches in
   - `src/client`: the API that apps import (`registerStaticRoutes`, `serveStaticAsset`, and more).
   - `src/cli`: the `convex-hosting` command.
   - `src/react`: `UpdateBanner` and `useDeploymentUpdates`.
-- `packages/convex-tanstack-start`: the Vite plugin and server entry that render TanStack Start
-  pages in a Convex HTTP action.
+- `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
+  Start pages in a Convex HTTP action.
 - `examples/spa`: a Vite and React app that the component serves.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
 

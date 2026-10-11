@@ -118,9 +118,9 @@ importers:
       '@samebase/convex-hosting':
         specifier: workspace:*
         version: link:../../packages/convex-hosting
-      '@samebase/convex-tanstack-start':
+      '@samebase/convex-hosting-tanstack-start':
         specifier: workspace:*
-        version: link:../../packages/convex-tanstack-start
+        version: link:../../packages/convex-hosting-tanstack-start
       '@tanstack/react-query':
         specifier: 5.103.1
         version: 5.103.1(react@19.2.3)
@@ -195,7 +195,7 @@ importers:
         specifier: 'catalog:'
         version: 0.3.3(@edge-runtime/vm@5.0.0)(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)
 
-  packages/convex-tanstack-start:
+  packages/convex-hosting-tanstack-start:
     dependencies:
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.3.3

@@ -4,7 +4,7 @@ import type { Plugin } from "vite";
 
 export function convexSsr(): Plugin {
   return {
-    name: "convex-tanstack-start",
+    name: "convex-hosting-tanstack-start",
     apply: "build",
     config: () => ({
       ssr: {
