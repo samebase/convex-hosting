@@ -3,7 +3,7 @@
  * One-shot deployment command that deploys both Convex backend and static files.
  *
  * Usage:
- *   npx @convex-dev/static-hosting deploy [options]
+ *   npx @samebase/convex-hosting deploy [options]
  *
  * This command:
  * 1. Builds the frontend with the correct VITE_CONVEX_URL
@@ -30,14 +30,14 @@ import {
 
 function showHelp(): void {
   console.log(`
-Usage: npx @convex-dev/static-hosting deploy [options]
+Usage: npx @samebase/convex-hosting deploy [options]
 
 One-shot deployment: builds frontend, deploys Convex backend, then deploys static files.
 Minimizes the inconsistency window between backend and frontend updates.
 
 Options:
   -d, --dist <path>           Path to dist directory (default: ./dist)
-  -c, --component <name>      Convex component name (default: staticHosting)
+  -c, --component <name>      Convex component name (default: hosting)
       --skip-build            Skip the build step (use existing dist)
       --skip-convex           Skip Convex backend deployment
       --build-command <cmd>   Build command to run (default: 'npm run build')
@@ -55,13 +55,13 @@ Deployment Flow:
 
 Examples:
   # Full deployment
-  npx @convex-dev/static-hosting deploy
+  npx @samebase/convex-hosting deploy
 
   # Skip build (if already built)
-  npx @convex-dev/static-hosting deploy --skip-build
+  npx @samebase/convex-hosting deploy --skip-build
 
   # Only deploy static files (skip Convex backend)
-  npx @convex-dev/static-hosting deploy --skip-convex
+  npx @samebase/convex-hosting deploy --skip-convex
 `);
 }
 
@@ -98,8 +98,8 @@ let warnedLegacyName = false;
 
 /**
  * Resolve the deployment URLs and the instance name that answered. When the
- * caller relied on the default name we also probe the legacy 0.1.x name, so a
- * same-name migration keeps working without `--component selfHosting`. Returns
+ * caller relied on the default name we also probe the @convex-dev/static-hosting
+ * name, so an app that kept that instance works without `--component staticHosting`. Returns
  * null if no candidate is deployed yet (the caller may deploy the backend and
  * retry).
  */
@@ -152,13 +152,13 @@ function runFrontendBuild(args: DeployArgs, urls: DeploymentUrls): void {
   const environment = buildEnvironment(urls);
   console.log(`   Build command: ${args.buildCommand}`);
   console.log(`   VITE_CONVEX_URL=${environment.cloudUrl}`);
-  console.log(`   STATIC_HOSTING_BASE_PATH=${environment.basePath}`);
+  console.log(`   CONVEX_HOSTING_BASE_PATH=${environment.basePath}`);
   console.log("");
 
   const buildResult = spawnShell(args.buildCommand, {
     ...process.env,
     VITE_CONVEX_URL: environment.cloudUrl,
-    STATIC_HOSTING_BASE_PATH: environment.basePath,
+    CONVEX_HOSTING_BASE_PATH: environment.basePath,
   });
   if (buildResult !== 0) {
     throw new Error("Frontend build failed");
@@ -270,7 +270,7 @@ async function main(): Promise<void> {
       if (!urls || buildEnvironmentChanged(urls, deployedUrls)) {
         console.log("");
         console.log(
-          "   Static hosting URL changed after backend deployment. Rebuilding with the new environment...",
+          "   Site URL changed after backend deployment. Rebuilding with the new environment...",
         );
         try {
           runFrontendBuild(args, deployedUrls);

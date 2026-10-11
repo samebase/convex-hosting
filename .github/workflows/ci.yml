@@ -81,3 +81,8 @@ jobs:
 
       - name: Check
         run: pnpm run check
+
+      # One pkg.pr.new preview per commit for both packages, so a consumer can install a PR build
+      # before an npm release. --pnpm packs with pnpm, which resolves catalog and workspace versions.
+      - name: Publish preview packages
+        run: pnpm exec pkg-pr-new publish --pnpm --packageManager=pnpm './packages/*'

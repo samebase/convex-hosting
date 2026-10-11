@@ -20,7 +20,7 @@ type DeploymentQueryRef = FunctionReference<
 >;
 
 const DEFAULT_QUERY_REF = makeFunctionReference<"query", Record<string, never>, DeploymentInfo>(
-  "staticHosting:getCurrentDeployment",
+  "hosting:getCurrentDeployment",
 ) as DeploymentQueryRef;
 
 /* eslint-disable react-refresh/only-export-components */
@@ -29,13 +29,13 @@ const DEFAULT_QUERY_REF = makeFunctionReference<"query", Record<string, never>, 
  * Hook to detect when a new deployment is available.
  *
  * @param getCurrentDeployment - Optional query reference. Defaults to
- *   `api.staticHosting.getCurrentDeployment` (resolved by path). If you've
+ *   `api.hosting.getCurrentDeployment` (resolved by path). If you've
  *   re-exported the deployment query under a different module name, pass the
  *   reference explicitly.
  *
  * @example
  * ```tsx
- * import { useDeploymentUpdates } from "@convex-dev/static-hosting/react";
+ * import { useDeploymentUpdates } from "@samebase/convex-hosting/react";
  *
  * function App() {
  *   const { updateAvailable, reload } = useDeploymentUpdates();
@@ -96,13 +96,13 @@ function deploymentQuerySetupHelp(ref: DeploymentQueryRef | undefined): string {
     return "Deployment query failed. Verify the function you passed to useDeploymentUpdates is deployed.";
   }
   return [
-    "@convex-dev/static-hosting: UpdateBanner requires you to expose the deployment query.",
-    "Create convex/staticHosting.ts:",
+    "@samebase/convex-hosting: UpdateBanner requires you to expose the deployment query.",
+    "Create convex/hosting.ts:",
     "",
-    '  import { exposeDeploymentQuery } from "@convex-dev/static-hosting";',
+    '  import { exposeDeploymentQuery } from "@samebase/convex-hosting";',
     '  import { components } from "./_generated/api";',
     "  export const { getCurrentDeployment } = exposeDeploymentQuery(",
-    "    components.staticHosting,",
+    "    components.hosting,",
     "  );",
   ].join("\n");
 }
@@ -112,7 +112,7 @@ function deploymentQuerySetupHelp(ref: DeploymentQueryRef | undefined): string {
  *
  * @example
  * ```tsx
- * import { UpdateBanner } from "@convex-dev/static-hosting/react";
+ * import { UpdateBanner } from "@samebase/convex-hosting/react";
  * <UpdateBanner />
  * ```
  */

@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { decodeRequestPath, serveStaticAsset } from "@convex-dev/static-hosting";
+import { decodeRequestPath, serveStaticAsset } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
 import { httpAction } from "./_generated/server.js";
 
@@ -10,7 +10,7 @@ http.route({
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     // Uploaded files first: scripts, styles, and everything in public/.
-    const file = await serveStaticAsset(ctx, components.staticHosting, request);
+    const file = await serveStaticAsset(ctx, components.hosting, request);
     if (file) return file;
 
     // A missing script from another build must stay a 404, not a page. Don't

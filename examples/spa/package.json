@@ -3,15 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "convex dev --typecheck-components --start \"pnpm --parallel --filter @convex-dev/static-hosting --filter example-spa run watch\"",
+    "dev": "convex dev --typecheck-components --start \"pnpm --parallel --filter @samebase/convex-hosting --filter example-spa run watch\"",
     "watch": "vp dev --clearScreen false",
     "build": "vp build",
-    "upload": "static-hosting upload --dist ./dist --component staticHosting",
-    "deploy": "static-hosting deploy --dist ./dist --component staticHosting --build-command \"pnpm run build\"",
+    "upload": "convex-hosting upload --dist ./dist --component hosting",
+    "deploy": "convex-hosting deploy --dist ./dist --component hosting --build-command \"pnpm run build\"",
     "typecheck": "tsc -p . && tsc -p convex"
   },
   "dependencies": {
-    "@convex-dev/static-hosting": "workspace:*",
+    "@samebase/convex-hosting": "workspace:*",
     "convex": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"

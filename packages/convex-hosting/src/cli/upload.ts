@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * CLI tool to upload static files to a Convex static-hosting component.
+ * CLI tool to upload static files to a Convex convex-hosting component.
  *
  * Usage:
- *   npx @convex-dev/static-hosting upload [options]
+ *   npx @samebase/convex-hosting upload [options]
  *
  * Options:
  *   --dist <path>            Path to dist directory (default: ./dist)
- *   --component <name>       Component instance name (default: staticHosting)
+ *   --component <name>       Component instance name (default: hosting)
  *   --prod                   Deploy to production deployment
  *   --preview-name <name>    Upload to the named preview deployment
  *   --build                  Run the frontend build before uploading
@@ -60,17 +60,17 @@ function getMimeType(path: string): string {
 
 function showHelp(): void {
   console.log(`
-Usage: npx @convex-dev/static-hosting upload [options]
+Usage: npx @samebase/convex-hosting upload [options]
 
 Upload static files from a dist directory to Convex storage.
 
 Options:
   -d, --dist <path>           Path to dist directory (default: ./dist)
-  -c, --component <name>      Static-hosting component instance name (default: staticHosting)
+  -c, --component <name>      Static-hosting component instance name (default: hosting)
       --prod                  Deploy to production deployment
       --preview-name <name>   Upload to the named preview deployment
   -b, --build                 Run the build command with VITE_CONVEX_URL +
-                              STATIC_HOSTING_BASE_PATH set before uploading
+                              CONVEX_HOSTING_BASE_PATH set before uploading
       --build-command <cmd>   Build command to run (default: 'npm run build').
                               Implies --build.
       --no-spa                Disable SPA fallback for this deployment (return a
@@ -83,12 +83,12 @@ Options:
 
 Examples:
   # Upload to Convex storage
-  npx @convex-dev/static-hosting upload
-  npx @convex-dev/static-hosting upload --dist ./build --prod
-  npx @convex-dev/static-hosting upload --build --prod
+  npx @samebase/convex-hosting upload
+  npx @samebase/convex-hosting upload --dist ./build --prod
+  npx @samebase/convex-hosting upload --build --prod
 
   # Upload through an existing legacy convex-fs integration
-  npx @convex-dev/static-hosting upload --cdn --prod
+  npx @samebase/convex-hosting upload --cdn --prod
 `);
 }
 
@@ -113,8 +113,9 @@ interface DeploymentUrls {
 /**
  * Resolve the component's deployment URLs and the instance name that answered.
  *
- * When the caller relied on the default name we also probe the legacy 0.1.x
- * name so a same-name migration keeps working without `--component selfHosting`
+ * When the caller relied on the default name we also probe the
+ * @convex-dev/static-hosting name, so an app that kept that instance works without
+ * `--component staticHosting`
  * on every command; landing on the legacy name prints a one-time warning. Bails
  * the CLI if no candidate is deployed. Uploading wouldn't work either, so a
  * fallback would only hide the real problem.
@@ -742,13 +743,13 @@ async function main(): Promise<void> {
     console.log(`🔨 Building for ${envLabel}...`);
     console.log(`   Build command: ${args.buildCommand}`);
     console.log(`   VITE_CONVEX_URL=${convexUrl}`);
-    console.log(`   STATIC_HOSTING_BASE_PATH=${basePath}`);
+    console.log(`   CONVEX_HOSTING_BASE_PATH=${basePath}`);
     console.log("");
 
     const buildResult = spawnShell(args.buildCommand, {
       ...process.env,
       VITE_CONVEX_URL: convexUrl,
-      STATIC_HOSTING_BASE_PATH: basePath,
+      CONVEX_HOSTING_BASE_PATH: basePath,
     });
 
     if (buildResult !== 0) {

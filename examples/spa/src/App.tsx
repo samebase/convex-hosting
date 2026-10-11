@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { UpdateBanner } from "@convex-dev/static-hosting/react";
+import { UpdateBanner } from "@samebase/convex-hosting/react";
 import "./App.css";
 
 function App() {
@@ -7,11 +7,11 @@ function App() {
 
   return (
     <div className="app">
-      {/* Resolves convex/staticHosting.ts:getCurrentDeployment by default. */}
+      {/* Resolves convex/hosting.ts:getCurrentDeployment by default. */}
       <UpdateBanner message="🚀 New version deployed!" buttonText="Refresh" />
 
       <header className="header">
-        <h1>🚀 Convex Static Hosting</h1>
+        <h1>🚀 Convex Hosting</h1>
         <p className="subtitle">Static-hosted React app on Convex</p>
       </header>
 

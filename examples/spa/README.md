@@ -1,6 +1,6 @@
-# Static Hosting Example
+# Convex Hosting SPA example
 
-This example demonstrates how to use the `@convex-dev/static-hosting` component to host a React/Vite
+This example demonstrates how to use the `@samebase/convex-hosting` component to host a React/Vite
 app directly on Convex.
 
 ## Running the Example
@@ -33,8 +33,8 @@ Your app will then be available at `https://your-deployment.convex.site`.
 
 ## Files
 
-- `convex/convex.config.ts` - Imports and uses the static hosting component
-- `convex/staticHosting.ts` - Exposes the deployment query for `<UpdateBanner />`
+- `convex/convex.config.ts` - Imports and uses the hosting component
+- `convex/hosting.ts` - Exposes the deployment query for `<UpdateBanner />`
 - `src/` - Example React application
 
 ## How It Works

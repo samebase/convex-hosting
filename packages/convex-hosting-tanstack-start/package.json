@@ -1,12 +1,12 @@
 {
-  "name": "@samebase/convex-tanstack-start",
+  "name": "@samebase/convex-hosting-tanstack-start",
   "version": "0.1.0",
   "description": "Render TanStack Start pages in a Convex HTTP action.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/samebase/convex-hosting.git",
-    "directory": "packages/convex-tanstack-start"
+    "directory": "packages/convex-hosting-tanstack-start"
   },
   "files": [
     "dist"

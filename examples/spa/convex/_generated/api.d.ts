@@ -8,7 +8,7 @@
  * @module
  */
 
-import type * as staticHosting from "../staticHosting.js";
+import type * as hosting from "../hosting.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +17,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  staticHosting: typeof staticHosting;
+  hosting: typeof hosting;
 }>;
 
 /**
@@ -47,5 +47,5 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
-  staticHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"staticHosting">;
+  hosting: import("@samebase/convex-hosting/_generated/component.js").ComponentApi<"hosting">;
 };

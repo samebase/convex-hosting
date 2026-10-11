@@ -20,7 +20,7 @@ describe("component name resolution", () => {
   });
 
   test("a custom name is never redirected to another instance", () => {
-    expect(componentNameCandidates("staticHostingV2")).toEqual(["staticHostingV2"]);
+    expect(componentNameCandidates("hostingV2")).toEqual(["hostingV2"]);
   });
 
   test("only an auto-detected legacy fallback warrants a warning", () => {
