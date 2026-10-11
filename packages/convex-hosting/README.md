@@ -423,9 +423,14 @@ This package continues `@convex-dev/static-hosting` 0.2. To switch an app:
    the CLI finds this instance without `--component`. It prints a note that the default name is now
    `convexHosting`.
 
-3. Replace `static-hosting` with `convex-hosting` in package scripts, and `STATIC_HOSTING_BASE_PATH`
-   with `CONVEX_HOSTING_BASE_PATH` in the bundler config.
-4. Deploy as usual.
+3. Rename `convex/staticHosting.ts` to `convex/convexHosting.ts`. `<UpdateBanner />` and
+   `useDeploymentUpdates()` look up `api.convexHosting.getCurrentDeployment` by default. To keep the
+   old file, pass `api.staticHosting.getCurrentDeployment` to them instead.
+4. In package scripts, replace `@convex-dev/static-hosting` with `@samebase/convex-hosting` (for
+   example `npx @samebase/convex-hosting deploy`) and the bare `static-hosting` command with
+   `convex-hosting`. In the bundler config, replace `STATIC_HOSTING_BASE_PATH` with
+   `CONVEX_HOSTING_BASE_PATH`.
+5. Deploy as usual.
 
 To use the new default name instead, remove `name: "staticHosting"`, replace
 `components.staticHosting` with `components.convexHosting`, and deploy. The new instance starts
