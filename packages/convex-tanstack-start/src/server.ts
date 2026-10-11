@@ -1,7 +1,6 @@
-// TanStack Start server entry for Convex HTTP actions. Nothing here is
-// specific to this example, so it could become its own package. Keep it
-// self-contained: import only TanStack and React, never app code.
-// `src/server.ts` re-exports it as the entry Vite builds.
+// TanStack Start server entry for Convex HTTP actions. An app re-exports it from its own
+// `src/server.ts`, which Vite builds as the server entry. Keep it self-contained: import only
+// TanStack and React, never app code.
 
 import { createStartHandler, StartServer } from "@tanstack/react-start/server";
 import { renderSsrHtmlResponse } from "@tanstack/react-router/ssr/server";
@@ -18,7 +17,9 @@ if (new URLSearchParams().size === undefined) {
   });
 }
 
-export default {
+// Apps call only `fetch(request)`. The inferred handler type names TanStack's internal router
+// packages, which the published declarations cannot reference.
+const server: { fetch: (request: Request) => Response | Promise<Response> } = {
   fetch: createStartHandler((context) => {
     const { router, responseHeaders, request } = context;
     return renderSsrHtmlResponse({
@@ -39,3 +40,5 @@ export default {
     });
   }),
 };
+
+export default server;

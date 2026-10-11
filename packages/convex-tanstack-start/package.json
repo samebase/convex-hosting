@@ -1,0 +1,47 @@
+{
+  "name": "@samebase/convex-tanstack-start",
+  "version": "0.1.0",
+  "description": "Render TanStack Start pages in a Convex HTTP action.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samebase/convex-hosting.git",
+    "directory": "packages/convex-tanstack-start"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "pnpm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@tanstack/react-router": "catalog:",
+    "@tanstack/react-start": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-router": "^1.170.38",
+    "@tanstack/react-start": "^1.168.56",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "vite": "*"
+  }
+}

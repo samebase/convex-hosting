@@ -38,7 +38,6 @@ function onChange() {
 watch("src", { recursive: true }, (_event, file) => {
   if (file !== "routeTree.gen.ts") onChange();
 });
-watch("adapter", { recursive: true }, onChange);
 watch("public", { recursive: true }, onChange);
 // Watch the directory, not the file: editors that save by replacing the file
 // would end a watcher on the file itself.

@@ -10,9 +10,9 @@ count from a Convex query, and after React hydrates, the count stays live.
   server bundle.
 - `src/router.tsx` sets up Convex's TanStack Query integration, so data from
   `useSuspenseQuery(convexQuery(...))` is in the first HTML and stays live.
-- `adapter/` makes TanStack Start run in the Convex runtime. The comments in `server.ts` and
-  `vite.ts` explain each setting. It doesn't depend on the example, so it could become its own
-  package.
+- [`@samebase/convex-tanstack-start`](../../packages/convex-tanstack-start) makes TanStack Start run
+  in the Convex runtime: `vite.config.ts` adds its `convexSsr()` plugin, and `src/server.ts`
+  re-exports its server entry.
 - `public/index.html` exists only because the uploader requires an `index.html`.
 
 ## Run

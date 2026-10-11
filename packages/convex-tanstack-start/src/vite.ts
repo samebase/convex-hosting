@@ -1,6 +1,4 @@
-// Vite settings that let TanStack Start's server build run in Convex HTTP
-// actions. Like `server.ts`, this is not specific to the example and could
-// move to its own package together with it.
+// Vite settings that let TanStack Start's server build run in Convex HTTP actions.
 
 import type { Plugin } from "vite";
 

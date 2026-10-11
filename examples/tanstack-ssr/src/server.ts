@@ -1,1 +1,1 @@
-export { default } from "../adapter/server.js";
+export { default } from "@samebase/convex-tanstack-start/server";

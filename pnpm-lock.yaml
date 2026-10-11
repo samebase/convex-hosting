@@ -9,6 +9,12 @@ catalogs:
     '@edge-runtime/vm':
       specifier: 5.0.0
       version: 5.0.0
+    '@tanstack/react-router':
+      specifier: 1.170.38
+      version: 1.170.38
+    '@tanstack/react-start':
+      specifier: 1.168.56
+      version: 1.168.56
     '@types/node':
       specifier: 24.10.8
       version: 24.10.8
@@ -109,17 +115,20 @@ importers:
       '@convex-dev/static-hosting':
         specifier: workspace:*
         version: link:../../packages/convex-hosting
+      '@samebase/convex-tanstack-start':
+        specifier: workspace:*
+        version: link:../../packages/convex-tanstack-start
       '@tanstack/react-query':
         specifier: 5.103.1
         version: 5.103.1(react@19.2.3)
       '@tanstack/react-router':
-        specifier: 1.170.38
+        specifier: 'catalog:'
         version: 1.170.38(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@tanstack/react-router-ssr-query':
         specifier: 1.167.3
         version: 1.167.3(@tanstack/query-core@5.103.1)(@tanstack/react-query@5.103.1(react@19.2.3))(@tanstack/react-router@1.170.38(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@tanstack/router-core@1.171.32)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@tanstack/react-start':
-        specifier: 1.168.56
+        specifier: 'catalog:'
         version: 1.168.56(@voidzero-dev/vite-plus-core@0.3.3(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3))(esbuild@0.27.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       convex:
         specifier: 'catalog:'
@@ -182,6 +191,34 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.3.3(@edge-runtime/vm@5.0.0)(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)
+
+  packages/convex-tanstack-start:
+    dependencies:
+      vite:
+        specifier: npm:@voidzero-dev/vite-plus-core@0.3.3
+        version: '@voidzero-dev/vite-plus-core@0.3.3(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)'
+    devDependencies:
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.38(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@tanstack/react-start':
+        specifier: 'catalog:'
+        version: 1.168.56(@voidzero-dev/vite-plus-core@0.3.3(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3))(esbuild@0.27.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.8
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.8)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
 
 packages:
 
