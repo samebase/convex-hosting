@@ -1,7 +1,8 @@
 # Stages a release of each public package whose package.json version is not on npm yet. CI runs
 # first for the same commit. The npm trusted publishers for both packages name this file and allow
 # only staged publishing, so a maintainer approves each staged version with 2FA on npmjs.com
-# (Staged Packages) before it becomes installable.
+# (Staged Packages) before it becomes installable. The tag <name>@<version> records that a version
+# was staged, so later runs skip it while it waits for approval.
 name: Release
 
 on:
@@ -63,11 +64,14 @@ jobs:
         run: |
           name=$(node -p "require('./$PACKAGE_DIR/package.json').name")
           version=$(node -p "require('./$PACKAGE_DIR/package.json').version")
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if npm view "$name@$version" version >/dev/null 2>&1; then
+          tag="$name@$version"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if npm view "$tag" version >/dev/null 2>&1; then
             echo "stage=false" >> "$GITHUB_OUTPUT"
-            echo "$name@$version is already on npm; nothing to stage"
+            echo "$tag is already on npm; nothing to stage"
+          elif git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "stage=false" >> "$GITHUB_OUTPUT"
+            echo "$tag is already staged and waits for approval on npmjs.com"
           else
             echo "stage=true" >> "$GITHUB_OUTPUT"
           fi
@@ -90,5 +94,5 @@ jobs:
         if: steps.version.outputs.stage == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.name }}@${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"
