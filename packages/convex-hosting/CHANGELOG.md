@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- `upload` and `deploy` no longer upload `_headers` and `_redirects` from the root of `dist/`.
+  Cloudflare and Netlify read these files as hosting rules. Before this change the site served them
+  as public files.
+
 ## 0.3.0
 
 First release as `@samebase/convex-hosting`, Samebase's fork of `@convex-dev/static-hosting`. See

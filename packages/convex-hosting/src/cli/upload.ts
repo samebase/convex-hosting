@@ -19,8 +19,8 @@
  *   --help                   Show help
  */
 
-import { readFileSync, readdirSync, existsSync } from "fs";
-import { join, relative, extname, resolve } from "path";
+import { readFileSync, existsSync } from "fs";
+import { resolve } from "path";
 import { randomUUID } from "crypto";
 import { runConvexAsync, spawnShell } from "./commands.js";
 import { chunkBySerializedArgument, MAX_CONVEX_ARGUMENT_BYTES } from "./argumentChunks.js";
@@ -30,33 +30,7 @@ import {
   isLegacyAutoDetected,
   legacyComponentNameWarning,
 } from "./componentName.js";
-
-// MIME type mapping
-const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".mjs": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".webp": "image/webp",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".txt": "text/plain; charset=utf-8",
-  ".map": "application/json",
-  ".webmanifest": "application/manifest+json",
-  ".xml": "application/xml",
-};
-
-function getMimeType(path: string): string {
-  return MIME_TYPES[extname(path).toLowerCase()] || "application/octet-stream";
-}
+import { collectFiles } from "./collectFiles.js";
 
 function showHelp(): void {
   console.log(`
@@ -668,31 +642,6 @@ async function uploadWithConcurrency(
   }
 }
 
-function collectFiles(
-  dir: string,
-  baseDir: string,
-): Array<{ path: string; localPath: string; contentType: string }> {
-  const files: Array<{
-    path: string;
-    localPath: string;
-    contentType: string;
-  }> = [];
-
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectFiles(fullPath, baseDir));
-    } else if (entry.isFile()) {
-      files.push({
-        path: "/" + relative(baseDir, fullPath).replace(/\\/g, "/"),
-        localPath: fullPath,
-        contentType: getMimeType(fullPath),
-      });
-    }
-  }
-  return files;
-}
-
 function estimateManifestBytes(
   files: Array<{ path: string; contentType: string }>,
   deploymentId: string,
@@ -777,7 +726,10 @@ async function main(): Promise<void> {
   const cdnUploadBase = useCdn ? new URL(componentSiteUrl).origin : null;
 
   const deploymentId = randomUUID();
-  const files = collectFiles(distDir, distDir);
+  const { files, skipped } = collectFiles(distDir);
+  for (const path of skipped) {
+    console.log(`Skipping ${path}: convex-hosting does not apply hosting rule files.`);
+  }
   if (files.length === 0) {
     console.error(`Error: dist directory is empty: ${distDir}`);
     console.error("Refusing to replace the live deployment with no files.");
