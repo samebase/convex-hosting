@@ -12,10 +12,11 @@
   "dependencies": {
     "@convex-dev/react-query": "0.1.0",
     "@convex-dev/static-hosting": "workspace:*",
+    "@samebase/convex-tanstack-start": "workspace:*",
     "@tanstack/react-query": "5.103.1",
-    "@tanstack/react-router": "1.170.38",
+    "@tanstack/react-router": "catalog:",
     "@tanstack/react-router-ssr-query": "1.167.3",
-    "@tanstack/react-start": "1.168.56",
+    "@tanstack/react-start": "catalog:",
     "convex": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
