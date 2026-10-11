@@ -1,18 +1,19 @@
-# Developing guide
+# Contributing
 
-## Running locally
-
-```sh
-npm i
-npm run dev
-```
-
-## Testing
+You need the Node version in `.node-version` and pnpm 11.
 
 ```sh
-npm ci
-npm run clean
-npm run typecheck
-npm run lint
-npm run test
+pnpm install
+pnpm run build
+pnpm run check
 ```
+
+To run the SPA example against your own Convex dev deployment:
+
+```sh
+cd examples/spa
+pnpm run dev
+```
+
+The SSR example has its own schema, so it needs a separate Convex project. See
+[examples/tanstack-ssr/README.md](./examples/tanstack-ssr/README.md).

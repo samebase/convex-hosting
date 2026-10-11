@@ -1,0 +1,31 @@
+{
+  "name": "example-tanstack-ssr",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "dev": "pnpm run build && convex dev --start \"pnpm run dev:assets\"",
+    "dev:assets": "node scripts/dev-assets.ts",
+    "upload": "static-hosting upload --dist ./dist/client --no-spa",
+    "typecheck": "tsc -p . && tsc -p convex"
+  },
+  "dependencies": {
+    "@convex-dev/react-query": "0.1.0",
+    "@convex-dev/static-hosting": "workspace:*",
+    "@tanstack/react-query": "5.103.1",
+    "@tanstack/react-router": "1.170.38",
+    "@tanstack/react-router-ssr-query": "1.167.3",
+    "@tanstack/react-start": "1.168.56",
+    "convex": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

@@ -2,26 +2,22 @@
 
 [![npm version](https://badge.fury.io/js/@convex-dev%2Fstatic-hosting.svg)](https://badge.fury.io/js/@convex-dev/static-hosting)
 
-A Convex component for hosting static React/Vite apps directly on Convex: no
-separate hosting provider, no DNS to wire up, no second deploy target. Run one
-command and your frontend is live at `https://<deployment>.convex.site`
-alongside your backend.
+A Convex component for hosting static React/Vite apps directly on Convex: no separate hosting
+provider, no DNS to wire up, no second deploy target. Run one command and your frontend is live at
+`https://<deployment>.convex.site` alongside your backend.
 
 ## Features
 
-- 🚀 **One-command deploy:** build, push backend, and upload static files in a
-  single step.
+- 🚀 **One-command deploy:** build, push backend, and upload static files in a single step.
 - 🔄 **SPA routing:** paths without an extension fall back to `index.html`.
-- ⚡ **Smart caching:** static files are cached for speed, with safe updates when
-  a new version is deployed.
-- 🔔 **Deployment update notifications:** show connected users a prompt when a
-  new version is ready.
-- 🔒 **Authenticated uploads:** uploads go through the Convex CLI's
-  authenticated session; there's no public upload endpoint.
-- 🧹 **Automatic cleanup:** non-HTML files from previous 0.2.x deployments stay
-  available for at least seven days, so open pages keep working, and are then
-  garbage collected on a later deploy. The migration guide covers one-time v1
-  cleanup.
+- ⚡ **Smart caching:** static files are cached for speed, with safe updates when a new version is
+  deployed.
+- 🔔 **Deployment update notifications:** show connected users a prompt when a new version is ready.
+- 🔒 **Authenticated uploads:** uploads go through the Convex CLI's authenticated session; there's
+  no public upload endpoint.
+- 🧹 **Automatic cleanup:** non-HTML files from previous 0.2.x deployments stay available for at
+  least seven days, so open pages keep working, and are then garbage collected on a later deploy.
+  The migration guide covers one-time v1 cleanup.
 
 https://github.com/user-attachments/assets/5eaf781f-87da-4292-9f96-38070c86cd39
 
@@ -29,21 +25,20 @@ https://github.com/user-attachments/assets/5eaf781f-87da-4292-9f96-38070c86cd39
 
 ## Quick Start
 
-> **Upgrading an existing 0.1.x app?** This is not a package-only update. Point
-> your coding agent at the [0.1.x to 0.2.x migration guide](./MIGRATION.md)
-> before it changes anything. The guide covers the storage-breaking re-upload,
-> preserving auth and webhook URLs, historical v1 blob auditing, deployment
-> sequencing, and verification.
+> **Upgrading an existing 0.1.x app?** This is not a package-only update. Point your coding agent at
+> the [0.1.x to 0.2.x migration guide](./packages/convex-hosting/MIGRATION.md) before it changes
+> anything. The guide covers the storage-breaking re-upload, preserving auth and webhook URLs,
+> historical v1 blob auditing, deployment sequencing, and verification.
 
 ```bash
 npm install @convex-dev/static-hosting
 npx @convex-dev/static-hosting setup
 ```
 
-For a new setup, the command adds the component to `convex/convex.config.ts` and
-creates a `deploy` script in `package.json`. It does not overwrite an existing
-Convex config or `deploy` script. Complete any manual edits printed by the
-command, and confirm that `npm run deploy` invokes this package before running:
+For a new setup, the command adds the component to `convex/convex.config.ts` and creates a `deploy`
+script in `package.json`. It does not overwrite an existing Convex config or `deploy` script.
+Complete any manual edits printed by the command, and confirm that `npm run deploy` invokes this
+package before running:
 
 ```bash
 npm run deploy
@@ -75,13 +70,12 @@ app.use(staticHosting, { httpPrefix: "/" });
 export default app;
 ```
 
-This is the fastest serving mode. The component owns `/`, while your app's
-`convex/http.ts` routes move under `/api/...`.
+This is the fastest serving mode. The component owns `/`, while your app's `convex/http.ts` routes
+move under `/api/...`.
 
 If existing callbacks or auth routes must stay at the root, use
-[app-owned root routing](#keep-existing-http-routes-at-the-root). To host the
-site under a sub-path, see
-[Mounting under a sub-path](#mounting-under-a-sub-path).
+[app-owned root routing](#keep-existing-http-routes-at-the-root). To host the site under a sub-path,
+see [Mounting under a sub-path](#mounting-under-a-sub-path).
 
 ### 3. Add a deploy script
 
@@ -97,9 +91,8 @@ That's it.
 
 ### Keep existing HTTP routes at the root
 
-Do not move stable webhook, auth, or API URLs just to add static hosting. Leave
-the component's HTTP routes unmounted and register the static catch-all in your
-existing router.
+Do not move stable webhook, auth, or API URLs just to add static hosting. Leave the component's HTTP
+routes unmounted and register the static catch-all in your existing router.
 
 `convex/convex.config.ts`:
 
@@ -129,16 +122,14 @@ registerStaticRoutes(http, components.staticHosting);
 export default http;
 ```
 
-Exact routes win over the static catch-all, so existing URLs keep working. The
-component still owns uploads, deployment state, and file storage. This mode adds
-an internal query and storage fetch on an uncached request, so prefer the
-component-owned mode when you do not need root-level app routes.
+Exact routes win over the static catch-all, so existing URLs keep working. The component still owns
+uploads, deployment state, and file storage. This mode adds an internal query and storage fetch on
+an uncached request, so prefer the component-owned mode when you do not need root-level app routes.
 
 ### Using non-Vite bundlers
 
-The `deploy` build step and `upload --build` set `VITE_CONVEX_URL`. For bundlers
-that use different environment variable conventions, wrap your build script to
-pass through the value:
+The `deploy` build step and `upload --build` set `VITE_CONVEX_URL`. For bundlers that use different
+environment variable conventions, wrap your build script to pass through the value:
 
 **For Expo:**
 
@@ -160,9 +151,9 @@ pass through the value:
 }
 ```
 
-The pattern `${VITE_CONVEX_URL:-$VAR}` uses `VITE_CONVEX_URL` if set by the CLI
-and otherwise falls back to your bundler-specific variable. This keeps both the
-CLI-driven build and standalone `npm run build` working.
+The pattern `${VITE_CONVEX_URL:-$VAR}` uses `VITE_CONVEX_URL` if set by the CLI and otherwise falls
+back to your bundler-specific variable. This keeps both the CLI-driven build and standalone
+`npm run build` working.
 
 ## Deployment
 
@@ -200,11 +191,10 @@ npx convex dev
 npm run dev
 ```
 
-For Vite, that keeps HMR and fast local feedback. Static hosting is the deploy
-target, not a replacement dev server. Uploading every edit to a development
-deployment is slower and loses HMR, even when an agent writes most of the code.
-Humans still need the quick loop for visual checks, transient UI state, and
-debugging.
+For Vite, that keeps HMR and fast local feedback. Static hosting is the deploy target, not a
+replacement dev server. Uploading every edit to a development deployment is slower and loses HMR,
+even when an agent writes most of the code. Humans still need the quick loop for visual checks,
+transient UI state, and debugging.
 
 Before release, run one hosted smoke test against the development deployment:
 
@@ -212,8 +202,8 @@ Before release, run one hosted smoke test against the development deployment:
 npx @convex-dev/static-hosting upload --build
 ```
 
-Then use `deploy` for production. This split keeps the dev loop fast while still
-testing the real HTTP, caching, base-path, and SPA behavior before shipping.
+Then use `deploy` for production. This split keeps the dev loop fast while still testing the real
+HTTP, caching, base-path, and SPA behavior before shipping.
 
 ## CLI options
 
@@ -243,45 +233,40 @@ npx @convex-dev/static-hosting upload [options]
   -j, --concurrency <n>     Parallel upload workers (default: 5)
 ```
 
-`--preview-name` selects the deployment the same way as
-`npx convex run --preview-name`, so a dev or production `CONVEX_DEPLOY_KEY`
-takes precedence over it.
+`--preview-name` selects the deployment the same way as `npx convex run --preview-name`, so a dev or
+production `CONVEX_DEPLOY_KEY` takes precedence over it.
 
-Each upload is published atomically, so visitors never see a page that refers to
-assets that are not available yet. Failed uploads leave the previous deployment
-live. Replaced non-HTML files stay available for at least seven days, so pages
-that are already open can still load their scripts. A later upload removes
-expired files. See [INTEGRATION.md](./INTEGRATION.md) for upload limits and
-lifecycle details.
+Each upload is published atomically, so visitors never see a page that refers to assets that are not
+available yet. Failed uploads leave the previous deployment live. Replaced non-HTML files stay
+available for at least seven days, so pages that are already open can still load their scripts. A
+later upload removes expired files. See [INTEGRATION.md](./packages/convex-hosting/INTEGRATION.md)
+for upload limits and lifecycle details.
 
-Convex HTTP routes currently support GET but not HEAD. Configure uptime checks
-to make a lightweight GET request rather than a HEAD request.
+Convex HTTP routes currently support GET but not HEAD. Configure uptime checks to make a lightweight
+GET request rather than a HEAD request.
 
-If you mount the component under a different name with
-`app.use(staticHosting, { name: "custom" })`, pass `--component custom` and
-replace every generated `components.staticHosting` reference with
+If you mount the component under a different name with `app.use(staticHosting, { name: "custom" })`,
+pass `--component custom` and replace every generated `components.staticHosting` reference with
 `components.custom`.
 
-Do not use `--cdn` for a new integration. It targets an older ConvexFS HTTP API
-and is retained only for existing deployments. Legacy CDN users must keep
-app-owned root routing because `/fs/upload` and `/fs/blobs/*` are root app
-routes. See `INTEGRATION.md` for the current limitation.
+Do not use `--cdn` for a new integration. It targets an older ConvexFS HTTP API and is retained only
+for existing deployments. Legacy CDN users must keep app-owned root routing because `/fs/upload` and
+`/fs/blobs/*` are root app routes. See `INTEGRATION.md` for the current limitation.
 
 ## Security
 
-The upload API uses **internal functions** in the Component that can only be
-called via:
+The upload API uses **internal functions** in the Component that can only be called via:
 
 - `npx convex run` (requires Convex CLI authentication)
 - Other Convex functions in the Component (server-side only)
 
-This means unauthorized users **cannot** upload files to your site, even if they
-know your Convex URL.
+This means unauthorized users **cannot** upload files to your site, even if they know your Convex
+URL.
 
 ## Reload prompt after deploy (optional)
 
-If you want a banner that prompts users to reload when a new deployment ships,
-expose the deployment query in your app and drop in `<UpdateBanner />`:
+If you want a banner that prompts users to reload when a new deployment ships, expose the deployment
+query in your app and drop in `<UpdateBanner />`:
 
 `convex/staticHosting.ts`:
 
@@ -289,9 +274,7 @@ expose the deployment query in your app and drop in `<UpdateBanner />`:
 import { exposeDeploymentQuery } from "@convex-dev/static-hosting";
 import { components } from "./_generated/api";
 
-export const { getCurrentDeployment } = exposeDeploymentQuery(
-  components.staticHosting,
-);
+export const { getCurrentDeployment } = exposeDeploymentQuery(components.staticHosting);
 ```
 
 `src/App.tsx`:
@@ -309,8 +292,8 @@ function App() {
 }
 ```
 
-`UpdateBanner` resolves `api.staticHosting.getCurrentDeployment` automatically.
-If you re-export the query under a different module name, pass it explicitly:
+`UpdateBanner` resolves `api.staticHosting.getCurrentDeployment` automatically. If you re-export the
+query under a different module name, pass it explicitly:
 
 ```tsx
 import { api } from "../convex/_generated/api";
@@ -333,10 +316,9 @@ Mount the static site under a sub-path if you have other routes at the root:
 app.use(staticHosting, { httpPrefix: "/app/" });
 ```
 
-You'll also need to tell your bundler about the base path so the emitted HTML
-references the right URLs. The CLI sets a `STATIC_HOSTING_BASE_PATH` env var
-matching the component's mount when it runs your build, so `vite.config.ts` can
-read it directly:
+You'll also need to tell your bundler about the base path so the emitted HTML references the right
+URLs. The CLI sets a `STATIC_HOSTING_BASE_PATH` env var matching the component's mount when it runs
+your build, so `vite.config.ts` can read it directly:
 
 ```ts
 import { defineConfig } from "vite";
@@ -346,39 +328,34 @@ export default defineConfig({
 });
 ```
 
-Root-mounted apps don't need this; the default is `/`. For webpack use
-`publicPath`, for Next.js `assetPrefix`.
+Root-mounted apps don't need this; the default is `/`. For webpack use `publicPath`, for Next.js
+`assetPrefix`.
 
 ## SPA routing
 
-By default, requests for a path with no file extension that doesn't match an
-uploaded file fall back to `index.html`, so client-side routes like
-`/dashboard/settings` work on reload. For a multi-page app where unknown paths
-should be a real 404, deploy with `--no-spa`:
+By default, requests for a path with no file extension that doesn't match an uploaded file fall back
+to `index.html`, so client-side routes like `/dashboard/settings` work on reload. For a multi-page
+app where unknown paths should be a real 404, deploy with `--no-spa`:
 
 ```bash
 npx @convex-dev/static-hosting deploy --no-spa
 ```
 
-The setting is stored with the deployment, so it travels with the code you ship
-rather than living in a separate env var. Requests for paths with an extension
-(e.g. `/missing.js`) always 404 when not found, regardless of this setting.
+The setting is stored with the deployment, so it travels with the code you ship rather than living
+in a separate env var. Requests for paths with an extension (e.g. `/missing.js`) always 404 when not
+found, regardless of this setting.
 
 ## Custom routing (SSR, prerendered pages)
 
-`registerStaticRoutes` decides what every unmatched path returns. When your app
-needs to decide instead, for example to server-render pages, serve prerendered
-pages next to an SPA shell, or redirect to canonical URLs, write the catch-all
-route yourself and call `serveStaticAsset` for uploaded files. Install the
-component without `httpPrefix`, as in
+`registerStaticRoutes` decides what every unmatched path returns. When your app needs to decide
+instead, for example to server-render pages, serve prerendered pages next to an SPA shell, or
+redirect to canonical URLs, write the catch-all route yourself and call `serveStaticAsset` for
+uploaded files. Install the component without `httpPrefix`, as in
 [Keep existing HTTP routes at the root](#keep-existing-http-routes-at-the-root).
 
 ```ts
 import { httpRouter } from "convex/server";
-import {
-  decodeRequestPath,
-  serveStaticAsset,
-} from "@convex-dev/static-hosting";
+import { decodeRequestPath, serveStaticAsset } from "@convex-dev/static-hosting";
 import { components } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 
@@ -406,16 +383,15 @@ http.route({
 export default http;
 ```
 
-`serveStaticAsset` returns the file with the same headers as
-`registerStaticRoutes`, or `null` when no file matches, including a request path
-with malformed percent-encoding. It never returns the setup page or a 404, so
-your code decides what happens next. Only a found file whose storage can't be
-read gets an error response (500). The lookup is exact: `/` is not mapped to
-`/index.html`, and SPA fallback is off unless you pass `spaFallback: true`.
+`serveStaticAsset` returns the file with the same headers as `registerStaticRoutes`, or `null` when
+no file matches, including a request path with malformed percent-encoding. It never returns the
+setup page or a 404, so your code decides what happens next. Only a found file whose storage can't
+be read gets an error response (500). The lookup is exact: `/` is not mapped to `/index.html`, and
+SPA fallback is off unless you pass `spaFallback: true`.
 
-Pass `path` to serve a different file, such as a prerendered page or the SPA
-shell. It is the decoded path of the uploaded file, starting with `/`. If your
-route has a prefix, remove it from `path`:
+Pass `path` to serve a different file, such as a prerendered page or the SPA shell. It is the
+decoded path of the uploaded file, starting with `/`. If your route has a prefix, remove it from
+`path`:
 
 ```ts
 const page = await serveStaticAsset(ctx, components.staticHosting, request, {
@@ -426,54 +402,53 @@ const shell = await serveStaticAsset(ctx, components.staticHosting, request, {
 });
 ```
 
-When the backend renders your pages, pushing the backend and uploading files are
-separate steps, so right after a deploy a page can briefly refer to scripts that
-are not uploaded yet. That is why the missing-asset response above uses
-`Cache-Control: no-store`: a CDN would otherwise keep serving the 404.
+When the backend renders your pages, pushing the backend and uploading files are separate steps, so
+right after a deploy a page can briefly refer to scripts that are not uploaded yet. That is why the
+missing-asset response above uses `Cache-Control: no-store`: a CDN would otherwise keep serving
+the 404.
 
-Use `decodeRequestPath` for your own path checks, so an encoded request such as
-`/%61ssets/app.js` still matches `/assets/`.
+Use `decodeRequestPath` for your own path checks, so an encoded request such as `/%61ssets/app.js`
+still matches `/assets/`.
 
-See [`example-ssr/`](./example-ssr) for TanStack Start pages rendered in a
+See [`examples/tanstack-ssr/`](./examples/tanstack-ssr) for TanStack Start pages rendered in a
 Convex HTTP action this way.
 
 ## Upgrading from 0.1.x
 
-0.2.0 moves uploads and file storage into the component. You must remove the
-`exposeUploadApi` re-exports from `convex/staticHosting.ts` and **redeploy your
-assets** because 0.1.x files lived in the app's storage. Capture both the
-current v1 manifest and a broader app-storage inventory first: older v1 uploads
-may have left static blobs that the current manifest no longer lists.
+0.2.0 moves uploads and file storage into the component. You must remove the `exposeUploadApi`
+re-exports from `convex/staticHosting.ts` and **redeploy your assets** because 0.1.x files lived in
+the app's storage. Capture both the current v1 manifest and a broader app-storage inventory first:
+older v1 uploads may have left static blobs that the current manifest no longer lists.
 
 You can then choose either serving mode:
 
 - If the static site can own `/`, mount the component there and remove the old
   `registerStaticRoutes` call.
-- If existing HTTP routes must stay at `/`, keep `convex/http.ts` and its
-  `registerStaticRoutes` call. The 0.2 implementation reads the new
-  component-owned files without changing those route URLs.
+- If existing HTTP routes must stay at `/`, keep `convex/http.ts` and its `registerStaticRoutes`
+  call. The 0.2 implementation reads the new component-owned files without changing those route
+  URLs.
 
-See the dedicated [0.1.x to 0.2.x migration guide](./MIGRATION.md) for exact
+See the dedicated [0.1.x to 0.2.x migration guide](./packages/convex-hosting/MIGRATION.md) for exact
 steps, verification, rollback, and the optional staged cutover.
 
 ## How it works
 
 1. **Build:** your bundler emits `dist/`.
-2. **Upload:** the CLI uses your authenticated Convex session to generate signed
-   upload URLs, push files to Convex storage, record metadata, and GC old
-   deployments.
-3. **Serve:** an HTTP action looks up the requested path, streams the file with
-   the right `Content-Type`, applies long-term caching for hashed assets, and
-   falls back to `index.html` for SPA routes.
+2. **Upload:** the CLI uses your authenticated Convex session to generate signed upload URLs, push
+   files to Convex storage, record metadata, and GC old deployments.
+3. **Serve:** an HTTP action looks up the requested path, streams the file with the right
+   `Content-Type`, applies long-term caching for hashed assets, and falls back to `index.html` for
+   SPA routes.
 
 ## Example
 
-See [`example/`](./example) for a complete Vite + React app, and
-[`example-ssr/`](./example-ssr) for server rendering with TanStack Start.
+See [`examples/spa/`](./examples/spa) for a complete Vite + React app, and
+[`examples/tanstack-ssr/`](./examples/tanstack-ssr) for server rendering with TanStack Start.
 
 ```bash
-npm install
-npm run dev
+pnpm install
+cd examples/spa
+pnpm run dev
 ```
 
 ## Contributing

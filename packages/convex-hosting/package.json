@@ -1,0 +1,80 @@
+{
+  "name": "@convex-dev/static-hosting",
+  "version": "0.2.1",
+  "description": "A static hosting component for Convex.",
+  "keywords": [
+    "component",
+    "convex"
+  ],
+  "homepage": "https://github.com/get-convex/static-hosting#readme",
+  "bugs": {
+    "url": "https://github.com/get-convex/static-hosting/issues"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/get-convex/static-hosting.git"
+  },
+  "bin": {
+    "static-hosting": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "CHANGELOG.md",
+    "INTEGRATION.md",
+    "MIGRATION.md"
+  ],
+  "type": "module",
+  "module": "./dist/client/index.js",
+  "types": "./dist/client/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
+    "./test": "./src/test.ts",
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./_generated/component": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build ./tsconfig.build.json --force",
+    "build:codegen": "convex codegen --component-dir ./src/component && pnpm run build",
+    "prepare": "pnpm run build",
+    "typecheck": "tsc --noEmit",
+    "watch": "tsc --build ./tsconfig.build.json --watch --preserveWatchOutput"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "convex": "catalog:",
+    "convex-test": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "convex": "^1.37.0",
+    "react": "^18.3.1 || ^19.0.0"
+  }
+}
