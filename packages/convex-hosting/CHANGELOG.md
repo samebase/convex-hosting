@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+- Responses that the package sends when no uploaded file answers (400, 404, and 500) now have
+  `Cache-Control: no-store`. Before this change Cloudflare in front of `*.convex.site` cached a 404
+  for a missing script for hours, even after the file was uploaded.
+
 ## 0.3.1
 
 - `upload` and `deploy` no longer upload `_headers` and `_redirects` from the root of `dist/`.

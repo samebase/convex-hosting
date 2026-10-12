@@ -4,6 +4,7 @@ import { internal } from "./_generated/api.js";
 import {
   cacheControlFor,
   decodeRequestPath,
+  errorResponse,
   etagMatches,
   getMimeType,
   getSetupHtml,
@@ -29,10 +30,7 @@ const serveStaticFile = httpAction(async (ctx, request) => {
   const url = new URL(request.url);
   const decodedPath = decodeRequestPath(url.pathname);
   if (decodedPath === null) {
-    return new Response("Bad Request", {
-      status: 400,
-      headers: { "Content-Type": "text/plain" },
-    });
+    return errorResponse(400, "Bad Request");
   }
   let path = decodedPath;
 
@@ -62,10 +60,7 @@ const serveStaticFile = httpAction(async (ctx, request) => {
         },
       });
     }
-    return new Response("Not Found", {
-      status: 404,
-      headers: { "Content-Type": "text/plain" },
-    });
+    return errorResponse(404, "Not Found");
   }
 
   const contentType = asset.contentType || getMimeType(path);
@@ -84,10 +79,7 @@ const serveStaticFile = httpAction(async (ctx, request) => {
   }
 
   if (!asset.storageId) {
-    return new Response("Asset not available", {
-      status: 500,
-      headers: { "Content-Type": "text/plain" },
-    });
+    return errorResponse(500, "Asset not available");
   }
 
   const etag = `"${asset.storageId}"`;
@@ -116,10 +108,7 @@ const serveStaticFile = httpAction(async (ctx, request) => {
         },
       });
     }
-    return new Response("Storage error", {
-      status: 500,
-      headers: { "Content-Type": "text/plain" },
-    });
+    return errorResponse(500, "Storage error");
   }
 
   return new Response(blob, {
