@@ -20,3 +20,4 @@ next-example/
 dist/
 example/dist/
 .tanstack/
+.convex/

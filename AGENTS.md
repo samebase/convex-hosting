@@ -15,15 +15,17 @@ Changes offered back to upstream live on branches in
   - `src/react`: `UpdateBanner` and `useDeploymentUpdates`.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
   Start pages in a Convex HTTP action.
+- `packages/convex-files`: a private component that maps unique paths to native storage files.
 - `examples/spa`: a Vite and React app that the component serves.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
+- `examples/files`: a backend-only example that uses files inside another component.
 
 ## Commands
 
 Run from the repository root with pnpm 11 and the Node version in `.node-version`.
 
 - `pnpm install`: install dependencies. The component's `prepare` script builds it.
-- `pnpm run build`: build the component and both examples.
+- `pnpm run build`: build the packages and examples.
 - `pnpm run check`: format check, lint, typecheck, and tests. Build first: the examples typecheck
   against the built component.
 - `pnpm run format`: format with oxfmt.

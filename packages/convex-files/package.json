@@ -1,0 +1,34 @@
+{
+  "name": "@samebase/convex-files",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Named files backed by native Convex storage.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./convex.config": "./src/component/convex.config.ts",
+    "./_generated/component": {
+      "types": "./src/component/_generated/component.ts"
+    },
+    "./_generated/component.js": {
+      "types": "./src/component/_generated/component.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build ./tsconfig.build.json --force",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "convex-helpers": "catalog:"
+  },
+  "devDependencies": {
+    "convex": "catalog:",
+    "convex-test": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "convex": "^1.46.0"
+  }
+}

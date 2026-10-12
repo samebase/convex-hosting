@@ -1,0 +1,17 @@
+{
+  "name": "example-files",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev --typecheck-components",
+    "build": "tsc -p convex",
+    "typecheck": "tsc -p convex"
+  },
+  "dependencies": {
+    "@samebase/convex-files": "workspace:*",
+    "convex": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

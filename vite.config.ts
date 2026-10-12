@@ -29,7 +29,7 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ["packages/convex-hosting/src/component/**/*.ts", "examples/*/convex/**/*.ts"],
+        files: ["packages/*/src/component/**/*.ts", "examples/*/convex/**/*.ts"],
         // The plugin's recommended rules. oxlint JS plugins get no type information, so
         // explicit-table-ids and no-filter-in-query use their syntax-only checks.
         rules: {

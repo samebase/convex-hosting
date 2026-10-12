@@ -30,6 +30,9 @@ catalogs:
     convex:
       specifier: 1.46.0
       version: 1.46.0
+    convex-helpers:
+      specifier: 0.1.118
+      version: 0.1.118
     convex-test:
       specifier: 0.0.40
       version: 0.0.40
@@ -72,6 +75,19 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.3.3(@edge-runtime/vm@5.0.0)(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)
+
+  examples/files:
+    dependencies:
+      '@samebase/convex-files':
+        specifier: workspace:*
+        version: link:../../packages/convex-files
+      convex:
+        specifier: 'catalog:'
+        version: 1.46.0(react@19.2.3)
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
 
   examples/spa:
     dependencies:
@@ -152,6 +168,28 @@ importers:
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.0.2(@voidzero-dev/vite-plus-core@0.3.3(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3))
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: npm:@voidzero-dev/vite-plus-core@0.3.3
+        version: '@voidzero-dev/vite-plus-core@0.3.3(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.3(@edge-runtime/vm@5.0.0)(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)
+
+  packages/convex-files:
+    dependencies:
+      convex-helpers:
+        specifier: 'catalog:'
+        version: 0.1.118(@standard-schema/spec@1.1.0)(convex@1.46.0(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@4.6.5)
+    devDependencies:
+      convex:
+        specifier: 'catalog:'
+        version: 1.46.0(react@19.2.3)
+      convex-test:
+        specifier: 'catalog:'
+        version: 0.0.40(convex@1.46.0(react@19.2.3))
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -1491,6 +1529,28 @@ packages:
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+
+  convex-helpers@0.1.118:
+    resolution: {integrity: sha512-07t10n8CZG/YCDzOy5/WDdNNQYL+mP7VU76BLJCZrB2dvJTH7UZJxPqNrhPH+pZbW52joQ91eQHSksdcgOXebQ==}
+    hasBin: true
+    peerDependencies:
+      '@standard-schema/spec': ^1.0.0
+      convex: ^1.32.0
+      hono: ^4.0.5
+      react: ^17.0.2 || ^18.0.0 || ^19.0.0
+      typescript: ^5.5 || ^6.0.0
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      '@standard-schema/spec':
+        optional: true
+      hono:
+        optional: true
+      react:
+        optional: true
+      typescript:
+        optional: true
+      zod:
+        optional: true
 
   convex-test@0.0.40:
     resolution: {integrity: sha512-BOM4aoXFI6JxA5eb7TIKI/q7c880Jq5OHbbEbmUDmsN82LAxzomYveQDNFlj3a+cN4K7TB3KjpyzNzEjlOPvNg==}
@@ -3299,6 +3359,15 @@ snapshots:
       readdirp: 5.1.1
 
   convert-source-map@2.0.0: {}
+
+  convex-helpers@0.1.118(@standard-schema/spec@1.1.0)(convex@1.46.0(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@4.6.5):
+    dependencies:
+      convex: 1.46.0(react@19.2.3)
+    optionalDependencies:
+      '@standard-schema/spec': 1.1.0
+      react: 19.2.3
+      typescript: 5.9.3
+      zod: 4.6.5
 
   convex-test@0.0.40(convex@1.46.0(react@19.2.3)):
     dependencies:
