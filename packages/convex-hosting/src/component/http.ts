@@ -8,7 +8,6 @@ import {
   etagMatches,
   getMimeType,
   getSetupHtml,
-  isHtmlContentType,
 } from "./serving.js";
 
 // CONVEX_SITE_URL reflects the component's mount point (including any httpPrefix).
@@ -65,29 +64,7 @@ const serveStaticFile = httpAction(async (ctx, request) => {
 
   const contentType = asset.contentType || getMimeType(path);
 
-  // CDN redirect: blobs are served by the platform at /fs/blobs/{id}, which
-  // lives at the deployment root (not under the component's prefix).
-  if (asset.blobId && !isHtmlContentType(contentType)) {
-    const redirectUrl = `${url.origin}/fs/blobs/${asset.blobId}`;
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: redirectUrl,
-        "Cache-Control": cacheControlFor(path),
-      },
-    });
-  }
-
-  const location = asset.fileId
-    ? { kind: "file" as const, id: asset.fileId, url: asset.storageUrl }
-    : asset.storageId
-      ? { kind: "storage" as const, id: asset.storageId }
-      : null;
-  if (!location) {
-    return errorResponse(500, "Asset not available");
-  }
-
-  const etag = `"${location.id}"`;
+  const etag = `"${asset.fileId}"`;
   const ifNoneMatch = request.headers.get("If-None-Match");
   const cacheControl = cacheControlFor(path);
 
@@ -98,45 +75,22 @@ const serveStaticFile = httpAction(async (ctx, request) => {
     });
   }
 
-  const headers = {
-    "Content-Type": contentType,
-    "Cache-Control": cacheControl,
-    ETag: etag,
-    "X-Content-Type-Options": "nosniff",
-  };
-  if (location.kind === "file") {
-    if (!location.url) return errorResponse(500, "Storage error");
-    let response;
-    try {
-      response = await fetch(location.url);
-    } catch {
-      return errorResponse(500, "Storage error");
-    }
-    if (!response.ok) return errorResponse(500, "Storage error");
-    return new Response(response.body, { status: 200, headers });
-  }
-
-  const blob = await ctx.storage.get(location.id);
-  if (!blob) {
-    // A same-name v1 to v2 migration can temporarily inherit an index row that
-    // points at app-owned storage. Treat that interval like an empty component
-    // rather than returning a misleading permanent storage error.
-    if (asset.path === "/index.html") {
-      return new Response(getSetupHtml(), {
-        status: 503,
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-          "Retry-After": "5",
-        },
-      });
-    }
+  if (!asset.storageUrl) return errorResponse(500, "Storage error");
+  let response;
+  try {
+    response = await fetch(asset.storageUrl);
+  } catch {
     return errorResponse(500, "Storage error");
   }
-
-  return new Response(blob, {
+  if (!response.ok) return errorResponse(500, "Storage error");
+  return new Response(response.body, {
     status: 200,
-    headers,
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": cacheControl,
+      ETag: etag,
+      "X-Content-Type-Options": "nosniff",
+    },
   });
 });
 

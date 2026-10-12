@@ -5,7 +5,7 @@ import {
   type GenericDataModel,
   type HttpRouter,
 } from "convex/server";
-import { v, type GenericId } from "convex/values";
+import { v } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 import {
   cacheControlFor,
@@ -14,7 +14,6 @@ import {
   etagMatches,
   getMimeType,
   getSetupHtml,
-  isHtmlContentType,
 } from "../component/serving.js";
 
 const deploymentInfoValidator = v.object({
@@ -25,10 +24,8 @@ const deploymentInfoValidator = v.object({
   spaFallback: v.optional(v.boolean()),
 });
 
-type CdnBaseUrl = string | ((request: Request) => string);
-
 /** The parts of an action context needed to serve a static file. */
-type AssetServingCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "storage">;
+type AssetServingCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 
 /**
  * Register app-owned HTTP routes for the hosted site.
@@ -57,14 +54,11 @@ export function registerStaticRoutes(
   {
     pathPrefix = "/",
     spaFallback,
-    cdnBaseUrl,
   }: {
     /** URL prefix where the app should serve static files. */
     pathPrefix?: string;
     /** Override the deployment's SPA fallback setting. */
     spaFallback?: boolean;
-    /** Optional custom base URL for convex-fs blob redirects. */
-    cdnBaseUrl?: CdnBaseUrl;
   } = {},
 ) {
   if (!pathPrefix.startsWith("/")) {
@@ -89,7 +83,6 @@ export function registerStaticRoutes(
 
     const response = await serveAsset(ctx, component, request, path, {
       spaFallback,
-      cdnBaseUrl,
     });
     if (response) return response;
 
@@ -127,7 +120,7 @@ export function registerStaticRoutes(
  * rendering, prerendered pages, redirects.
  *
  * Found files get the same response as `registerStaticRoutes`: content type,
- * cache headers, ETag revalidation, and legacy CDN redirects. A found file
+ * cache headers, and ETag revalidation. A found file
  * whose storage can't be read gets a 500 response. A request path with
  * malformed percent-encoding matches no file, so it returns null.
  *
@@ -159,7 +152,6 @@ export async function serveStaticAsset(
   {
     path,
     spaFallback = false,
-    cdnBaseUrl,
   }: {
     /**
      * Decoded file path to look up, starting with `/`, such as
@@ -168,8 +160,6 @@ export async function serveStaticAsset(
     path?: string;
     /** Serve `/index.html` for a missing path without a file extension. */
     spaFallback?: boolean;
-    /** Optional custom base URL for convex-fs blob redirects. */
-    cdnBaseUrl?: CdnBaseUrl;
   } = {},
 ): Promise<Response | null> {
   if (path !== undefined && !path.startsWith("/")) {
@@ -179,7 +169,6 @@ export async function serveStaticAsset(
   if (filePath === null) return null;
   return await serveAsset(ctx, component, request, filePath, {
     spaFallback,
-    cdnBaseUrl,
   });
 }
 
@@ -197,10 +186,8 @@ async function serveAsset(
   path: string,
   {
     spaFallback,
-    cdnBaseUrl,
   }: {
     spaFallback: boolean | undefined;
-    cdnBaseUrl: CdnBaseUrl | undefined;
   },
 ): Promise<Response | null> {
   const asset = await ctx.runQuery(component.lib.resolveAssetForHttp, {
@@ -212,55 +199,11 @@ async function serveAsset(
   const contentType = asset.contentType || getMimeType(path);
   const cacheControl = cacheControlFor(path);
 
-  if (asset.blobId && !isHtmlContentType(contentType)) {
-    const configuredBase = typeof cdnBaseUrl === "function" ? cdnBaseUrl(request) : cdnBaseUrl;
-    const baseUrl = configuredBase ?? `${new URL(request.url).origin}/fs/blobs`;
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: `${baseUrl.replace(/\/$/, "")}/${asset.blobId}`,
-        "Cache-Control": cacheControl,
-      },
-    });
-  }
-
-  // TODO(remove in a future major): v1→v2 transitional path. The file still
-  // lives in the app's own storage (a same-name migration inherited the v1
-  // row; see the component's resolveAssetForHttp). Serve it directly from app
-  // storage so the site stays up during migration with no re-upload. Once v1
-  // app-storage assets are no longer supported, delete this branch.
-  if (asset.appStorageId) {
-    if (asset.etag && etagMatches(request.headers.get("If-None-Match"), asset.etag)) {
-      return new Response(null, {
-        status: 304,
-        headers: { ETag: asset.etag, "Cache-Control": cacheControl },
-      });
-    }
-    const blob = await ctx.storage.get(asset.appStorageId as GenericId<"_storage">);
-    if (!blob) {
-      // The component surfaces appStorageId whenever it can't resolve a
-      // storage URL, which also covers a genuinely deleted file (the two are
-      // indistinguishable from the component). If it isn't in app storage
-      // either, treat it as missing, like an empty deployment, rather than
-      // erroring.
-      return null;
-    }
-    return new Response(blob, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": cacheControl,
-        ...(asset.etag ? { ETag: asset.etag } : {}),
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
-  }
-
   if (!asset.storageUrl) {
     return errorResponse(500, "Asset not available");
   }
 
-  if (asset.etag && etagMatches(request.headers.get("If-None-Match"), asset.etag)) {
+  if (etagMatches(request.headers.get("If-None-Match"), asset.etag)) {
     return new Response(null, {
       status: 304,
       headers: { ETag: asset.etag, "Cache-Control": cacheControl },
@@ -277,7 +220,7 @@ async function serveAsset(
     headers: {
       "Content-Type": contentType,
       "Cache-Control": cacheControl,
-      ...(asset.etag ? { ETag: asset.etag } : {}),
+      ETag: asset.etag,
       "X-Content-Type-Options": "nosniff",
     },
   });
@@ -305,17 +248,7 @@ export function exposeDeploymentQuery(component: ComponentApi) {
     getCurrentDeployment: queryGeneric({
       args: {},
       returns: v.union(deploymentInfoValidator, v.null()),
-      handler: async (ctx) => {
-        const deployment = await ctx.runQuery(component.lib.getCurrentDeployment, {});
-        if (!deployment) return null;
-        // Cleanup accounting is private component state. Returning it through
-        // this public wrapper would fail the narrower response validator.
-        const deploymentWithCleanup = deployment as typeof deployment & {
-          pendingBlobCleanupCount?: number;
-        };
-        const { pendingBlobCleanupCount: _pending, ...publicDeployment } = deploymentWithCleanup;
-        return publicDeployment;
-      },
+      handler: async (ctx) => await ctx.runQuery(component.lib.getCurrentDeployment, {}),
     }),
   };
 }

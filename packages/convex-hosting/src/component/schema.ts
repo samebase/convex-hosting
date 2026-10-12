@@ -1,83 +1,42 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const assetFields = {
+  path: v.string(),
+  fileId: v.string(),
+  contentType: v.string(),
+  deploymentId: v.string(),
+};
+
 export default defineSchema({
-  staticAssets: defineTable({
-    path: v.string(), // URL path, e.g., "/index.html", "/assets/main-abc123.js"
-    storageId: v.optional(v.id("_storage")), // Reference to Convex file storage (used for HTML + non-CDN assets)
-    fileId: v.optional(v.string()), // File owned by the nested files component
-    blobId: v.optional(v.string()), // convex-fs blob ID (used for CDN-served assets)
-    contentType: v.string(), // MIME type, e.g., "text/html; charset=utf-8"
-    deploymentId: v.string(), // UUID for garbage collection
-  })
+  staticAssets: defineTable(assetFields)
     .index("by_path", ["path"])
     .index("by_deploymentId", ["deploymentId"])
-    .index("by_storageId", ["storageId"])
     .index("by_fileId", ["fileId"]),
 
-  // Publication moves replaced storage files here. Missing non-HTML paths with
-  // an extension can still resolve to these files. A later upload removes them
-  // after expiresAt, at least seven days after replacement.
+  // Replaced files remain available for at least seven days. Missing non-HTML
+  // paths with an extension can resolve to the newest retained file.
   retiredAssets: defineTable({
-    path: v.string(),
-    storageId: v.optional(v.id("_storage")),
-    fileId: v.optional(v.string()),
-    contentType: v.string(),
-    deploymentId: v.string(),
+    ...assetFields,
     expiresAt: v.number(),
   })
     .index("by_path", ["path"])
-    .index("by_storageId", ["storageId"])
     .index("by_fileId", ["fileId"])
     .index("by_expiresAt", ["expiresAt"]),
 
-  // Uploads stage their manifest in small chunks because the Convex CLI takes
-  // function arguments on the command line. Only publishDeployment copies a
-  // complete staged manifest into staticAssets, so partial uploads are never
-  // visible to HTTP requests.
-  stagedAssets: defineTable({
-    path: v.string(),
-    storageId: v.optional(v.id("_storage")),
-    fileId: v.optional(v.string()),
-    blobId: v.optional(v.string()),
-    contentType: v.string(),
-    deploymentId: v.string(),
-  })
+  // Only publishDeployment makes the complete staged manifest visible.
+  stagedAssets: defineTable(assetFields)
     .index("by_deploymentId", ["deploymentId"])
-    .index("by_storageId", ["storageId"])
     .index("by_fileId", ["fileId"]),
 
-  // Old ConvexFS blobs are app-owned, so the component cannot delete them.
-  // Persist the IDs until the CLI's app-level delete function succeeds. This
-  // also makes cleanup recoverable when a publish response is lost.
-  pendingBlobCleanup: defineTable({
-    blobId: v.string(),
-  }).index("by_blobId", ["blobId"]),
+  pendingStorageCleanup: defineTable({ fileId: v.string() }),
 
-  // Storage IDs from the previous live manifest are queued by the atomic
-  // publish, then deleted in bounded follow-up mutations. This avoids both a
-  // large publish transaction and races with unrelated concurrent uploads.
-  pendingStorageCleanup: defineTable({
-    storageId: v.optional(v.id("_storage")),
-    fileId: v.optional(v.string()),
-  }).index("by_storageId", ["storageId"]),
+  // The cursor survives the CLI's per-run maintenance limit.
+  cleanupState: defineTable({ fileStorageCleanupCursor: v.string() }),
 
-  // Cleanup may be queued before the first successful deployment exists, so
-  // its count cannot live only on deploymentInfo.
-  cleanupState: defineTable({
-    pendingBlobCleanupCount: v.number(),
-    fileStorageCleanupCursor: v.optional(v.string()),
-  }),
-
-  // Singleton table to track the current deployment
-  // Clients subscribe to this to know when to reload
   deploymentInfo: defineTable({
     currentDeploymentId: v.string(),
-    deployedAt: v.number(), // timestamp
-    // SPA fallback config for the current deployment. Set at upload time
-    // (`--no-spa` turns it off). Absent means enabled. Travels with the
-    // deploy so the serving behavior matches the code that was shipped.
+    deployedAt: v.number(),
     spaFallback: v.optional(v.boolean()),
-    pendingBlobCleanupCount: v.optional(v.number()),
   }),
 });

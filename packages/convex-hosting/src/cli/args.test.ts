@@ -21,16 +21,7 @@ describe("CLI argument parsing", () => {
   });
 
   test("parses and forwards deploy upload options exactly", () => {
-    const parsed = parseDeployArgs([
-      "--dist",
-      "web-dist",
-      "--component",
-      "site",
-      "--cdn",
-      "--cdn-delete-function",
-      "hosting:deleteCdnBlobs",
-      "--no-spa",
-    ]);
+    const parsed = parseDeployArgs(["--dist", "web-dist", "--component", "site", "--no-spa"]);
 
     expect(buildDeployUploadArgs(parsed)).toEqual([
       "upload",
@@ -39,9 +30,6 @@ describe("CLI argument parsing", () => {
       "--component",
       "site",
       "--prod",
-      "--cdn",
-      "--cdn-delete-function",
-      "hosting:deleteCdnBlobs",
       "--no-spa",
     ]);
   });
@@ -70,7 +58,7 @@ describe("CLI argument parsing", () => {
     ["missing preview name", () => parseUploadArgs(["--preview-name"])],
     ["invalid preview name", () => parseUploadArgs(["--preview-name", "--prod"])],
     ["upload", () => parseUploadArgs(["--dist", "--prod"])],
-    ["deploy", () => parseDeployArgs(["--cdn-delete-function", "--no-spa"])],
+    ["deploy", () => parseDeployArgs(["--build-command", "--no-spa"])],
     ["unknown upload", () => parseUploadArgs(["--wat"])],
     ["unknown deploy", () => parseDeployArgs(["--wat"])],
   ])("rejects malformed %s arguments", (_name, parse) => {

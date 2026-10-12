@@ -13,38 +13,30 @@ import {
   isHashedAsset,
 } from "./serving.js";
 
-async function storeAsset(
-  t: ReturnType<typeof initConvexTest>,
-  path: string,
-  body: string,
-  contentType: string,
-  deploymentId = "deploy-1",
-) {
-  const storageId = await t.run(async (ctx) => {
-    return await ctx.storage.store(new Blob([body], { type: contentType }));
-  });
-  await t.mutation(internal.lib.recordAsset, {
-    path,
-    storageId,
-    contentType,
-    deploymentId,
-  });
-  return storageId;
-}
-
 async function publishFileAsset(
   t: ReturnType<typeof initConvexTest>,
   path: string,
   body: string,
   contentType: string,
+  spaFallback = true,
 ) {
   const storageId = await t.action(fileStorage.store, { body });
+  const assets = [{ path, fileStorageId: storageId, contentType, deploymentId: "deploy-files" }];
+  if (path !== "/index.html") {
+    assets.push({
+      path: "/index.html",
+      fileStorageId: await t.action(fileStorage.store, { body: "<title>Index</title>" }),
+      contentType: "text/html; charset=utf-8",
+      deploymentId: "deploy-files",
+    });
+  }
   await t.mutation(internal.lib.stageAssets, {
-    assets: [{ path, fileStorageId: storageId, contentType, deploymentId: "deploy-files" }],
+    assets,
   });
   await t.mutation(internal.lib.publishDeployment, {
     currentDeploymentId: "deploy-files",
-    expectedAssetCount: 1,
+    expectedAssetCount: assets.length,
+    spaFallback,
   });
   const asset = await t.query(api.lib.resolveAssetForHttp, { path });
   expect(asset?.storageUrl).toContain("http");
@@ -55,7 +47,7 @@ async function publishFileAsset(
     return new Response(storedBody);
   });
   vi.stubGlobal("fetch", storageFetch);
-  return storageFetch;
+  return { storageId, storageFetch };
 }
 
 describe("static file serving", () => {
@@ -65,7 +57,7 @@ describe("static file serving", () => {
 
   test("serves a published child file at the root", async () => {
     const t = initConvexTest();
-    const storageFetch = await publishFileAsset(
+    const { storageFetch } = await publishFileAsset(
       t,
       "/index.html",
       "<!doctype html><title>hi</title>",
@@ -81,7 +73,7 @@ describe("static file serving", () => {
 
   test("serves an exact asset with immutable caching for hashed files", async () => {
     const t = initConvexTest();
-    await storeAsset(
+    await publishFileAsset(
       t,
       "/assets/index-B71cUw87.js",
       "console.log(1)",
@@ -97,7 +89,7 @@ describe("static file serving", () => {
 
   test("HTML is revalidated rather than cached immutably", async () => {
     const t = initConvexTest();
-    await storeAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8");
+    await publishFileAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8");
 
     const res = await t.fetch("/", {});
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=0, must-revalidate");
@@ -105,7 +97,12 @@ describe("static file serving", () => {
 
   test("returns 304 for weak or listed If-None-Match validators", async () => {
     const t = initConvexTest();
-    const storageFetch = await publishFileAsset(t, "/index.html", "x", "text/html; charset=utf-8");
+    const { storageFetch } = await publishFileAsset(
+      t,
+      "/index.html",
+      "x",
+      "text/html; charset=utf-8",
+    );
 
     const first = await t.fetch("/", {});
     const etag = first.headers.get("ETag");
@@ -121,7 +118,12 @@ describe("static file serving", () => {
 
   test("returns an uncached 500 when a child download fails", async () => {
     const t = initConvexTest();
-    const storageFetch = await publishFileAsset(t, "/index.html", "x", "text/html; charset=utf-8");
+    const { storageFetch } = await publishFileAsset(
+      t,
+      "/index.html",
+      "x",
+      "text/html; charset=utf-8",
+    );
     storageFetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
     const unavailable = await t.fetch("/", {});
     expect(unavailable.status).toBe(500);
@@ -135,7 +137,7 @@ describe("static file serving", () => {
 
   test("decodes percent-encoded asset paths", async () => {
     const t = initConvexTest();
-    await storeAsset(t, "/docs/hello world.txt", "hello", "text/plain; charset=utf-8");
+    await publishFileAsset(t, "/docs/hello world.txt", "hello", "text/plain; charset=utf-8");
 
     const res = await t.fetch("/docs/hello%20world.txt", {});
     expect(res.status).toBe(200);
@@ -151,7 +153,12 @@ describe("static file serving", () => {
 
   test("SPA fallback serves index.html for extension-less misses", async () => {
     const t = initConvexTest();
-    await storeAsset(t, "/index.html", "<!doctype html><div id=root>", "text/html; charset=utf-8");
+    await publishFileAsset(
+      t,
+      "/index.html",
+      "<!doctype html><div id=root>",
+      "text/html; charset=utf-8",
+    );
 
     const res = await t.fetch("/dashboard/settings", {});
     expect(res.status).toBe(200);
@@ -160,7 +167,7 @@ describe("static file serving", () => {
 
   test("missing files with an extension 404 (no SPA fallback)", async () => {
     const t = initConvexTest();
-    await storeAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8");
+    await publishFileAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8");
 
     const res = await t.fetch("/missing.js", {});
     expect(res.status).toBe(404);
@@ -170,30 +177,18 @@ describe("static file serving", () => {
 
   test("returns an uncached 500 when a file's storage is gone", async () => {
     const t = initConvexTest();
-    const storageId = await storeAsset(t, "/app.js", "x", "application/javascript; charset=utf-8");
-    await t.run(async (ctx) => {
-      await ctx.storage.delete(storageId);
-    });
+    const { storageId, storageFetch } = await publishFileAsset(
+      t,
+      "/app.js",
+      "x",
+      "application/javascript; charset=utf-8",
+    );
+    await t.mutation(fileStorage.remove, { storageId });
 
     const res = await t.fetch("/app.js", {});
     expect(res.status).toBe(500);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
-  });
-
-  test("returns an uncached 500 for an HTML file stored only as a blob", async () => {
-    const t = initConvexTest();
-    await t.run(async (ctx) => {
-      await ctx.db.insert("staticAssets", {
-        path: "/about.html",
-        blobId: "blob-1",
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-1",
-      });
-    });
-
-    const res = await t.fetch("/about.html", {});
-    expect(res.status).toBe(500);
-    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(storageFetch).not.toHaveBeenCalled();
   });
 
   test("shows the setup page when nothing is deployed", async () => {
@@ -205,27 +200,9 @@ describe("static file serving", () => {
     expect(await res.text()).toContain("no static files have been deployed");
   });
 
-  test("shows the setup page for an inherited or deleted index storage row", async () => {
-    const t = initConvexTest();
-    const storageId = await storeAsset(t, "/index.html", "legacy", "text/html; charset=utf-8");
-    await t.run(async (ctx) => {
-      await ctx.storage.delete(storageId);
-    });
-
-    const res = await t.fetch("/", {});
-    expect(res.status).toBe(503);
-    expect(res.headers.get("Cache-Control")).toBe("no-store");
-    expect(res.headers.get("Retry-After")).toBe("5");
-  });
-
   test("extension-less misses 404 when SPA fallback is disabled", async () => {
     const t = initConvexTest();
-    await storeAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8");
-    // Record the deployment with SPA fallback off (what `upload --no-spa` does).
-    await t.mutation(internal.lib.commitDeployment, {
-      currentDeploymentId: "deploy-1",
-      spaFallback: false,
-    });
+    await publishFileAsset(t, "/index.html", "<!doctype html>", "text/html; charset=utf-8", false);
 
     const res = await t.fetch("/dashboard", {});
     expect(res.status).toBe(404);

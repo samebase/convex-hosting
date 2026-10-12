@@ -4,232 +4,119 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 import { api, components, internal } from "./_generated/api.js";
 import { fileStorage, initConvexTest } from "./setup.test.js";
 
+async function stage(t: ReturnType<typeof initConvexTest>, deploymentId: string, paths: string[]) {
+  const assets = [];
+  for (const path of paths) {
+    assets.push({
+      path,
+      fileStorageId: await t.action(fileStorage.store, { body: deploymentId + path }),
+      contentType: path.endsWith(".html")
+        ? "text/html; charset=utf-8"
+        : "application/javascript; charset=utf-8",
+      deploymentId,
+    });
+  }
+  for (let offset = 0; offset < assets.length; offset += 100) {
+    await t.mutation(internal.lib.stageAssets, { assets: assets.slice(offset, offset + 100) });
+  }
+  return assets;
+}
+
+async function publish(
+  t: ReturnType<typeof initConvexTest>,
+  deploymentId: string,
+  paths: string[],
+) {
+  const assets = await stage(t, deploymentId, paths);
+  await t.mutation(internal.lib.publishDeployment, {
+    currentDeploymentId: deploymentId,
+    expectedAssetCount: assets.length,
+  });
+  return assets;
+}
+
 describe("component lib", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.useFakeTimers();
   });
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  test("generates upload URLs", async () => {
+  test("generates upload URLs in bounded batches", async () => {
     const t = initConvexTest();
-    const uploadUrl = await t.mutation(internal.lib.generateUploadUrl, {});
-    expect(typeof uploadUrl).toBe("string");
-    expect(uploadUrl.length).toBeGreaterThan(0);
-
-    const urls = await t.mutation(internal.lib.generateUploadUrls, {
-      count: 3,
-    });
+    expect(await t.mutation(internal.lib.generateUploadUrl, {})).toContain("http");
+    const urls = await t.mutation(internal.lib.generateUploadUrls, { count: 3 });
     expect(urls).toHaveLength(3);
-    for (const u of urls) {
-      expect(typeof u).toBe("string");
-    }
-
+    for (const url of urls) expect(url).toContain("http");
     await expect(t.mutation(internal.lib.generateUploadUrls, { count: 101 })).rejects.toThrow(
       "integer from 1 to 100",
     );
   });
 
-  test("getByPath returns null when absent", async () => {
+  test("publishes the complete manifest and deployment info together", async () => {
     const t = initConvexTest();
-    const asset = await t.query(internal.lib.getByPath, {
-      path: "/index.html",
-    });
-    expect(asset).toBeNull();
-  });
-
-  test("listAssets is empty by default", async () => {
-    const t = initConvexTest();
-    const assets = await t.query(internal.lib.listAssets, {});
-    expect(assets).toHaveLength(0);
-  });
-
-  test("commitDeployment on empty db returns zero", async () => {
-    const t = initConvexTest();
-    const result = await t.mutation(internal.lib.commitDeployment, {
-      currentDeploymentId: "deploy-1",
-    });
-    expect(result.deleted).toBe(0);
-    expect(result.blobIds).toHaveLength(0);
-  });
-
-  test("recordAsset stores and replaces blob assets", async () => {
-    const t = initConvexTest();
-
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/test.js",
-      blobId: "blob-123",
-      contentType: "application/javascript; charset=utf-8",
-      deploymentId: "deploy-1",
-    });
-
-    const first = await t.query(internal.lib.getByPath, { path: "/test.js" });
-    expect(first?.blobId).toBe("blob-123");
-
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/test.js",
-      blobId: "blob-456",
-      contentType: "application/javascript; charset=utf-8",
-      deploymentId: "deploy-2",
-    });
-
-    const second = await t.query(internal.lib.getByPath, { path: "/test.js" });
-    expect(second?.blobId).toBe("blob-456");
-  });
-
-  test("replaces a legacy or already-deleted storage reference", async () => {
-    const t = initConvexTest();
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["old"]));
-    });
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      storageId,
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-    await t.run(async (ctx) => {
-      await ctx.storage.delete(storageId);
-    });
+    await publish(t, "deploy-old", ["/index.html", "/old.js"]);
+    const oldIndex = await t.query(internal.lib.getByPath, { path: "/index.html" });
+    const assets = await stage(t, "deploy-new", ["/index.html", "/app.js"]);
+    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toEqual(oldIndex);
+    expect(await t.query(internal.lib.getByPath, { path: "/app.js" })).toBeNull();
 
     await expect(
-      t.mutation(internal.lib.recordAsset, {
-        path: "/index.html",
-        blobId: "replacement",
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-new",
+      t.mutation(internal.lib.publishDeployment, {
+        currentDeploymentId: "deploy-new",
+        expectedAssetCount: assets.length,
+        spaFallback: false,
       }),
     ).resolves.toBeNull();
-  });
-
-  test("commitDeployment returns blobIds for old CDN assets and bumps deployment", async () => {
-    const t = initConvexTest();
-
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/assets/main.js",
-      blobId: "blob-abc",
-      contentType: "application/javascript; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-
-    const result = await t.mutation(internal.lib.commitDeployment, {
+    expect(await t.query(internal.lib.listAssets, {})).toMatchObject([
+      { path: "/index.html", deploymentId: "deploy-new" },
+      { path: "/app.js", deploymentId: "deploy-new" },
+    ]);
+    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
       currentDeploymentId: "deploy-new",
+      spaFallback: false,
     });
-    expect(result.deleted).toBe(0);
-    expect(result.blobIds).toEqual(["blob-abc"]);
-
-    const deployment = await t.query(api.lib.getCurrentDeployment, {});
-    expect(deployment?.currentDeploymentId).toBe("deploy-new");
+    const file = await t.query(components.files.lib.getByPath, {
+      path: "deployments/deploy-new/index.html",
+    });
+    expect(file).not.toBeNull();
+    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
+      fileId: file?._id,
+    });
+    expect(await t.run(async (ctx) => await ctx.db.query("stagedAssets").collect())).toEqual([]);
   });
 
-  test("commitDeployment skips a legacy or already-deleted storage ID", async () => {
-    const t = initConvexTest();
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["legacy"]));
-    });
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/legacy.css",
-      storageId,
-      contentType: "text/css; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-    await t.run(async (ctx) => {
-      await ctx.storage.delete(storageId);
-    });
-
-    const result = await t.mutation(internal.lib.commitDeployment, {
-      currentDeploymentId: "deploy-new",
-    });
-
-    expect(result).toEqual({ deleted: 0, blobIds: [] });
-    expect(await t.query(internal.lib.listAssets, {})).toEqual([]);
-  });
-
-  test("deletes newly uploaded files after a failed publish", async () => {
+  test("deletes unregistered uploads and tolerates files that are already gone", async () => {
     const t = initConvexTest();
     const first = await t.action(fileStorage.store, { body: "first" });
     const alreadyMissing = await t.action(fileStorage.store, { body: "missing" });
     await t.mutation(fileStorage.remove, { storageId: alreadyMissing });
-
-    const result = await t.mutation(internal.lib.deleteUploadedFiles, {
-      fileStorageIds: [first, alreadyMissing],
-    });
-
-    expect(result).toEqual({
-      deleted: 1,
-      alreadyMissing: 1,
-      stillReferenced: 0,
-    });
+    expect(
+      await t.mutation(internal.lib.deleteUploadedFiles, {
+        fileStorageIds: [first, alreadyMissing],
+      }),
+    ).toEqual({ deleted: 1, alreadyMissing: 1, stillReferenced: 0 });
     expect(await t.action(fileStorage.read, { storageId: first })).toBeNull();
-  });
-
-  test("failed-upload cleanup never deletes a file referenced by the live manifest", async () => {
-    const t = initConvexTest();
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["live"]));
-    });
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      storageId,
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-live",
-    });
-
-    const result = await t.mutation(internal.lib.deleteUploadedFiles, {
-      storageIds: [storageId],
-    });
-
-    expect(result).toEqual({
-      deleted: 0,
-      alreadyMissing: 0,
-      stillReferenced: 1,
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(storageId)).not.toBeNull();
-    });
   });
 
   test("cleanup after a lost publish response keeps the newly live file", async () => {
     const t = initConvexTest();
-    const storageId = await t.action(fileStorage.store, {
-      body: "new live deployment",
-    });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          fileStorageId: storageId,
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-ambiguous",
-        },
-      ],
-    });
-    await t.mutation(internal.lib.publishDeployment, {
-      currentDeploymentId: "deploy-ambiguous",
-      expectedAssetCount: 1,
-    });
-
-    // This is the sequence the CLI runs when the publish mutation committed
-    // but its response was lost.
+    const assets = await publish(t, "deploy-ambiguous", ["/index.html"]);
     expect(
       await t.mutation(internal.lib.discardStagedDeployment, {
         deploymentId: "deploy-ambiguous",
       }),
     ).toEqual({ discarded: 0 });
+    await t.mutation(internal.lib.cleanupPendingStorage, {});
     expect(
       await t.mutation(internal.lib.deleteUploadedFiles, {
-        fileStorageIds: [storageId],
+        fileStorageIds: [assets[0].fileStorageId],
       }),
     ).toEqual({ deleted: 0, alreadyMissing: 0, stillReferenced: 1 });
-    expect(await t.action(fileStorage.read, { storageId })).toBe("new live deployment");
-    const file = await t.query(components.files.lib.getByPath, {
-      path: "deployments/deploy-ambiguous/index.html",
-    });
-    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      fileId: file?._id,
-    });
-    expect(file).not.toBeNull();
+    expect(await t.action(fileStorage.read, { storageId: assets[0].fileStorageId })).toBe(
+      "deploy-ambiguous/index.html",
+    );
   });
 
   test("rolls back child registration when another staged file belongs to the parent", async () => {
@@ -238,9 +125,8 @@ describe("component lib", () => {
     const parentStorageId = await t.run(async (ctx) => {
       // The fake backend starts each namespace's ID counter at the same value.
       await ctx.storage.store(new Blob(["unrelated parent file"]));
-      return await ctx.storage.store(new Blob(["legacy parent upload"]));
+      return await ctx.storage.store(new Blob(["parent upload"]));
     });
-
     await expect(
       t.mutation(internal.lib.stageAssets, {
         assets: [
@@ -259,7 +145,6 @@ describe("component lib", () => {
         ],
       }),
     ).rejects.toThrow("Storage file not found");
-
     expect(
       await t.query(components.files.lib.getByPath, {
         path: "deployments/deploy-failed-stage/index.html",
@@ -275,508 +160,176 @@ describe("component lib", () => {
     ).toEqual({ deleted: 1, alreadyMissing: 0, stillReferenced: 0 });
   });
 
-  test("discards staged child files through bounded cleanup", async () => {
+  test("discard prevents late publication and queues bounded file cleanup", async () => {
     const t = initConvexTest();
-    const storageId = await t.action(fileStorage.store, { body: "discarded upload" });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          fileStorageId: storageId,
-          contentType: "text/html",
-          deploymentId: "deploy-discarded",
-        },
-      ],
-    });
-
+    await publish(t, "deploy-live", ["/index.html"]);
+    const assets = await stage(t, "deploy-discarded", ["/index.html"]);
     expect(
       await t.mutation(internal.lib.discardStagedDeployment, { deploymentId: "deploy-discarded" }),
     ).toEqual({ discarded: 1 });
-    expect(await t.action(fileStorage.read, { storageId })).toBe("discarded upload");
+    await expect(
+      t.mutation(internal.lib.publishDeployment, {
+        currentDeploymentId: "deploy-discarded",
+        expectedAssetCount: 1,
+      }),
+    ).rejects.toThrow("Staged manifest has 0 files; expected 1");
     expect(await t.mutation(internal.lib.cleanupPendingStorage, {})).toEqual({
       processed: 1,
       deleted: 1,
       needsAnotherPass: false,
     });
-    expect(await t.action(fileStorage.read, { storageId })).toBeNull();
+    expect(await t.action(fileStorage.read, { storageId: assets[0].fileStorageId })).toBeNull();
     expect(
       await t.query(components.files.lib.getByPath, {
         path: "deployments/deploy-discarded/index.html",
       }),
     ).toBeNull();
-  });
-
-  test("publishes the manifest, deployment info, and cleanup atomically", async () => {
-    const t = initConvexTest();
-    const oldStorageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["old"]));
+    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
+      deploymentId: "deploy-live",
     });
-    await t.mutation(internal.lib.recordAssets, {
-      assets: [
-        {
-          path: "/old.css",
-          storageId: oldStorageId,
-          contentType: "text/css; charset=utf-8",
-          deploymentId: "deploy-old",
-        },
-        {
-          path: "/old.js",
-          blobId: "old-cdn-blob",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-old",
-        },
-      ],
-    });
-    const newStorageId = await t.action(fileStorage.store, { body: "new" });
 
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 1801; index++) {
+        await ctx.db.insert("stagedAssets", {
           path: "/index.html",
-          fileStorageId: newStorageId,
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-new",
-        },
-      ],
+          fileId: "repeated-file",
+          contentType: "text/html",
+          deploymentId: "deploy-oversized",
+        });
+      }
     });
-    const result = await t.mutation(internal.lib.publishDeployment, {
-      currentDeploymentId: "deploy-new",
-      expectedAssetCount: 1,
-      spaFallback: false,
-    });
-
-    expect(result).toEqual({ deleted: 0, pendingBlobCleanup: 1 });
-    expect(await t.query(internal.lib.listPendingBlobCleanup, {})).toEqual(["old-cdn-blob"]);
-    const newFile = await t.query(components.files.lib.getByPath, {
-      path: "deployments/deploy-new/index.html",
-    });
-    expect(newFile).not.toBeNull();
-    expect(await t.query(internal.lib.listAssets, {})).toMatchObject([
-      {
-        path: "/index.html",
-        fileId: newFile?._id,
-        deploymentId: "deploy-new",
-      },
-    ]);
-    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
-      currentDeploymentId: "deploy-new",
-      spaFallback: false,
-      pendingBlobCleanupCount: 1,
-    });
-    const concurrentStorageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["concurrent upload"]));
-    });
+    await expect(
+      t.mutation(internal.lib.discardStagedDeployment, { deploymentId: "deploy-oversized" }),
+    ).rejects.toThrow("Cannot discard more than 1800 staged files in one transaction");
     await t.run(async (ctx) => {
-      expect(await ctx.storage.get(oldStorageId)).not.toBeNull();
-    });
-    expect(await t.action(fileStorage.read, { storageId: newStorageId })).toBe("new");
-    // The replaced file is kept for seven days, so open pages can still load it.
-    expect(await t.mutation(internal.lib.cleanupPendingStorage, {})).toEqual({
-      processed: 0,
-      deleted: 0,
-      needsAnotherPass: false,
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(oldStorageId)).not.toBeNull();
-    });
-    vi.advanceTimersByTime(7 * 24 * 60 * 60 * 1000);
-    expect(await t.mutation(internal.lib.cleanupPendingStorage, {})).toEqual({
-      processed: 1,
-      deleted: 1,
-      needsAnotherPass: false,
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(oldStorageId)).toBeNull();
-      expect(await ctx.storage.get(concurrentStorageId)).not.toBeNull();
-    });
-    expect(await t.action(fileStorage.read, { storageId: newStorageId })).toBe("new");
-
-    expect(
-      await t.mutation(internal.lib.acknowledgeBlobCleanup, {
-        blobIds: ["old-cdn-blob"],
-      }),
-    ).toEqual({ acknowledged: 1 });
-    expect(await t.query(internal.lib.listPendingBlobCleanup, {})).toEqual([]);
-    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
-      pendingBlobCleanupCount: 0,
-    });
-
-    expect(
-      await t.mutation(internal.lib.queueBlobCleanup, {
-        blobIds: ["retry-cdn-blob", "retry-cdn-blob"],
-      }),
-    ).toEqual({ queued: 1 });
-    expect(await t.query(internal.lib.listPendingBlobCleanup, {})).toEqual(["retry-cdn-blob"]);
-    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
-      pendingBlobCleanupCount: 1,
+      expect(await ctx.db.query("stagedAssets").collect()).toHaveLength(1801);
+      expect(await ctx.db.query("pendingStorageCleanup").collect()).toEqual([]);
     });
   });
 
-  test("rejects a staged manifest without index.html and keeps the live manifest", async () => {
+  test("rejects an incomplete manifest without changing the live deployment", async () => {
     const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      blobId: "still-live",
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/only.css",
-          blobId: "not-published",
-          contentType: "text/css; charset=utf-8",
-          deploymentId: "deploy-new",
-        },
-      ],
-    });
-
+    await publish(t, "deploy-live", ["/index.html"]);
+    await stage(t, "deploy-no-index", ["/only.js"]);
     await expect(
       t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-new",
+        currentDeploymentId: "deploy-no-index",
         expectedAssetCount: 1,
       }),
     ).rejects.toThrow("must include /index.html");
-
-    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      blobId: "still-live",
-      deploymentId: "deploy-old",
-    });
-  });
-
-  test("rejects a zero expected asset count without changing the live manifest", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      blobId: "still-live",
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-empty",
-        expectedAssetCount: 0,
-      }),
-    ).rejects.toThrow("integer from 1 to 1800");
-
-    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      blobId: "still-live",
-      deploymentId: "deploy-old",
-    });
-  });
-
-  test("keeps CDN cleanup accounting queued before the first deployment", async () => {
-    const t = initConvexTest();
-    expect(
-      await t.mutation(internal.lib.queueBlobCleanup, {
-        blobIds: ["failed-first-upload"],
-      }),
-    ).toEqual({ queued: 1 });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          blobId: "first-live-index",
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-first-success",
-        },
-      ],
-    });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-first-success",
-        expectedAssetCount: 1,
-      }),
-    ).resolves.toEqual({ deleted: 0, pendingBlobCleanup: 1 });
-    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
-      currentDeploymentId: "deploy-first-success",
-      pendingBlobCleanupCount: 1,
-    });
-  });
-
-  test("rejects a staged manifest whose storage file disappeared", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      blobId: "still-live",
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-    const missingStorageId = await t.run(async (ctx) => {
-      const storageId = await ctx.storage.store(new Blob(["temporary"]));
-      await ctx.storage.delete(storageId);
-      return storageId;
-    });
-    await expect(
-      t.mutation(internal.lib.stageAssets, {
-        assets: [
-          {
-            path: "/index.html",
-            storageId: missingStorageId,
-            contentType: "text/html; charset=utf-8",
-            deploymentId: "deploy-missing",
-          },
-        ],
-      }),
-    ).rejects.toThrow("Staged storage file is missing");
-    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      blobId: "still-live",
-      deploymentId: "deploy-old",
-    });
-  });
-
-  test("publishes a manifest staged in multiple chunks", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          blobId: "index",
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-chunked",
-        },
-      ],
-    });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/app.js",
-          blobId: "app",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-chunked",
-        },
-      ],
-    });
-
-    await t.mutation(internal.lib.publishDeployment, {
-      currentDeploymentId: "deploy-chunked",
-      expectedAssetCount: 2,
-    });
-
-    expect(await t.query(internal.lib.listAssets, {})).toMatchObject([
-      { path: "/index.html", deploymentId: "deploy-chunked" },
-      { path: "/app.js", deploymentId: "deploy-chunked" },
-    ]);
-    expect(
-      await t.mutation(internal.lib.discardStagedDeployment, {
-        deploymentId: "deploy-chunked",
-      }),
-    ).toEqual({ discarded: 0 });
-  });
-
-  test("rejects manifests above the safe transaction-sized file limit", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.stageAssets, {
-      assets: Array.from({ length: 1801 }, (_, index) => ({
-        path: index === 0 ? "/index.html" : `/asset-${index}.js`,
-        blobId: `blob-${index}`,
-        contentType:
-          index === 0 ? "text/html; charset=utf-8" : "application/javascript; charset=utf-8",
-        deploymentId: "deploy-too-large",
-      })),
-    });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-too-large",
-        expectedAssetCount: 1801,
-      }),
-    ).rejects.toThrow("integer from 1 to 1800");
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-too-large",
-        expectedAssetCount: 1800,
-      }),
-    ).rejects.toThrow("Staged manifest has 1801 files; expected 1800");
-  });
-
-  test("publishes large inherited rows before bounded storage cleanup", async () => {
-    const t = initConvexTest();
-    const sharedStorageId = await t.run(async (ctx) => {
-      const storageId = await ctx.storage.store(new Blob(["legacy"]));
-      await Promise.all(
-        Array.from({ length: 1800 }, (_, index) =>
-          ctx.db.insert("staticAssets", {
-            path: `/legacy-${index}`,
-            storageId,
-            blobId: `legacy-blob-${index}`,
-            contentType: "application/octet-stream",
-            deploymentId: "deploy-legacy",
-          }),
-        ),
-      );
-      return storageId;
-    });
-    expect(sharedStorageId).toBeTruthy();
-    await t.mutation(internal.lib.stageAssets, {
-      assets: Array.from({ length: 1800 }, (_, index) => ({
-        path: index === 0 ? "/index.html" : `/new-${index}.js`,
-        blobId: `new-blob-${index}`,
-        contentType:
-          index === 0 ? "text/html; charset=utf-8" : "application/javascript; charset=utf-8",
-        deploymentId: "deploy-new",
-      })),
-    });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-new",
-        expectedAssetCount: 1800,
-      }),
-    ).resolves.toEqual({ deleted: 0, pendingBlobCleanup: 1800 });
-    expect(await t.mutation(internal.lib.cleanupPendingStorage, {})).toEqual({
-      processed: 1,
-      deleted: 1,
-      needsAnotherPass: false,
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(sharedStorageId)).toBeNull();
-    });
-  });
-
-  test("rejects manifests above the serialized metadata budget", async () => {
-    const t = initConvexTest();
-    const assets = Array.from({ length: 1800 }, (_, index) => ({
-      path: index === 0 ? "/index.html" : `/${index}-${"nested-path/".repeat(100)}asset.js`,
-      blobId: `blob-${index}`,
-      contentType:
-        index === 0 ? "text/html; charset=utf-8" : "application/javascript; charset=utf-8",
-      deploymentId: "deploy-too-many-bytes",
-    }));
-    await t.mutation(internal.lib.stageAssets, { assets });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-too-many-bytes",
-        expectedAssetCount: assets.length,
-      }),
-    ).rejects.toThrow("above the safe limit");
-  });
-
-  test("rejects an oversized combined legacy and new manifest safely", async () => {
-    const t = initConvexTest();
-    await t.run(async (ctx) => {
-      await Promise.all(
-        Array.from({ length: 2001 }, (_, index) =>
-          ctx.db.insert("staticAssets", {
-            path: `/legacy-${index}.js`,
-            blobId: `legacy-${index}`,
-            contentType: "application/javascript; charset=utf-8",
-            deploymentId: "deploy-legacy",
-          }),
-        ),
-      );
-    });
-    const assets = Array.from({ length: 1800 }, (_, index) => ({
-      path: index === 0 ? "/index.html" : `/new-${index}.js`,
-      blobId: `new-${index}`,
-      contentType:
-        index === 0 ? "text/html; charset=utf-8" : "application/javascript; charset=utf-8",
-      deploymentId: "deploy-new",
-    }));
-    await t.mutation(internal.lib.stageAssets, { assets });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-new",
-        expectedAssetCount: assets.length,
-      }),
-    ).rejects.toThrow("more than 3800 rows combined");
-  });
-
-  test("rejects a truncated staged manifest even when index.html remains", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      blobId: "still-live",
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/app.js",
-          blobId: "app",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-truncated",
-        },
-        {
-          path: "/index.html",
-          blobId: "index",
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-truncated",
-        },
-      ],
-    });
-    await t.run(async (ctx) => {
-      const stagedAssets = await ctx.db
-        .query("stagedAssets")
-        .withIndex("by_deploymentId", (q) => q.eq("deploymentId", "deploy-truncated"))
-        .collect();
-      const appAsset = stagedAssets.find((asset) => asset.path === "/app.js");
-      if (!appAsset) throw new Error("Expected staged app asset");
-      await ctx.db.delete("stagedAssets", appAsset._id);
-    });
-
+    await stage(t, "deploy-truncated", ["/index.html"]);
     await expect(
       t.mutation(internal.lib.publishDeployment, {
         currentDeploymentId: "deploy-truncated",
         expectedAssetCount: 2,
       }),
     ).rejects.toThrow("Staged manifest has 1 files; expected 2");
+    const repeated = await stage(t, "deploy-repeated", ["/index.html"]);
+    await t.mutation(internal.lib.stageAssets, { assets: repeated });
+    await expect(
+      t.mutation(internal.lib.publishDeployment, {
+        currentDeploymentId: "deploy-repeated",
+        expectedAssetCount: 2,
+      }),
+    ).rejects.toThrow("Duplicate asset path");
+    await expect(
+      t.mutation(internal.lib.publishDeployment, {
+        currentDeploymentId: "deploy-empty",
+        expectedAssetCount: 0,
+      }),
+    ).rejects.toThrow("integer from 1 to 1800");
     expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      blobId: "still-live",
-      deploymentId: "deploy-old",
+      deploymentId: "deploy-live",
     });
   });
 
-  test("removes old unreferenced component storage after an interrupted upload", async () => {
+  test("publishes 1,800 file references without querying or deleting child files", async () => {
     const t = initConvexTest();
-    const orphan = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["orphan"]));
+    // Publication only moves parent metadata. Unresolved child references expose
+    // accidental child calls while keeping this transaction-budget test small.
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 1800; index++) {
+        await ctx.db.insert("staticAssets", {
+          path: index === 0 ? "/index.html" : `/old-${index}.js`,
+          fileId: `old-file-${index}`,
+          contentType: "text/plain",
+          deploymentId: "deploy-old",
+        });
+        await ctx.db.insert("stagedAssets", {
+          path: index === 0 ? "/index.html" : `/new-${index}.js`,
+          fileId: `new-file-${index}`,
+          contentType: "text/plain",
+          deploymentId: "deploy-new",
+        });
+      }
     });
-    const childOrphan = await t.action(fileStorage.store, { body: "child orphan" });
+    await expect(
+      t.mutation(internal.lib.publishDeployment, {
+        currentDeploymentId: "deploy-new",
+        expectedAssetCount: 1800,
+      }),
+    ).resolves.toBeNull();
+    await t.run(async (ctx) => {
+      const current = await ctx.db.query("staticAssets").collect();
+      expect(current).toHaveLength(1800);
+      expect(current.every((asset) => asset.deploymentId === "deploy-new")).toBe(true);
+      expect(await ctx.db.query("retiredAssets").collect()).toHaveLength(1800);
+      expect(await ctx.db.query("stagedAssets").collect()).toHaveLength(0);
+      expect(await ctx.db.query("pendingStorageCleanup").collect()).toHaveLength(0);
+    });
+    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
+      currentDeploymentId: "deploy-new",
+    });
+  });
+
+  test("rejects manifests above the file count and serialized metadata limits", async () => {
+    const t = initConvexTest();
+    await expect(
+      t.mutation(internal.lib.publishDeployment, {
+        currentDeploymentId: "deploy-too-large",
+        expectedAssetCount: 1801,
+      }),
+    ).rejects.toThrow("integer from 1 to 1800");
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 1800; index++) {
+        await ctx.db.insert("stagedAssets", {
+          path: index === 0 ? "/index.html" : `/${index}-${"nested-path/".repeat(100)}asset.js`,
+          fileId: `file-${index}`,
+          contentType: "application/javascript",
+          deploymentId: "deploy-too-many-bytes",
+        });
+      }
+    });
+    await expect(
+      t.mutation(internal.lib.publishDeployment, {
+        currentDeploymentId: "deploy-too-many-bytes",
+        expectedAssetCount: 1800,
+      }),
+    ).rejects.toThrow("above the safe limit");
+    expect(await t.query(api.lib.getCurrentDeployment, {})).toBeNull();
+  });
+
+  test("removes old unregistered uploads while keeping recent uploads", async () => {
+    const t = initConvexTest();
+    const orphan = await t.action(fileStorage.store, { body: "orphan" });
     vi.advanceTimersByTime(24 * 60 * 60 * 1000);
     const recent = await t.action(fileStorage.store, { body: "still uploading" });
-
-    const result = await t.mutation(internal.lib.cleanupUnreferencedStorage, {
-      before: Date.now(),
-      limit: 10,
-    });
-
-    expect(result.deleted).toBe(2);
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(orphan)).toBeNull();
-    });
-    expect(await t.action(fileStorage.read, { storageId: childOrphan })).toBeNull();
+    expect(
+      await t.mutation(internal.lib.cleanupUnreferencedStorage, { before: Date.now(), limit: 10 }),
+    ).toMatchObject({ deleted: 1, needsAnotherPass: false });
+    expect(await t.action(fileStorage.read, { storageId: orphan })).toBeNull();
     expect(await t.action(fileStorage.read, { storageId: recent })).toBe("still uploading");
   });
 
-  test("continues child orphan cleanup past a full page of staged files", async () => {
+  test("continues orphan cleanup past a full page of staged files", async () => {
     const t = initConvexTest();
-    const assets = [];
-    for (let index = 0; index < 128; index++) {
-      assets.push({
-        path: `/asset-${index}.js`,
-        fileStorageId: await t.action(fileStorage.store, { body: `asset ${index}` }),
-        contentType: "application/javascript",
-        deploymentId: "deploy-still-staged",
-      });
-    }
-    await t.mutation(internal.lib.stageAssets, { assets: assets.slice(0, 100) });
-    await t.mutation(internal.lib.stageAssets, { assets: assets.slice(100) });
+    const assets = await stage(
+      t,
+      "deploy-still-staged",
+      Array.from({ length: 128 }, (_, index) => `/asset-${index}.js`),
+    );
     const orphan = await t.action(fileStorage.store, { body: "interrupted upload" });
     vi.advanceTimersByTime(1000);
-
-    expect(
-      await t.mutation(internal.lib.cleanupUnreferencedStorage, {
-        before: Date.now(),
-        order: "desc",
-      }),
-    ).toEqual({ scanned: 0, deleted: 0, needsAnotherPass: false });
     expect(
       await t.mutation(internal.lib.cleanupUnreferencedStorage, { before: Date.now() }),
     ).toEqual({ scanned: 128, deleted: 0, needsAnotherPass: true });
@@ -786,42 +339,21 @@ describe("component lib", () => {
     ).toEqual({ scanned: 1, deleted: 1, needsAnotherPass: false });
     expect(await t.action(fileStorage.read, { storageId: orphan })).toBeNull();
     expect(await t.action(fileStorage.read, { storageId: assets[0].fileStorageId })).toBe(
-      "asset 0",
+      "deploy-still-staged/asset-0.js",
     );
   });
 
-  test("recovers an abandoned staged manifest and queues its CDN blob", async () => {
+  test("recovers abandoned staging without deleting a current upload", async () => {
     const t = initConvexTest();
-    const storageId = await t.action(fileStorage.store, { body: "abandoned" });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          fileStorageId: storageId,
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-abandoned",
-        },
-        {
-          path: "/app.js",
-          blobId: "abandoned-cdn-blob",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-abandoned",
-        },
-      ],
+    const abandoned = await stage(t, "deploy-abandoned", ["/index.html"]);
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000 + 1);
+    const recent = await stage(t, "deploy-active", ["/index.html"]);
+    expect(await t.mutation(internal.lib.cleanupAbandonedStaging, {})).toEqual({
+      discarded: 1,
+      deletedFiles: 1,
     });
-
-    expect(
-      await t.mutation(internal.lib.cleanupAbandonedStaging, {
-        before: Date.now() + 1,
-      }),
-    ).toEqual({ discarded: 2, deletedFiles: 1, queuedBlobIds: 1 });
-    expect(await t.query(internal.lib.listPendingBlobCleanup, {})).toEqual(["abandoned-cdn-blob"]);
-    expect(
-      await t.mutation(internal.lib.discardStagedDeployment, {
-        deploymentId: "deploy-abandoned",
-      }),
-    ).toEqual({ discarded: 0 });
-    expect(await t.action(fileStorage.read, { storageId })).toBeNull();
+    expect(await t.action(fileStorage.read, { storageId: abandoned[0].fileStorageId })).toBeNull();
+    expect(await t.action(fileStorage.read, { storageId: recent[0].fileStorageId })).not.toBeNull();
     expect(
       await t.query(components.files.lib.getByPath, {
         path: "deployments/deploy-abandoned/index.html",
@@ -829,301 +361,51 @@ describe("component lib", () => {
     ).toBeNull();
   });
 
-  test("recordAssets batches multiple inserts", async () => {
+  test("keeps replaced files for seven days and never serves replaced HTML", async () => {
     const t = initConvexTest();
-
-    const result = await t.mutation(internal.lib.recordAssets, {
-      assets: [
-        {
-          path: "/a.js",
-          blobId: "blob-a",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-1",
-        },
-        {
-          path: "/b.css",
-          blobId: "blob-b",
-          contentType: "text/css; charset=utf-8",
-          deploymentId: "deploy-1",
-        },
-      ],
+    const old = await publish(t, "deploy-old", ["/index.html", "/old.js", "/about.html"]);
+    const retired = await t.query(internal.lib.getByPath, { path: "/old.js" });
+    await publish(t, "deploy-live", ["/index.html"]);
+    vi.advanceTimersByTime(2 * 24 * 60 * 60 * 1000);
+    await t.mutation(internal.lib.cleanupPendingStorage, {});
+    await t.mutation(internal.lib.cleanupUnreferencedStorage, {});
+    expect(
+      await t.mutation(internal.lib.deleteUploadedFiles, {
+        fileStorageIds: [old[1].fileStorageId],
+      }),
+    ).toMatchObject({ stillReferenced: 1 });
+    expect(await t.action(fileStorage.read, { storageId: old[1].fileStorageId })).not.toBeNull();
+    expect(await t.query(api.lib.resolveAssetForHttp, { path: "/old.js" })).toMatchObject({
+      etag: `"${retired?.fileId}"`,
     });
-
-    expect(result).toEqual({ blobIds: [] });
-    const all = await t.query(internal.lib.listAssets, {});
-    expect(all).toHaveLength(2);
+    expect(await t.query(api.lib.resolveAssetForHttp, { path: "/about.html" })).toBeNull();
+    const current = await t.query(internal.lib.getByPath, { path: "/index.html" });
+    expect(await t.query(api.lib.resolveAssetForHttp, { path: "/dashboard" })).toMatchObject({
+      etag: `"${current?.fileId}"`,
+    });
+    vi.advanceTimersByTime(5 * 24 * 60 * 60 * 1000);
+    expect(await t.mutation(internal.lib.cleanupPendingStorage, {})).toEqual({
+      processed: 3,
+      deleted: 3,
+      needsAnotherPass: false,
+    });
+    expect(await t.query(api.lib.resolveAssetForHttp, { path: "/old.js" })).toBeNull();
+    expect(await t.action(fileStorage.read, { storageId: old[1].fileStorageId })).toBeNull();
   });
 
-  test("recordAssets returns replaced CDN blobs for cleanup", async () => {
+  test("resolves files for app-owned routes and permits a SPA fallback override", async () => {
     const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/app.js",
-      blobId: "old-blob",
+    await publish(t, "deploy-live", ["/index.html", "/app.js"]);
+    const file = await t.query(internal.lib.getByPath, { path: "/app.js" });
+    const resolved = await t.query(api.lib.resolveAssetForHttp, { path: "/app.js" });
+    expect(resolved).toMatchObject({
+      etag: `"${file?.fileId}"`,
       contentType: "application/javascript; charset=utf-8",
-      deploymentId: "deploy-old",
     });
-
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["new"]));
-    });
-    const result = await t.mutation(internal.lib.recordAssets, {
-      assets: [
-        {
-          path: "/app.js",
-          storageId,
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-new",
-        },
-      ],
-    });
-
-    expect(result).toEqual({ blobIds: ["old-blob"] });
-    const current = await t.query(internal.lib.getByPath, { path: "/app.js" });
-    expect(current?.storageId).toBe(storageId);
-    expect(current?.blobId).toBeUndefined();
-  });
-
-  test("recordAssets rejects ambiguous locations and duplicate paths", async () => {
-    const t = initConvexTest();
-
-    await expect(
-      t.mutation(internal.lib.recordAssets, {
-        assets: [
-          {
-            path: "/missing-location.js",
-            contentType: "application/javascript; charset=utf-8",
-            deploymentId: "deploy-1",
-          },
-        ],
-      }),
-    ).rejects.toThrow("exactly one storage location");
-
-    await expect(
-      t.mutation(internal.lib.recordAssets, {
-        assets: [
-          {
-            path: "/duplicate.js",
-            blobId: "blob-a",
-            contentType: "application/javascript; charset=utf-8",
-            deploymentId: "deploy-1",
-          },
-          {
-            path: "/duplicate.js",
-            blobId: "blob-b",
-            contentType: "application/javascript; charset=utf-8",
-            deploymentId: "deploy-1",
-          },
-        ],
-      }),
-    ).rejects.toThrow("Duplicate asset path");
-  });
-
-  describe("replaced files", () => {
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-
-    async function publish(
-      t: ReturnType<typeof initConvexTest>,
-      deploymentId: string,
-      paths: string[],
-    ) {
-      const assets = [];
-      for (const path of ["/index.html", ...paths]) {
-        assets.push({
-          path,
-          fileStorageId: await t.action(fileStorage.store, { body: deploymentId + path }),
-          contentType: path.endsWith(".html")
-            ? "text/html; charset=utf-8"
-            : "application/javascript; charset=utf-8",
-          deploymentId,
-        });
-      }
-      await t.mutation(internal.lib.stageAssets, { assets });
-      await t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: deploymentId,
-        expectedAssetCount: assets.length,
-      });
-      return Object.fromEntries(
-        await Promise.all(
-          assets.map(
-            async (asset) =>
-              [
-                asset.path,
-                {
-                  storageId: asset.fileStorageId,
-                  fileId: (await t.query(internal.lib.getByPath, { path: asset.path }))?.fileId,
-                },
-              ] as const,
-          ),
-        ),
-      );
-    }
-
-    test("serves a replaced file, but never replaced HTML, for seven days", async () => {
-      const t = initConvexTest();
-      const a = await publish(t, "deploy-a", ["/assets/app-A1b2C3d4.js", "/about.html"]);
-      const b = await publish(t, "deploy-b", ["/assets/app-E5f6G7h8.js"]);
-
-      const resolve = (path: string) => t.query(api.lib.resolveAssetForHttp, { path });
-      expect(await resolve("/assets/app-A1b2C3d4.js")).toMatchObject({
-        etag: `"${a["/assets/app-A1b2C3d4.js"].fileId}"`,
-      });
-      expect(await resolve("/about.html")).toBeNull();
-      // Paths without an extension still get the current SPA shell.
-      expect(await resolve("/dashboard")).toMatchObject({
-        etag: `"${b["/index.html"].fileId}"`,
-      });
-
-      vi.advanceTimersByTime(sevenDays);
-      await t.mutation(internal.lib.cleanupPendingStorage, {});
-      expect(await resolve("/assets/app-A1b2C3d4.js")).toBeNull();
-      expect(
-        await t.action(fileStorage.read, { storageId: a["/assets/app-A1b2C3d4.js"].storageId }),
-      ).toBeNull();
-    });
-
-    test("no cleanup deletes a replaced file before it expires", async () => {
-      const t = initConvexTest();
-      const a = await publish(t, "deploy-a", ["/assets/app-A1b2C3d4.js"]);
-      await publish(t, "deploy-b", []);
-      const retired = a["/assets/app-A1b2C3d4.js"].storageId;
-      // Old enough for every cleanup to consider it, young enough to keep.
-      vi.advanceTimersByTime(2 * 24 * 60 * 60 * 1000);
-
-      await t.mutation(internal.lib.cleanupPendingStorage, {});
-      await t.mutation(internal.lib.cleanupUnreferencedStorage, {});
-      expect(
-        await t.mutation(internal.lib.deleteUploadedFiles, {
-          fileStorageIds: [retired],
-        }),
-      ).toMatchObject({ stillReferenced: 1 });
-
-      expect(await t.action(fileStorage.read, { storageId: retired })).not.toBeNull();
-      expect(
-        await t.query(api.lib.resolveAssetForHttp, {
-          path: "/assets/app-A1b2C3d4.js",
-        }),
-      ).not.toBeNull();
-    });
-  });
-
-  describe("resolveAsset", () => {
-    async function seedIndex(t: ReturnType<typeof initConvexTest>) {
-      await t.mutation(internal.lib.recordAsset, {
-        path: "/index.html",
-        blobId: "blob-index",
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-1",
-      });
-    }
-
-    test("returns the exact match when present", async () => {
-      const t = initConvexTest();
-      await t.mutation(internal.lib.recordAsset, {
-        path: "/assets/app-B71cUw87.js",
-        blobId: "blob-app",
-        contentType: "application/javascript; charset=utf-8",
-        deploymentId: "deploy-1",
-      });
-
-      const asset = await t.query(internal.lib.resolveAsset, {
-        path: "/assets/app-B71cUw87.js",
-      });
-      expect(asset?.path).toBe("/assets/app-B71cUw87.js");
-    });
-
-    test("falls back to index.html for extension-less misses by default", async () => {
-      const t = initConvexTest();
-      await seedIndex(t);
-
-      const asset = await t.query(internal.lib.resolveAsset, {
-        path: "/dashboard/settings",
-      });
-      expect(asset?.path).toBe("/index.html");
-    });
-
-    test("does not fall back for paths with an extension", async () => {
-      const t = initConvexTest();
-      await seedIndex(t);
-
-      const asset = await t.query(internal.lib.resolveAsset, {
-        path: "/missing.js",
-      });
-      expect(asset).toBeNull();
-    });
-
-    test("does not fall back when the deployment disables it", async () => {
-      const t = initConvexTest();
-      await seedIndex(t);
-      await t.mutation(internal.lib.commitDeployment, {
-        currentDeploymentId: "deploy-1",
-        spaFallback: false,
-      });
-
-      const asset = await t.query(internal.lib.resolveAsset, {
-        path: "/dashboard",
-      });
-      expect(asset).toBeNull();
-    });
-
-    test("returns a storage URL for app-owned HTTP routes", async () => {
-      const t = initConvexTest();
-      const storageId = await t.run(async (ctx) => {
-        return await ctx.storage.store(new Blob(["<h1>Hello</h1>"], { type: "text/html" }));
-      });
-      await t.mutation(internal.lib.recordAsset, {
-        path: "/index.html",
-        storageId,
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-1",
-      });
-
-      const asset = await t.query(api.lib.resolveAssetForHttp, {
-        path: "/index.html",
-      });
-
-      expect(asset?.storageUrl).toContain("http");
-      expect(asset?.etag).toBe(`"${storageId}"`);
-      expect(asset?.contentType).toBe("text/html; charset=utf-8");
-    });
-
-    test("surfaces the app-owned storage id for inherited v1 rows", async () => {
-      // A same-name v1→v2 migration inherits rows whose files live in the app's
-      // storage; the component can't resolve a URL for them. convex-test can't
-      // distinguish that from a deleted file, so deleting one reproduces the
-      // condition: resolveAssetForHttp surfaces appStorageId (no storageUrl) so
-      // the app-side handler can serve it from its own storage during migration.
-      const t = initConvexTest();
-      const storageId = await t.run(async (ctx) => {
-        return await ctx.storage.store(new Blob(["legacy"]));
-      });
-      await t.mutation(internal.lib.recordAsset, {
-        path: "/index.html",
-        storageId,
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-old",
-      });
-      await t.run(async (ctx) => {
-        await ctx.storage.delete(storageId);
-      });
-
-      const asset = await t.query(api.lib.resolveAssetForHttp, {
-        path: "/index.html",
-      });
-      expect(asset?.appStorageId).toBe(storageId);
-      expect(asset?.storageUrl).toBeUndefined();
-      expect(asset?.etag).toBe(`"${storageId}"`);
-    });
-
-    test("allows compatibility routes to override SPA fallback", async () => {
-      const t = initConvexTest();
-      await seedIndex(t);
-
-      const asset = await t.query(api.lib.resolveAssetForHttp, {
-        path: "/dashboard",
-        spaFallback: false,
-      });
-
-      expect(asset).toBeNull();
-    });
+    expect(resolved?.storageUrl).toContain("http");
+    expect(await t.query(api.lib.resolveAssetForHttp, { path: "/missing.js" })).toBeNull();
+    expect(
+      await t.query(api.lib.resolveAssetForHttp, { path: "/dashboard", spaFallback: false }),
+    ).toBeNull();
   });
 });

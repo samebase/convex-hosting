@@ -206,8 +206,6 @@ npx @samebase/convex-hosting deploy [options]
       --build-command <cmd> Build command to run (default: 'npm run build')
       --no-spa              Disable SPA fallback (404 instead of /index.html)
       --spa                 Enable SPA fallback (default)
-      --cdn                 Use the legacy convex-fs integration
-      --cdn-delete-function Legacy app function that deletes CDN blobs
 
 npx @samebase/convex-hosting upload [options]
   -d, --dist <path>         Path to dist directory (default: ./dist)
@@ -218,8 +216,6 @@ npx @samebase/convex-hosting upload [options]
       --build-command <cmd> Override the build command; implies --build
       --no-spa              Disable SPA fallback (404 instead of /index.html)
       --spa                 Enable SPA fallback (default)
-      --cdn                 Use the legacy convex-fs integration
-      --cdn-delete-function Legacy app function that deletes CDN blobs
   -j, --concurrency <n>     Parallel upload workers (default: 5)
 ```
 
@@ -232,14 +228,13 @@ available for at least seven days, so pages that are already open can still load
 later upload removes expired files. See [INTEGRATION.md](./INTEGRATION.md) for upload limits and
 lifecycle details.
 
-New uploads are stored in the `hosting/files` child component with names such as
+Uploads are stored in the `hosting/files` child component with names such as
 `deployments/<deployment-id>/assets/main.js`. Hosting keeps the public URL path, live deployment,
 and retention records. The files component owns the named blobs. It is included in the hosting
 package and deploys with your app, with no separate installation or Convex deployment.
 
-When upgrading to 0.4, update the hosting package and deploy the backend before running the updated
-upload command. Existing assets remain readable in their original storage. Each later upload uses
-the files component; old assets continue through the usual retention and cleanup process.
+Version 0.4 requires a one-time reset of existing hosting data, followed by a fresh asset upload.
+See [Upgrading to 0.4](./INTEGRATION.md#upgrading-to-04).
 
 Convex HTTP routes currently support GET but not HEAD. Configure uptime checks to make a lightweight
 GET request rather than a HEAD request.
@@ -247,10 +242,6 @@ GET request rather than a HEAD request.
 If you mount the component under a different name with `app.use(hosting, { name: "custom" })`, pass
 `--component custom` and replace every generated `components.hosting` reference with
 `components.custom`.
-
-Do not use `--cdn` for a new integration. It targets an older ConvexFS HTTP API and is retained only
-for existing deployments. Legacy CDN users must keep app-owned root routing because `/fs/upload` and
-`/fs/blobs/*` are root app routes. See `INTEGRATION.md` for the current limitation.
 
 ## Security
 
@@ -420,7 +411,7 @@ This package continues `@convex-dev/static-hosting` 0.2. To switch an app:
 1. Replace the dependency with `@samebase/convex-hosting`, and change every import from
    `@convex-dev/static-hosting` to `@samebase/convex-hosting`, including `/convex.config` and
    `/react`.
-2. Keep the existing component instance, so the uploaded files and the site URLs stay:
+2. Keep the existing component name and mount prefix to keep the site URLs:
 
    ```ts
    import hosting from "@samebase/convex-hosting/convex.config";
@@ -439,15 +430,12 @@ This package continues `@convex-dev/static-hosting` 0.2. To switch an app:
    example `npx @samebase/convex-hosting deploy`) and the bare `static-hosting` command with
    `convex-hosting`. In the bundler config, replace `STATIC_HOSTING_BASE_PATH` with
    `CONVEX_HOSTING_BASE_PATH`.
-5. Deploy as usual.
+5. Follow [Upgrading to 0.4](./INTEGRATION.md#upgrading-to-04) to reset the existing hosting
+   component, deploy the backend, and upload the frontend files again.
 
 To use the new default name instead, remove `name: "staticHosting"`, replace
 `components.staticHosting` with `components.hosting`, and deploy. The new instance starts empty, so
 the deploy uploads the files again.
-
-An app on `@convex-dev/static-hosting` 0.1.x first follows upstream's
-[0.1.x to 0.2.x migration guide](https://github.com/get-convex/static-hosting/blob/main/MIGRATION.md),
-because 0.2 moved the files into the component.
 
 ## How it works
 

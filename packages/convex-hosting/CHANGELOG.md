@@ -2,9 +2,11 @@
 
 ## 0.4.0
 
-- New uploads use a nested files component with a required name for each blob. Hosting keeps
-  deployment publication, public routes, and retention. Existing assets remain readable in their
-  original storage and use the existing cleanup process.
+- All uploads use a nested files component with a required name for each blob. Hosting keeps
+  deployment publication, public routes, and retention, with one required `fileId` per asset.
+- Breaking: reset existing hosting data before deploying 0.4, then upload the built frontend again.
+  See [Upgrading to 0.4](./INTEGRATION.md#upgrading-to-04). Old storage references, app-storage
+  fallback, and the legacy ConvexFS upload, redirect, and cleanup APIs are removed.
 - The files component ships inside this package and deploys with the app. It needs no separate npm
   installation or Convex deployment.
 - Requires Convex 1.46 or later. Deploy the backend with the updated package before running the

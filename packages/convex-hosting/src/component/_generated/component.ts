@@ -33,7 +33,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           _id: string;
           currentDeploymentId: string;
           deployedAt: number;
-          pendingBlobCleanupCount?: number;
           spaFallback?: boolean;
         } | null,
         Name
@@ -42,13 +41,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { path: string; spaFallback?: boolean },
-        {
-          appStorageId?: string;
-          blobId?: string;
-          contentType: string;
-          etag?: string;
-          storageUrl?: string;
-        } | null,
+        { contentType: string; etag: string; storageUrl?: string } | null,
         Name
       >;
     };

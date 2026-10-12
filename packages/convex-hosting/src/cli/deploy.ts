@@ -43,8 +43,6 @@ Options:
       --build-command <cmd>   Build command to run (default: 'npm run build')
       --no-spa                Disable SPA fallback (404 instead of /index.html)
       --spa                   Enable SPA fallback (default)
-      --cdn                   Use the legacy convex-fs integration
-      --cdn-delete-function <name>  Legacy app function that deletes CDN blobs
   -h, --help                  Show this help message
 
 Deployment Flow:
@@ -136,11 +134,7 @@ function resolveComponentOrExit(requested: string): ResolvedComponent {
  */
 async function uploadToConvexStorage(args: DeployArgs): Promise<boolean> {
   console.log("");
-  console.log(
-    args.cdn
-      ? "📦 Uploading static files (HTML to Convex, assets to CDN)..."
-      : "📦 Uploading static files to Convex storage...",
-  );
+  console.log("📦 Uploading static files to Convex storage...");
   console.log("");
 
   const result = spawnStaticHostingCli(buildDeployUploadArgs(args));

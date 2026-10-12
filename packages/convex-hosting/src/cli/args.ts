@@ -5,8 +5,6 @@ export interface UploadArgs {
   previewName: string | null;
   build: boolean;
   buildCommand: string;
-  cdn: boolean;
-  cdnDeleteFunction: string;
   concurrency: number;
   spaFallback: boolean;
   help: boolean;
@@ -18,8 +16,6 @@ export interface DeployArgs {
   help: boolean;
   skipBuild: boolean;
   skipConvex: boolean;
-  cdn: boolean;
-  cdnDeleteFunction: string;
   spaFallback: boolean;
   buildCommand: string;
 }
@@ -40,8 +36,6 @@ export function parseUploadArgs(args: string[]): UploadArgs {
     previewName: null,
     build: false,
     buildCommand: "npm run build",
-    cdn: false,
-    cdnDeleteFunction: "",
     concurrency: 5,
     spaFallback: true,
     help: false,
@@ -74,11 +68,6 @@ export function parseUploadArgs(args: string[]): UploadArgs {
       result.spaFallback = false;
     } else if (arg === "--spa") {
       result.spaFallback = true;
-    } else if (arg === "--cdn") {
-      result.cdn = true;
-    } else if (arg === "--cdn-delete-function") {
-      result.cdnDeleteFunction = optionValue(args, i, arg);
-      i++;
     } else if (arg === "--concurrency" || arg === "-j") {
       const value = optionValue(args, i, arg);
       const concurrency = Number(value);
@@ -103,8 +92,6 @@ export function parseDeployArgs(args: string[]): DeployArgs {
     help: false,
     skipBuild: false,
     skipConvex: false,
-    cdn: false,
-    cdnDeleteFunction: "",
     spaFallback: true,
     buildCommand: "npm run build",
   };
@@ -123,11 +110,6 @@ export function parseDeployArgs(args: string[]): DeployArgs {
       result.skipBuild = true;
     } else if (arg === "--skip-convex") {
       result.skipConvex = true;
-    } else if (arg === "--cdn") {
-      result.cdn = true;
-    } else if (arg === "--cdn-delete-function") {
-      result.cdnDeleteFunction = optionValue(args, i, arg);
-      i++;
     } else if (arg === "--no-spa") {
       result.spaFallback = false;
     } else if (arg === "--spa") {
@@ -144,10 +126,6 @@ export function parseDeployArgs(args: string[]): DeployArgs {
 
 export function buildDeployUploadArgs(args: DeployArgs): string[] {
   const uploadArgs = ["upload", "--dist", args.dist, "--component", args.component, "--prod"];
-  if (args.cdn) uploadArgs.push("--cdn");
-  if (args.cdnDeleteFunction) {
-    uploadArgs.push("--cdn-delete-function", args.cdnDeleteFunction);
-  }
   if (!args.spaFallback) uploadArgs.push("--no-spa");
   return uploadArgs;
 }

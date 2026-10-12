@@ -46,7 +46,7 @@ export default app;
 ```
 
 This mode is appropriate for new apps and apps whose HTTP routes can live under `/api`. Hosting
-resolves new uploads through its files child component and fetches their native storage URLs.
+resolves uploads through its files child component and fetches their native storage URLs.
 
 If existing webhook, auth, or API routes must stay at the root, use
 [App-owned root routing](#app-owned-root-routing). To host the static site under a sub-path, see
@@ -88,11 +88,9 @@ export default http;
 ```
 
 Exact routes win over the static catch-all. Uploads, deployment metadata, SPA configuration, and
-file storage remain inside the component, so you can remove the old `exposeUploadApi` wrappers.
-During a same-name 0.1.x→0.2.x migration this mode also keeps serving your existing v1 files from
-app storage until the first 0.2.x upload, so the live site never drops to the setup page. This mode
-resolves named files and fetches storage URLs like the component-owned handler. Use the
-component-owned handler when preserving root-level app routes is not necessary.
+file storage remain inside the component. This mode resolves named files and fetches storage URLs
+like the component-owned handler. Use the component-owned handler when preserving root-level app
+routes is not necessary.
 
 ### `package.json`
 
@@ -190,26 +188,29 @@ import { useDeploymentUpdates } from "@samebase/convex-hosting/react";
 const { updateAvailable, reload, dismiss } = useDeploymentUpdates();
 ```
 
-## Legacy CDN mode
+## Upgrading to 0.4
 
-Do not use `--cdn` for a new integration. It targets an older, unauthenticated `convex-fs` HTTP API.
-Current ConvexFS releases require app-owned routes and upload authentication, which this CLI does
-not yet provide.
+Version 0.4 makes a clean break with the old storage model. Every hosting asset must have a `fileId`
+from the files child component. Old `storageId` and `blobId` records are not supported.
 
-Existing deployments that already expose the legacy routes can keep using the flag during migration,
-but they must use app-owned root compatibility mode. `/fs/upload` and `/fs/blobs/*` are app routes,
-so component-owned root mode would break both upload and serving. Everyone else should use the
-default Convex storage mode. Supporting current ConvexFS properly needs a separate authenticated
-upload and garbage-collection design, not a copy-paste configuration snippet.
+For an existing deployment:
 
-The CLI uploads every file before atomically publishing the mixed storage/CDN manifest and
-deployment settings while queuing exact old-file IDs for bounded follow-up cleanup. New HTML does
-not point at asset records that are still missing, and a failed publish leaves the previous
-deployment live. Failure cleanup removes new files only after it can prove publication did not win
-the transaction race; otherwise later maintenance recovers them. Failed legacy CDN uploads can only
-be cleaned automatically when `--cdn-delete-function` is configured. Old CDN IDs are kept in a
-private cleanup queue until that function succeeds, so a lost publish response does not make them
-unrecoverable.
+1. Build the frontend so its files are ready to upload. If an older integration stores hosting files
+   in app storage or ConvexFS, save their IDs from the hosting tables before the reset. Delete those
+   specific blobs through their original owner after the new upload succeeds.
+2. In the Convex dashboard, select the hosting component. Clear `staticAssets`, `stagedAssets`,
+   `retiredAssets`, `pendingStorageCleanup`, `pendingBlobCleanup`, `cleanupState`, and
+   `deploymentInfo`. Skip tables that do not exist. Delete the old files in that component's file
+   storage.
+3. Update the hosting package to 0.4 and deploy the Convex backend.
+4. Run the updated hosting upload command for that deployment.
+
+The site is unavailable between the reset and upload. Replaced assets from before the reset are not
+retained. Each deployment needs its own reset. No data migration or fallback runs in the new
+component.
+
+The old `--cdn`, `--cdn-delete-function`, and `cdnBaseUrl` options are removed. All hosting files
+use the files child component.
 
 ## Non-Vite bundlers
 
@@ -244,8 +245,6 @@ npx @samebase/convex-hosting deploy [options]
       --build-command <cmd> Build command to run (default: 'npm run build')
       --no-spa              Disable SPA fallback (404 instead of /index.html)
       --spa                 Enable SPA fallback (default)
-      --cdn                 Upload non-HTML assets to convex-fs CDN
-      --cdn-delete-function App function path that deletes CDN blobs
 
 npx @samebase/convex-hosting upload [options]
   -d, --dist <path>         Path to dist directory (default: ./dist)
@@ -256,8 +255,6 @@ npx @samebase/convex-hosting upload [options]
       --build-command <cmd> Override the build command; implies --build
       --no-spa              Disable SPA fallback (404 instead of /index.html)
       --spa                 Enable SPA fallback (default)
-      --cdn                 Upload non-HTML assets to convex-fs CDN
-      --cdn-delete-function App function path that deletes CDN blobs
   -j, --concurrency <n>     Parallel upload workers (default: 5)
 ```
 
@@ -265,12 +262,12 @@ The complete manifest is staged in small, portable command-line chunks after all
 final mutation atomically publishes the manifest and deployment settings. Replaced files stay in
 component storage for at least seven days. A request for a missing file with an extension, except
 HTML, gets the newest replaced copy, so pages that are already open can still load their scripts.
-Files remain available until a later upload removes expired files in bounded cleanup transactions.
-Legacy CDN blobs are not retained. A failed attempt leaves the previous deployment live and removes
-only new files that are not referenced by the live manifest. The supported maximum is 1,800 files
-and 2 MiB of serialized manifest metadata, which keeps the atomic switch below Convex transaction
-limits. Upload URLs are generated in bounded batches. Later uploads recover component files and
-staging records left unreferenced for more than 24 hours after an interrupted CLI.
+Files remain available until a later upload removes expired files in bounded cleanup transactions. A
+failed attempt leaves the previous deployment live and removes only new files that are not
+referenced by the live manifest. The supported maximum is 1,800 files and 2 MiB of serialized
+manifest metadata, which keeps the atomic switch below Convex transaction limits. Upload URLs are
+generated in bounded batches. Later uploads recover component files and staging records left
+unreferenced for more than 24 hours after an interrupted CLI.
 
 Convex HTTP routers currently expose GET but not HEAD routes. Uptime monitors must use a lightweight
 GET request.
@@ -318,9 +315,8 @@ travels with the code you ship rather than living in a separate env var. Re-depl
 
 Follow
 [Switching from @convex-dev/static-hosting](./README.md#switching-from-convex-devstatic-hosting) in
-the README. Mount the component with `{ name: "staticHosting" }` to keep the uploaded files and
-URLs. An app on 0.1.x first follows upstream's
-[0.1.x to 0.2.x migration guide](https://github.com/get-convex/static-hosting/blob/main/MIGRATION.md).
+the README. Keep `{ name: "staticHosting" }` and the existing mount prefix to keep the URLs. Follow
+[Upgrading to 0.4](#upgrading-to-04) to reset the component and upload its files again.
 
 ## Troubleshooting
 
@@ -362,8 +358,8 @@ npx @samebase/convex-hosting upload --component custom
 ### `registerStaticRoutes(http, component, options?)`
 
 Registers a static catch-all in the app's `convex/http.ts`. Use it when exact app routes must remain
-at the same root. `pathPrefix`, `spaFallback`, and `cdnBaseUrl` are supported. The component must be
-installed without an `httpPrefix` so only the app owns that URL space.
+at the same root. `pathPrefix` and `spaFallback` are supported. The component must be installed
+without an `httpPrefix` so only the app owns that URL space.
 
 ### `serveStaticAsset(ctx, component, request, options?)`
 
@@ -371,9 +367,9 @@ Serves an uploaded file from an app-owned HTTP action, or returns `null` when no
 action can continue with its own routing (server rendering, prerendered pages, redirects). Responses
 match `registerStaticRoutes`. The lookup is exact: `/` is not mapped to `/index.html`, and
 `spaFallback` defaults to `false`. `path` (the decoded file path, defaulting to the decoded request
-path, starting with `/` and without your route's prefix), `spaFallback`, and `cdnBaseUrl` are
-supported. A request path with malformed percent-encoding returns `null`. A found file whose storage
-can't be read gets a 500 response. The component must be installed without an `httpPrefix`.
+path, starting with `/` and without your route's prefix) and `spaFallback` are supported. A request
+path with malformed percent-encoding returns `null`. A found file whose storage can't be read gets a
+500 response. The component must be installed without an `httpPrefix`.
 
 ### `decodeRequestPath(pathname)`
 
@@ -393,7 +389,6 @@ Browser-only. Returns `https://<deployment>.convex.cloud` when the page is serve
 ## Additional Resources
 
 - [README](./README.md)
-- [Upstream 0.1.x to 0.2.x migration guide](https://github.com/get-convex/static-hosting/blob/main/MIGRATION.md)
 - [`examples/spa`](https://github.com/samebase/convex-hosting/tree/main/examples/spa): Working
   example app
 - [Component source](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting/src/component)

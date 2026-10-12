@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { componentsGeneric, httpActionGeneric, httpRouter } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
-import {
-  decodeRequestPath,
-  exposeDeploymentQuery,
-  registerStaticRoutes,
-  serveStaticAsset,
-} from "./index.js";
+import { decodeRequestPath, registerStaticRoutes, serveStaticAsset } from "./index.js";
 
 const components = componentsGeneric() as unknown as {
   hosting: ComponentApi;
@@ -14,13 +9,6 @@ const components = componentsGeneric() as unknown as {
 
 type TestHttpAction = {
   _handler: (ctx: { runQuery: ReturnType<typeof vi.fn> }, request: Request) => Promise<Response>;
-};
-
-type TestQuery = {
-  _handler: (
-    ctx: { runQuery: ReturnType<typeof vi.fn> },
-    args: Record<string, never>,
-  ) => Promise<unknown>;
 };
 
 function invokeHandler(handler: object, runQuery: ReturnType<typeof vi.fn>, request: Request) {
@@ -52,12 +40,12 @@ describe("registerStaticRoutes", () => {
     expect(http.lookup("/dashboard", "GET")?.[0]).not.toBe(authHandler);
   });
 
-  test("serves component-owned storage at the root", async () => {
+  test("serves a named file at the root", async () => {
     const handler = staticHandler();
     const runQuery = vi.fn().mockResolvedValue({
       storageUrl: "https://storage.example/index",
       contentType: "text/html; charset=utf-8",
-      etag: '"storage-id"',
+      etag: '"file-id"',
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<h1>Hello</h1>")));
 
@@ -71,86 +59,9 @@ describe("registerStaticRoutes", () => {
       path: "/index.html",
     });
     expect(response.status).toBe(200);
-    expect(response.headers.get("ETag")).toBe('"storage-id"');
+    expect(response.headers.get("ETag")).toBe('"file-id"');
     expect(await response.text()).toBe("<h1>Hello</h1>");
   });
-
-  test("serves an inherited v1 asset from the app's storage during migration", async () => {
-    const handler = staticHandler();
-    const runQuery = vi.fn().mockResolvedValue({
-      appStorageId: "app-storage-id",
-      contentType: "text/html; charset=utf-8",
-      etag: '"app-storage-id"',
-    });
-    const storageGet = vi.fn().mockResolvedValue(new Blob(["<h1>v1</h1>"]));
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    const ctx = { runQuery, storage: { get: storageGet } };
-
-    const response = await (
-      handler as unknown as {
-        _handler: (c: typeof ctx, r: Request) => Promise<Response>;
-      }
-    )._handler(ctx, new Request("https://app.convex.site/"));
-
-    expect(response.status).toBe(200);
-    expect(storageGet).toHaveBeenCalledWith("app-storage-id");
-    // The file is read from app storage directly, never via a storage URL fetch.
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(response.headers.get("ETag")).toBe('"app-storage-id"');
-    expect(await response.text()).toBe("<h1>v1</h1>");
-  });
-
-  test("returns 304 for an inherited v1 asset without reading app storage", async () => {
-    const handler = staticHandler();
-    const runQuery = vi.fn().mockResolvedValue({
-      appStorageId: "app-storage-id",
-      contentType: "text/html; charset=utf-8",
-      etag: '"app-storage-id"',
-    });
-    const storageGet = vi.fn();
-    const ctx = { runQuery, storage: { get: storageGet } };
-
-    const response = await (
-      handler as unknown as {
-        _handler: (c: typeof ctx, r: Request) => Promise<Response>;
-      }
-    )._handler(
-      ctx,
-      new Request("https://app.convex.site/", {
-        headers: { "If-None-Match": '"app-storage-id"' },
-      }),
-    );
-
-    expect(response.status).toBe(304);
-    expect(storageGet).not.toHaveBeenCalled();
-  });
-
-  test.each([
-    ["/", 503],
-    ["/legacy.js", 404],
-  ])(
-    "treats an inherited v1 file missing from app storage as missing: %s",
-    async (path, status) => {
-      const handler = staticHandler();
-      const runQuery = vi.fn().mockResolvedValue({
-        appStorageId: "deleted-storage-id",
-        contentType: "application/javascript; charset=utf-8",
-      });
-      const ctx = {
-        runQuery,
-        storage: { get: vi.fn().mockResolvedValue(null) },
-      };
-
-      const response = await (
-        handler as unknown as {
-          _handler: (c: typeof ctx, r: Request) => Promise<Response>;
-        }
-      )._handler(ctx, new Request(`https://app.convex.site${path}`));
-
-      expect(response.status).toBe(status);
-    },
-  );
 
   test("returns a non-cacheable 503 setup page before the first upload", async () => {
     const handler = staticHandler();
@@ -259,7 +170,7 @@ describe("registerStaticRoutes", () => {
     const runQuery = vi.fn().mockResolvedValue({
       storageUrl: "https://storage.example/app.js",
       contentType: "application/javascript; charset=utf-8",
-      etag: '"storage-id"',
+      etag: '"file-id"',
     });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -269,7 +180,7 @@ describe("registerStaticRoutes", () => {
       runQuery,
       new Request("https://app.convex.site/app.js", {
         headers: {
-          "If-None-Match": '"not-current", W/"storage-id"',
+          "If-None-Match": '"not-current", W/"file-id"',
         },
       }),
     );
@@ -277,50 +188,19 @@ describe("registerStaticRoutes", () => {
     expect(response.status).toBe(304);
     expect(fetchMock).not.toHaveBeenCalled();
   });
-
-  test("preserves the custom CDN redirect option", async () => {
-    const http = httpRouter();
-    registerStaticRoutes(http, components.hosting, {
-      cdnBaseUrl: "https://cdn.example/blobs/",
-    });
-    const handler = http.lookup("/app-HASHED1.js", "GET")?.[0];
-    if (!handler) throw new Error("No static route registered");
-    const runQuery = vi.fn().mockResolvedValue({
-      blobId: "blob-1",
-      contentType: "application/javascript; charset=utf-8",
-    });
-
-    const response = await invokeHandler(
-      handler,
-      runQuery,
-      new Request("https://app.convex.site/app-HASHED1.js"),
-    );
-
-    expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe("https://cdn.example/blobs/blob-1");
-  });
 });
 
 describe("serveStaticAsset", () => {
-  type ServeCtx = Parameters<typeof serveStaticAsset>[0];
-
-  function serveCtx(
-    runQuery: ReturnType<typeof vi.fn>,
-    storageGet: ReturnType<typeof vi.fn> = vi.fn(),
-  ) {
-    return { runQuery, storage: { get: storageGet } } as unknown as ServeCtx;
-  }
-
   test("serves an exact file with the registerStaticRoutes headers", async () => {
     const runQuery = vi.fn().mockResolvedValue({
       storageUrl: "https://storage.example/app",
       contentType: "application/javascript; charset=utf-8",
-      etag: '"storage-id"',
+      etag: '"file-id"',
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("app()")));
 
     const response = await serveStaticAsset(
-      serveCtx(runQuery),
+      { runQuery },
       components.hosting,
       new Request("https://app.convex.site/assets/app-B71cUw87.js"),
     );
@@ -331,7 +211,7 @@ describe("serveStaticAsset", () => {
     });
     expect(response?.status).toBe(200);
     expect(response?.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
-    expect(response?.headers.get("ETag")).toBe('"storage-id"');
+    expect(response?.headers.get("ETag")).toBe('"file-id"');
     expect(response?.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(await response?.text()).toBe("app()");
   });
@@ -341,7 +221,7 @@ describe("serveStaticAsset", () => {
 
     for (const url of ["/", "/missing.js", "/dashboard"]) {
       const response = await serveStaticAsset(
-        serveCtx(runQuery),
+        { runQuery },
         components.hosting,
         new Request(`https://app.convex.site${url}`),
       );
@@ -363,7 +243,7 @@ describe("serveStaticAsset", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<div id=root>")));
 
     const response = await serveStaticAsset(
-      serveCtx(runQuery),
+      { runQuery },
       components.hosting,
       new Request("https://app.convex.site/dashboard/settings"),
       { path: "/index.html" },
@@ -381,7 +261,7 @@ describe("serveStaticAsset", () => {
     const runQuery = vi.fn().mockResolvedValue(null);
 
     await serveStaticAsset(
-      serveCtx(runQuery),
+      { runQuery },
       components.hosting,
       new Request("https://app.convex.site/dashboard"),
       { spaFallback: true },
@@ -397,7 +277,7 @@ describe("serveStaticAsset", () => {
     const runQuery = vi.fn();
 
     const response = await serveStaticAsset(
-      serveCtx(runQuery),
+      { runQuery },
       components.hosting,
       new Request("https://app.convex.site/caf%E9"),
     );
@@ -409,7 +289,7 @@ describe("serveStaticAsset", () => {
   test("rejects a path without a leading slash", async () => {
     await expect(
       serveStaticAsset(
-        serveCtx(vi.fn()),
+        { runQuery: vi.fn() },
         components.hosting,
         new Request("https://app.convex.site/about"),
         { path: "about/index.html" },
@@ -417,53 +297,41 @@ describe("serveStaticAsset", () => {
     ).rejects.toThrow("path must start with /");
   });
 
-  test("keeps ETag revalidation and CDN redirects", async () => {
-    const runQuery = vi
-      .fn()
-      .mockResolvedValueOnce({
-        storageUrl: "https://storage.example/app",
-        contentType: "application/javascript; charset=utf-8",
-        etag: '"storage-id"',
-      })
-      .mockResolvedValueOnce({
-        blobId: "blob-1",
-        contentType: "application/javascript; charset=utf-8",
-      });
+  test("revalidates a named file without fetching its bytes", async () => {
+    const runQuery = vi.fn().mockResolvedValue({
+      storageUrl: "https://storage.example/app",
+      contentType: "application/javascript; charset=utf-8",
+      etag: '"file-id"',
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
 
     const revalidated = await serveStaticAsset(
-      serveCtx(runQuery),
+      { runQuery },
       components.hosting,
       new Request("https://app.convex.site/app.js", {
-        headers: { "If-None-Match": '"storage-id"' },
+        headers: { "If-None-Match": '"file-id"' },
       }),
     );
-    const redirected = await serveStaticAsset(
-      serveCtx(runQuery),
-      components.hosting,
-      new Request("https://app.convex.site/app-HASHED1.js"),
-      { cdnBaseUrl: "https://cdn.example/blobs/" },
-    );
-
     expect(revalidated?.status).toBe(304);
-    expect(redirected?.status).toBe(302);
-    expect(redirected?.headers.get("Location")).toBe("https://cdn.example/blobs/blob-1");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test.each([
-    ["Asset not available", { contentType: "text/html; charset=utf-8" }],
+    ["Asset not available", { contentType: "text/html; charset=utf-8", etag: '"file-id"' }],
     [
       "Storage error",
       {
         storageUrl: "https://storage.example/app",
         contentType: "application/javascript; charset=utf-8",
-        etag: '"storage-id"',
+        etag: '"file-id"',
       },
     ],
   ])("returns an uncached 500 for a found file it can't read: %s", async (body, asset) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
     const response = await serveStaticAsset(
-      serveCtx(vi.fn().mockResolvedValue(asset)),
+      { runQuery: vi.fn().mockResolvedValue(asset) },
       components.hosting,
       new Request("https://app.convex.site/app.js"),
     );
@@ -471,24 +339,6 @@ describe("serveStaticAsset", () => {
     expect(response?.status).toBe(500);
     expect(response?.headers.get("Cache-Control")).toBe("no-store");
     expect(await response?.text()).toBe(body);
-  });
-
-  test("returns null for an inherited v1 file missing from app storage", async () => {
-    const runQuery = vi.fn().mockResolvedValue({
-      appStorageId: "deleted-storage-id",
-      contentType: "application/javascript; charset=utf-8",
-      etag: '"deleted-storage-id"',
-    });
-    const storageGet = vi.fn().mockResolvedValue(null);
-
-    const response = await serveStaticAsset(
-      serveCtx(runQuery, storageGet),
-      components.hosting,
-      new Request("https://app.convex.site/legacy.js"),
-    );
-
-    expect(storageGet).toHaveBeenCalledWith("deleted-storage-id");
-    expect(response).toBeNull();
   });
 
   test("lets an app action fall through to its own rendering", async () => {
@@ -521,29 +371,5 @@ describe("serveStaticAsset", () => {
     expect(await page.text()).toBe("rendered /about");
     expect(staleAsset.status).toBe(404);
     expect(render).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("exposeDeploymentQuery", () => {
-  test("strips private cleanup accounting from the public result", async () => {
-    const { getCurrentDeployment } = exposeDeploymentQuery(components.hosting);
-    const runQuery = vi.fn().mockResolvedValue({
-      _id: "deployment-info-id",
-      _creationTime: 1,
-      currentDeploymentId: "deploy-1",
-      deployedAt: 2,
-      spaFallback: true,
-      pendingBlobCleanupCount: 4,
-    });
-
-    const result = await (getCurrentDeployment as unknown as TestQuery)._handler({ runQuery }, {});
-
-    expect(result).toEqual({
-      _id: "deployment-info-id",
-      _creationTime: 1,
-      currentDeploymentId: "deploy-1",
-      deployedAt: 2,
-      spaFallback: true,
-    });
   });
 });
