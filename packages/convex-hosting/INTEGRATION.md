@@ -317,8 +317,8 @@ travels with the code you ship rather than living in a separate env var. Re-depl
 ## Switching from @convex-dev/static-hosting
 
 Follow
-[Switching from @convex-dev/static-hosting](./README.md#switching-from-convex-devstatic-hosting) in
-the README. Mount the component with `{ name: "staticHosting" }` to keep the uploaded files and
+[Switching from @convex-dev/static-hosting](https://github.com/samebase/convex-hosting#switching-from-convex-devstatic-hosting)
+in the README. Mount the component with `{ name: "staticHosting" }` to keep the uploaded files and
 URLs. An app on 0.1.x first follows upstream's
 [0.1.x to 0.2.x migration guide](https://github.com/get-convex/static-hosting/blob/main/MIGRATION.md).
 
@@ -392,7 +392,7 @@ Browser-only. Returns `https://<deployment>.convex.cloud` when the page is serve
 
 ## Additional Resources
 
-- [README](./README.md)
+- [README](https://github.com/samebase/convex-hosting#readme)
 - [Upstream 0.1.x to 0.2.x migration guide](https://github.com/get-convex/static-hosting/blob/main/MIGRATION.md)
 - [`examples/spa`](https://github.com/samebase/convex-hosting/tree/main/examples/spa): Working
   example app
