@@ -130,6 +130,18 @@ export function cacheControlFor(path: string): string {
 }
 
 /**
+ * A plain-text response sent when no uploaded file answers. Without
+ * `no-store`, Cloudflare in front of `*.convex.site` caches it for paths with a
+ * static extension, so a missing file stays a cached 404 after it is uploaded.
+ */
+export function errorResponse(status: number, body: string): Response {
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" },
+  });
+}
+
+/**
  * Decode the URL pathname before looking it up in the asset table. A malformed
  * escape sequence is a bad request, not a missing static asset.
  */

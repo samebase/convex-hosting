@@ -213,7 +213,22 @@ describe("registerStaticRoutes", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(runQuery).not.toHaveBeenCalled();
+  });
+
+  test("returns an uncached 404 for a missing file", async () => {
+    const handler = staticHandler();
+
+    const response = await invokeHandler(
+      handler,
+      vi.fn().mockResolvedValue(null),
+      new Request("https://app.convex.site/assets/missing.js"),
+    );
+
+    expect(response.status).toBe(404);
+    // A CDN must not keep the 404 after the file is uploaded.
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
   test("strips a path prefix and forwards the SPA override", async () => {
@@ -432,6 +447,30 @@ describe("serveStaticAsset", () => {
     expect(revalidated?.status).toBe(304);
     expect(redirected?.status).toBe(302);
     expect(redirected?.headers.get("Location")).toBe("https://cdn.example/blobs/blob-1");
+  });
+
+  test.each([
+    ["Asset not available", { contentType: "text/html; charset=utf-8" }],
+    [
+      "Storage error",
+      {
+        storageUrl: "https://storage.example/app",
+        contentType: "application/javascript; charset=utf-8",
+        etag: '"storage-id"',
+      },
+    ],
+  ])("returns an uncached 500 for a found file it can't read: %s", async (body, asset) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const response = await serveStaticAsset(
+      serveCtx(vi.fn().mockResolvedValue(asset)),
+      components.hosting,
+      new Request("https://app.convex.site/app.js"),
+    );
+
+    expect(response?.status).toBe(500);
+    expect(response?.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response?.text()).toBe(body);
   });
 
   test("returns null for an inherited v1 file missing from app storage", async () => {

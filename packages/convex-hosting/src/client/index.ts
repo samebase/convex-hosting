@@ -10,6 +10,7 @@ import type { ComponentApi } from "../component/_generated/component.js";
 import {
   cacheControlFor,
   decodeRequestPath,
+  errorResponse,
   etagMatches,
   getMimeType,
   getSetupHtml,
@@ -75,10 +76,7 @@ export function registerStaticRoutes(
   const serveStaticFile = httpActionGeneric(async (ctx, request) => {
     const decodedPath = decodeRequestPath(new URL(request.url).pathname);
     if (decodedPath === null) {
-      return new Response("Bad Request", {
-        status: 400,
-        headers: { "Content-Type": "text/plain" },
-      });
+      return errorResponse(400, "Bad Request");
     }
     let path = decodedPath;
 
@@ -105,10 +103,7 @@ export function registerStaticRoutes(
         },
       });
     }
-    return new Response("Not Found", {
-      status: 404,
-      headers: { "Content-Type": "text/plain" },
-    });
+    return errorResponse(404, "Not Found");
   });
 
   http.route({
@@ -262,10 +257,7 @@ async function serveAsset(
   }
 
   if (!asset.storageUrl) {
-    return new Response("Asset not available", {
-      status: 500,
-      headers: { "Content-Type": "text/plain" },
-    });
+    return errorResponse(500, "Asset not available");
   }
 
   if (asset.etag && etagMatches(request.headers.get("If-None-Match"), asset.etag)) {
@@ -277,10 +269,7 @@ async function serveAsset(
 
   const storageResponse = await fetch(asset.storageUrl);
   if (!storageResponse.ok || !storageResponse.body) {
-    return new Response("Storage error", {
-      status: 500,
-      headers: { "Content-Type": "text/plain" },
-    });
+    return errorResponse(500, "Storage error");
   }
 
   return new Response(storageResponse.body, {

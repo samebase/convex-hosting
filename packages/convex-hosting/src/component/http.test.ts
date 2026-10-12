@@ -99,6 +99,7 @@ describe("static file serving", () => {
     const t = initConvexTest();
     const res = await t.fetch("/bad%ZZpath", {});
     expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
 
   test("SPA fallback serves index.html for extension-less misses", async () => {
@@ -116,6 +117,36 @@ describe("static file serving", () => {
 
     const res = await t.fetch("/missing.js", {});
     expect(res.status).toBe(404);
+    // A CDN must not keep the 404 after the file is uploaded.
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  test("returns an uncached 500 when a file's storage is gone", async () => {
+    const t = initConvexTest();
+    const storageId = await storeAsset(t, "/app.js", "x", "application/javascript; charset=utf-8");
+    await t.run(async (ctx) => {
+      await ctx.storage.delete(storageId);
+    });
+
+    const res = await t.fetch("/app.js", {});
+    expect(res.status).toBe(500);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  test("returns an uncached 500 for an HTML file stored only as a blob", async () => {
+    const t = initConvexTest();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("staticAssets", {
+        path: "/about.html",
+        blobId: "blob-1",
+        contentType: "text/html; charset=utf-8",
+        deploymentId: "deploy-1",
+      });
+    });
+
+    const res = await t.fetch("/about.html", {});
+    expect(res.status).toBe(500);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
 
   test("shows the setup page when nothing is deployed", async () => {
