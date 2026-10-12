@@ -1,6 +1,6 @@
 {
   "name": "@samebase/convex-hosting",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "A Convex component that hosts a web app: static files, with optional server rendering.",
   "keywords": [
     "component",
@@ -23,6 +23,7 @@
   "files": [
     "dist",
     "src",
+    "vendor/files",
     "CHANGELOG.md",
     "INTEGRATION.md",
     "NOTICE"
@@ -41,6 +42,20 @@
       "default": "./dist/react/index.js"
     },
     "./test": "./src/test.ts",
+    "./files/convex.config": {
+      "types": "./vendor/files/dist/component/convex.config.d.ts",
+      "default": "./vendor/files/dist/component/convex.config.js"
+    },
+    "./files/convex.config.js": {
+      "types": "./vendor/files/dist/component/convex.config.d.ts",
+      "default": "./vendor/files/dist/component/convex.config.js"
+    },
+    "./files/_generated/component.js": {
+      "types": "./vendor/files/dist/component/_generated/component.d.ts"
+    },
+    "./files/_generated/component": {
+      "types": "./vendor/files/dist/component/_generated/component.d.ts"
+    },
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
@@ -57,13 +72,18 @@
     }
   },
   "scripts": {
-    "build": "tsc --build ./tsconfig.build.json --force",
-    "build:codegen": "convex codegen --component-dir ./src/component && pnpm run build",
+    "build": "node ./scripts/build.ts",
+    "build:files": "node ./scripts/build.ts --files-only",
+    "build:codegen": "pnpm run build:files && convex codegen --component-dir ./src/component && pnpm run build",
     "prepare": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --build ./tsconfig.build.json --watch --preserveWatchOutput"
   },
+  "dependencies": {
+    "convex-helpers": "catalog:"
+  },
   "devDependencies": {
+    "@samebase/convex-files": "workspace:*",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
@@ -76,7 +96,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "convex": "^1.37.0",
+    "convex": "^1.46.0",
     "react": "^18.3.1 || ^19.0.0"
   }
 }

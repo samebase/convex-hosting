@@ -4,7 +4,9 @@ import type { GenericSchema, SchemaDefinition } from "convex/server";
 import { componentsGeneric } from "convex/server";
 import type { ComponentApi } from "./component/_generated/component.js";
 import schema from "./component/schema.js";
+import filesSchema from "../vendor/files/dist/component/schema.js";
 const modules = import.meta.glob("./component/**/*.ts");
+const filesModules = import.meta.glob("../vendor/files/src/component/**/*.ts");
 
 /**
  * Register the component with the test convex instance.
@@ -18,6 +20,7 @@ export function register(
   name: string = "hosting",
 ) {
   t.registerComponent(name, schema, modules);
+  t.registerComponent(`${name}/files`, filesSchema, filesModules);
   return componentsGeneric()[name] as unknown as ComponentApi;
 }
 export default { register, schema, modules };

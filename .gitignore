@@ -21,3 +21,4 @@ dist/
 example/dist/
 .tanstack/
 .convex/
+/packages/convex-hosting/vendor/

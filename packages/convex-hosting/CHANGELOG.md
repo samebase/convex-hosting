@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+- New uploads use a nested files component with a required name for each blob. Hosting keeps
+  deployment publication, public routes, and retention. Existing assets remain readable in their
+  original storage and use the existing cleanup process.
+- The files component ships inside this package and deploys with the app. It needs no separate npm
+  installation or Convex deployment.
+- Requires Convex 1.46 or later. Deploy the backend with the updated package before running the
+  updated upload command. Static file responses preserve MIME types, cache headers, and ETags.
+
 ## 0.3.2
 
 - Responses that the package sends when no uploaded file answers (400, 404, and 500) now have

@@ -18,7 +18,6 @@ Changes offered back to upstream live on branches in
 - `packages/convex-files`: a private component that maps unique paths to native storage files.
 - `examples/spa`: a Vite and React app that the component serves.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
-- `examples/files`: a backend-only example that uses files inside another component.
 
 ## Commands
 

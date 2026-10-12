@@ -7,6 +7,7 @@ import {
   type QueryCtx,
 } from "./_generated/server.js";
 import type { Id } from "./_generated/dataModel.js";
+import { components } from "./_generated/api.js";
 import { hasFileExtension, isHtmlContentType } from "./serving.js";
 
 const staticAssetValidator = v.object({
@@ -14,17 +15,18 @@ const staticAssetValidator = v.object({
   _creationTime: v.number(),
   path: v.string(),
   storageId: v.optional(v.id("_storage")),
+  fileId: v.optional(v.string()),
   blobId: v.optional(v.string()),
   contentType: v.string(),
   deploymentId: v.string(),
 });
 
 const resolvedAssetValidator = v.union(
-  staticAssetValidator,
+  staticAssetValidator.extend({ storageUrl: v.optional(v.string()) }),
   staticAssetValidator.omit("_id").extend({
     _id: v.id("retiredAssets"),
-    storageId: v.id("_storage"),
     expiresAt: v.number(),
+    storageUrl: v.optional(v.string()),
   }),
 );
 
@@ -42,9 +44,8 @@ const MAX_PUBLISH_MANIFEST_READS = 3800;
 const MAX_PUBLISH_DOCUMENT_WRITES = 15500;
 const MAX_MANIFEST_SERIALIZED_BYTES = 2 * 1024 * 1024;
 const MAINTENANCE_PAGE_LIMIT = 256;
-// The live manifest plus this scan is at most 3,800 documents. Remaining
-// staged lookups use an explicit budget below Convex's 4,096 read limit.
-const STORAGE_SCAN_LIMIT = 2000;
+// Reserve reads for the nested files component's bounded orphan scan.
+const STORAGE_SCAN_LIMIT = 1600;
 const ABANDONED_UPLOAD_AGE_MS = 24 * 60 * 60 * 1000;
 const RETIRED_ASSET_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -112,6 +113,28 @@ async function deleteStorageFile(ctx: MutationCtx, storageId: Id<"_storage">) {
   return true;
 }
 
+async function deleteUnreferencedFile(ctx: MutationCtx, fileId: string) {
+  const [live, staged, retired] = await Promise.all([
+    ctx.db
+      .query("staticAssets")
+      .withIndex("by_fileId", (q) => q.eq("fileId", fileId))
+      .first(),
+    ctx.db
+      .query("stagedAssets")
+      .withIndex("by_fileId", (q) => q.eq("fileId", fileId))
+      .first(),
+    ctx.db
+      .query("retiredAssets")
+      .withIndex("by_fileId", (q) => q.eq("fileId", fileId))
+      .first(),
+  ]);
+  if (live || staged || retired) return false;
+  const file = await ctx.runQuery(components.files.lib.get, { fileId });
+  if (!file) return false;
+  await ctx.runMutation(components.files.lib.remove, { fileId });
+  return true;
+}
+
 async function adjustPendingBlobCleanupCount(ctx: MutationCtx, delta: number): Promise<number> {
   const state = await ctx.db.query("cleanupState").first();
   if (state) {
@@ -156,6 +179,15 @@ export const resolveAssetForHttp = query({
   handler: async (ctx, { path, spaFallback }) => {
     const asset = await resolveAssetDocument(ctx, path, spaFallback);
     if (!asset) return null;
+
+    if (asset.fileId) {
+      const file = await ctx.runQuery(components.files.lib.get, { fileId: asset.fileId });
+      return {
+        ...(file?.url ? { storageUrl: file.url } : {}),
+        contentType: asset.contentType,
+        etag: `"${asset.fileId}"`,
+      };
+    }
 
     const storageUrl = asset.storageId ? await ctx.storage.getUrl(asset.storageId) : null;
 
@@ -220,7 +252,10 @@ export const resolveAsset = internalQuery({
   args: { path: v.string() },
   returns: v.union(resolvedAssetValidator, v.null()),
   handler: async (ctx, { path }) => {
-    return await resolveAssetDocument(ctx, path);
+    const asset = await resolveAssetDocument(ctx, path);
+    if (!asset?.fileId) return asset;
+    const file = await ctx.runQuery(components.files.lib.get, { fileId: asset.fileId });
+    return { ...asset, ...(file?.url ? { storageUrl: file.url } : {}) };
   },
 });
 
@@ -239,7 +274,7 @@ export const generateUploadUrl = internalMutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    return await ctx.storage.generateUploadUrl();
+    return await ctx.runMutation(components.files.lib.generateUploadUrl, {});
   },
 });
 
@@ -252,7 +287,7 @@ export const generateUploadUrls = internalMutation({
     }
     const urls: string[] = [];
     for (let i = 0; i < count; i++) {
-      urls.push(await ctx.storage.generateUploadUrl());
+      urls.push(await ctx.runMutation(components.files.lib.generateUploadUrl, {}));
     }
     return urls;
   },
@@ -326,25 +361,30 @@ export const cleanupPendingStorage = internalMutation({
       .take(batchLimit);
     for (const asset of expired) {
       await ctx.db.insert("pendingStorageCleanup", {
-        storageId: asset.storageId,
+        ...(asset.storageId ? { storageId: asset.storageId } : {}),
+        ...(asset.fileId ? { fileId: asset.fileId } : {}),
       });
       await ctx.db.delete("retiredAssets", asset._id);
     }
     const entries = await ctx.db.query("pendingStorageCleanup").take(batchLimit);
     let deleted = 0;
     for (const entry of entries) {
-      const [liveReference, stagedReference] = await Promise.all([
-        ctx.db
-          .query("staticAssets")
-          .withIndex("by_storageId", (q) => q.eq("storageId", entry.storageId))
-          .first(),
-        ctx.db
-          .query("stagedAssets")
-          .withIndex("by_storageId", (q) => q.eq("storageId", entry.storageId))
-          .first(),
-      ]);
-      if (!liveReference && !stagedReference && (await deleteStorageFile(ctx, entry.storageId))) {
-        deleted++;
+      if (entry.fileId) {
+        if (await deleteUnreferencedFile(ctx, entry.fileId)) deleted++;
+      } else if (entry.storageId) {
+        const [liveReference, stagedReference] = await Promise.all([
+          ctx.db
+            .query("staticAssets")
+            .withIndex("by_storageId", (q) => q.eq("storageId", entry.storageId))
+            .first(),
+          ctx.db
+            .query("stagedAssets")
+            .withIndex("by_storageId", (q) => q.eq("storageId", entry.storageId))
+            .first(),
+        ]);
+        if (!liveReference && !stagedReference && (await deleteStorageFile(ctx, entry.storageId))) {
+          deleted++;
+        }
       }
       await ctx.db.delete("pendingStorageCleanup", entry._id);
     }
@@ -357,23 +397,26 @@ export const cleanupPendingStorage = internalMutation({
 });
 
 export const deleteUploadedFiles = internalMutation({
-  args: { storageIds: v.array(v.id("_storage")) },
+  args: {
+    storageIds: v.optional(v.array(v.id("_storage"))),
+    fileStorageIds: v.optional(v.array(v.string())),
+  },
   returns: v.object({
     deleted: v.number(),
     alreadyMissing: v.number(),
     stillReferenced: v.number(),
   }),
-  handler: async (ctx, { storageIds }) => {
+  handler: async (ctx, { storageIds, fileStorageIds }) => {
     // A publish can commit even if the CLI loses its response. Never delete a
     // file that the live manifest now references during failure cleanup.
-    const liveAssets = await ctx.db.query("staticAssets").collect();
+    const liveAssets = storageIds?.length ? await ctx.db.query("staticAssets").collect() : [];
     const referencedStorageIds = new Set(
       liveAssets.flatMap((asset) => (asset.storageId === undefined ? [] : [asset.storageId])),
     );
     let deleted = 0;
     let alreadyMissing = 0;
     let stillReferenced = 0;
-    for (const storageId of storageIds) {
+    for (const storageId of storageIds ?? []) {
       const retiredReference = await ctx.db
         .query("retiredAssets")
         .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
@@ -386,6 +429,22 @@ export const deleteUploadedFiles = internalMutation({
         deleted++;
       } else {
         alreadyMissing++;
+      }
+    }
+    for (const storageId of fileStorageIds ?? []) {
+      const result = await ctx.runMutation(components.files.lib.removeUnregistered, { storageId });
+      switch (result) {
+        case "deleted":
+          deleted++;
+          break;
+        case "registered":
+          stillReferenced++;
+          break;
+        case "missing":
+          alreadyMissing++;
+          break;
+        default:
+          result satisfies never;
       }
     }
     return { deleted, alreadyMissing, stillReferenced };
@@ -404,13 +463,20 @@ function assertAssetLocation({
   path,
   storageId,
   blobId,
+  fileId,
+  fileStorageId,
 }: {
   path: string;
   storageId?: Id<"_storage">;
   blobId?: string;
+  fileId?: string;
+  fileStorageId?: string;
 }) {
-  if ((storageId === undefined) === (blobId === undefined)) {
-    throw new Error("Asset " + path + " must have exactly one of storageId or blobId");
+  if (
+    [storageId, blobId, fileId, fileStorageId].filter((location) => location !== undefined)
+      .length !== 1
+  ) {
+    throw new Error("Asset " + path + " must have exactly one storage location");
   }
 }
 
@@ -419,6 +485,7 @@ function assertAssetManifest(
     path: string;
     storageId?: Id<"_storage">;
     blobId?: string;
+    fileId?: string;
     deploymentId: string;
   }>,
   deploymentId?: string,
@@ -451,11 +518,16 @@ function assertAssetManifest(
 }
 
 export const stageAssets = internalMutation({
-  args: { assets: v.array(v.object(recordAssetFields)) },
+  args: {
+    assets: v.array(v.object({ ...recordAssetFields, fileStorageId: v.optional(v.string()) })),
+  },
   returns: v.object({ staged: v.number() }),
   handler: async (ctx, { assets }) => {
     if (assets.length === 0) {
       throw new Error("Cannot stage an empty asset chunk");
+    }
+    if (assets.filter((asset) => asset.fileStorageId !== undefined).length > 100) {
+      throw new Error("A staged chunk can register at most 100 files");
     }
 
     // Validate locations and deployment IDs within this chunk now. Duplicate
@@ -466,13 +538,37 @@ export const stageAssets = internalMutation({
       if (asset.deploymentId !== deploymentId) {
         throw new Error("A staged asset chunk must use one deploymentId");
       }
+      if (asset.fileStorageId !== undefined) {
+        if (!asset.path.startsWith("/") || deploymentId === "" || deploymentId.includes("/")) {
+          throw new Error(
+            "A file asset needs an absolute URL path and a deployment ID without slashes",
+          );
+        }
+        const fileId = await ctx.runMutation(components.files.lib.register, {
+          path: `deployments/${deploymentId}${asset.path}`,
+          storageId: asset.fileStorageId,
+        });
+        await ctx.db.insert("stagedAssets", {
+          path: asset.path,
+          fileId,
+          contentType: asset.contentType,
+          deploymentId,
+        });
+        continue;
+      }
       // Validate component-storage IDs while the manifest is still split into
       // small CLI chunks. Doing this for the complete manifest during publish
       // would exceed Convex's index-range-read limit on large deployments.
       if (asset.storageId && (await ctx.db.system.get("_storage", asset.storageId)) === null) {
         throw new Error(`Staged storage file is missing for ${asset.path}`);
       }
-      await ctx.db.insert("stagedAssets", asset);
+      await ctx.db.insert("stagedAssets", {
+        path: asset.path,
+        ...(asset.storageId ? { storageId: asset.storageId } : {}),
+        ...(asset.blobId ? { blobId: asset.blobId } : {}),
+        contentType: asset.contentType,
+        deploymentId,
+      });
     }
     return { staged: assets.length };
   },
@@ -487,6 +583,9 @@ export const discardStagedDeployment = internalMutation({
       .withIndex("by_deploymentId", (q) => q.eq("deploymentId", deploymentId))
       .collect();
     for (const asset of assets) {
+      if (asset.fileId) {
+        await ctx.db.insert("pendingStorageCleanup", { fileId: asset.fileId });
+      }
       await ctx.db.delete("stagedAssets", asset._id);
     }
     return { discarded: assets.length };
@@ -513,6 +612,10 @@ export const cleanupAbandonedStaging = internalMutation({
     let deletedFiles = 0;
     let queuedBlobIds = 0;
     for (const asset of assets) {
+      await ctx.db.delete("stagedAssets", asset._id);
+      if (asset.fileId && (await deleteUnreferencedFile(ctx, asset.fileId))) {
+        deletedFiles++;
+      }
       if (asset.storageId) {
         const liveReference = await ctx.db
           .query("staticAssets")
@@ -526,7 +629,6 @@ export const cleanupAbandonedStaging = internalMutation({
         await ctx.db.insert("pendingBlobCleanup", { blobId: asset.blobId });
         queuedBlobIds++;
       }
-      await ctx.db.delete("stagedAssets", asset._id);
     }
 
     if (queuedBlobIds > 0) {
@@ -554,17 +656,14 @@ export const cleanupUnreferencedStorage = internalMutation({
   handler: async (ctx, { before, limit, order }) => {
     const cutoff = before ?? Date.now() - ABANDONED_UPLOAD_AGE_MS;
     const scanOrder = order ?? "asc";
-    // Read the live set once, then spend the remaining read budget checking
-    // staged references for non-live files. At the 1,800-file maximum this can
-    // inspect 2,000 storage rows while remaining below 4,096 document reads.
-    const [liveAssets, files] = await Promise.all([
-      ctx.db.query("staticAssets").collect(),
-      ctx.db.system.query("_storage").order(scanOrder).take(STORAGE_SCAN_LIMIT),
-    ]);
+    // Reserve at most 257 document reads for a child page: 129 storage rows
+    // and 128 registration checks. The legacy scan stays below 3,600 reads.
+    const files = await ctx.db.system.query("_storage").order(scanOrder).take(STORAGE_SCAN_LIMIT);
+    const liveAssets = files.length > 0 ? await ctx.db.query("staticAssets").collect() : [];
     const liveStorageIds = new Set(
       liveAssets.flatMap((asset) => (asset.storageId === undefined ? [] : [asset.storageId])),
     );
-    const stagedLookupBudget = Math.max(0, 3900 - liveAssets.length - files.length);
+    const stagedLookupBudget = Math.max(0, 3600 - liveAssets.length - files.length);
     const deleteLimit = Math.min(limit ?? MAINTENANCE_PAGE_LIMIT, MAINTENANCE_PAGE_LIMIT);
     let deleted = 0;
     let scanned = 0;
@@ -596,14 +695,36 @@ export const cleanupUnreferencedStorage = internalMutation({
         deleted++;
       }
     }
-    return {
-      scanned,
-      deleted,
-      needsAnotherPass:
-        deleted === deleteLimit ||
-        // Without deletes, another pass would inspect the same protected prefix.
-        (deleted > 0 && (stoppedForReadBudget || files.length === STORAGE_SCAN_LIMIT)),
-    };
+    let needsAnotherPass =
+      deleted === deleteLimit ||
+      // Without deletes, another legacy pass would inspect the same protected prefix.
+      (deleted > 0 && (stoppedForReadBudget || files.length === STORAGE_SCAN_LIMIT));
+    // The CLI scans legacy storage in both directions. The child uses its own
+    // persistent ID cursor and needs only one sweep.
+    if (scanOrder === "asc" && deleted < deleteLimit) {
+      const state = await ctx.db.query("cleanupState").first();
+      const result = await ctx.runMutation(components.files.lib.cleanupUnregistered, {
+        before: Math.min(cutoff, Date.now()),
+        cursor: state?.fileStorageCleanupCursor,
+        limit: Math.min(128, deleteLimit - deleted),
+      });
+      const nextCursor = result.continueCursor ?? undefined;
+      if (nextCursor !== state?.fileStorageCleanupCursor) {
+        if (state) {
+          await ctx.db.patch("cleanupState", state._id, { fileStorageCleanupCursor: nextCursor });
+        } else {
+          const info = await ctx.db.query("deploymentInfo").first();
+          await ctx.db.insert("cleanupState", {
+            pendingBlobCleanupCount: info?.pendingBlobCleanupCount ?? 0,
+            fileStorageCleanupCursor: nextCursor,
+          });
+        }
+      }
+      scanned += result.scanned;
+      deleted += result.deleted;
+      needsAnotherPass ||= !result.isDone;
+    }
+    return { scanned, deleted, needsAnotherPass };
   },
 });
 
@@ -644,6 +765,9 @@ export const recordAsset = internalMutation({
       if (existing.storageId) {
         await deleteStorageFile(ctx, existing.storageId);
       }
+      if (existing.fileId) {
+        await ctx.db.insert("pendingStorageCleanup", { fileId: existing.fileId });
+      }
       await ctx.db.delete("staticAssets", existing._id);
     }
     await ctx.db.insert("staticAssets", {
@@ -672,6 +796,9 @@ export const recordAssets = internalMutation({
       if (existing) {
         if (existing.storageId) {
           await deleteStorageFile(ctx, existing.storageId);
+        }
+        if (existing.fileId) {
+          await ctx.db.insert("pendingStorageCleanup", { fileId: existing.fileId });
         }
         if (existing.blobId) {
           blobIds.push(existing.blobId);
@@ -719,13 +846,16 @@ export const publishDeployment = internalMutation({
       .query("stagedAssets")
       .withIndex("by_deploymentId", (q) => q.eq("deploymentId", currentDeploymentId))
       .take(expectedAssetCount + 1);
-    const assets = stagedAssets.map(({ path, storageId, blobId, contentType, deploymentId }) => ({
-      path,
-      storageId,
-      blobId,
-      contentType,
-      deploymentId,
-    }));
+    const assets = stagedAssets.map(
+      ({ path, storageId, fileId, blobId, contentType, deploymentId }) => ({
+        path,
+        storageId,
+        fileId,
+        blobId,
+        contentType,
+        deploymentId,
+      }),
+    );
     if (assets.length !== expectedAssetCount) {
       throw new Error(`Staged manifest has ${assets.length} files; expected ${expectedAssetCount}`);
     }
@@ -748,12 +878,16 @@ export const publishDeployment = internalMutation({
       );
     }
     const retiredAssets = oldAssets.flatMap((asset) => {
-      if (asset.storageId !== undefined && asset.blobId === undefined) {
+      if (
+        (asset.storageId !== undefined || asset.fileId !== undefined) &&
+        asset.blobId === undefined
+      ) {
         return [
           {
             _id: asset._id,
             path: asset.path,
-            storageId: asset.storageId,
+            ...(asset.storageId ? { storageId: asset.storageId } : {}),
+            ...(asset.fileId ? { fileId: asset.fileId } : {}),
             contentType: asset.contentType,
             deploymentId: asset.deploymentId,
           },
@@ -764,14 +898,17 @@ export const publishDeployment = internalMutation({
     const retiredIds = new Set(retiredAssets.map((asset) => asset._id));
     const blobIds: string[] = [];
     const storageIds = new Set<Id<"_storage">>();
+    const fileIds = new Set<string>();
     for (const asset of oldAssets) {
       if (retiredIds.has(asset._id)) continue;
       if (asset.blobId) blobIds.push(asset.blobId);
       if (asset.storageId) storageIds.add(asset.storageId);
+      if (asset.fileId) fileIds.add(asset.fileId);
     }
     const plannedDocumentWrites =
       oldAssets.length +
       storageIds.size +
+      fileIds.size +
       blobIds.length +
       assets.length +
       stagedAssets.length +
@@ -798,6 +935,7 @@ export const publishDeployment = internalMutation({
       await ctx.db.insert("staticAssets", {
         path: asset.path,
         ...(asset.storageId ? { storageId: asset.storageId } : {}),
+        ...(asset.fileId ? { fileId: asset.fileId } : {}),
         ...(asset.blobId ? { blobId: asset.blobId } : {}),
         contentType: asset.contentType,
         deploymentId: asset.deploymentId,
@@ -813,6 +951,9 @@ export const publishDeployment = internalMutation({
     }
     for (const storageId of storageIds) {
       await ctx.db.insert("pendingStorageCleanup", { storageId });
+    }
+    for (const fileId of fileIds) {
+      await ctx.db.insert("pendingStorageCleanup", { fileId });
     }
 
     const pendingBlobCleanup = await adjustPendingBlobCleanupCount(ctx, blobIds.length);
@@ -849,6 +990,9 @@ export const commitDeployment = internalMutation({
         if (await deleteStorageFile(ctx, asset.storageId)) {
           deleted++;
         }
+      }
+      if (asset.fileId) {
+        await ctx.db.insert("pendingStorageCleanup", { fileId: asset.fileId });
       }
       if (asset.blobId) {
         blobIds.push(asset.blobId);

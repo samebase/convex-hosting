@@ -76,19 +76,6 @@ importers:
         specifier: 'catalog:'
         version: 0.3.3(@edge-runtime/vm@5.0.0)(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)
 
-  examples/files:
-    dependencies:
-      '@samebase/convex-files':
-        specifier: workspace:*
-        version: link:../../packages/convex-files
-      convex:
-        specifier: 'catalog:'
-        version: 1.46.0(react@19.2.3)
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
   examples/spa:
     dependencies:
       '@samebase/convex-hosting':
@@ -201,7 +188,14 @@ importers:
         version: 0.3.3(@edge-runtime/vm@5.0.0)(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)
 
   packages/convex-hosting:
+    dependencies:
+      convex-helpers:
+        specifier: 'catalog:'
+        version: 0.1.118(@standard-schema/spec@1.1.0)(convex@1.46.0(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(zod@4.6.5)
     devDependencies:
+      '@samebase/convex-files':
+        specifier: workspace:*
+        version: link:../convex-files
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.8

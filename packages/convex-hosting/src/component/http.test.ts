@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { internal } from "./_generated/api.js";
-import { initConvexTest } from "./setup.test.js";
+import { api, internal } from "./_generated/api.js";
+import { fileStorage, initConvexTest } from "./setup.test.js";
 import { getMountPrefix } from "./http.js";
 import {
   cacheControlFor,
@@ -32,10 +32,40 @@ async function storeAsset(
   return storageId;
 }
 
+async function publishFileAsset(
+  t: ReturnType<typeof initConvexTest>,
+  path: string,
+  body: string,
+  contentType: string,
+) {
+  const storageId = await t.action(fileStorage.store, { body });
+  await t.mutation(internal.lib.stageAssets, {
+    assets: [{ path, fileStorageId: storageId, contentType, deploymentId: "deploy-files" }],
+  });
+  await t.mutation(internal.lib.publishDeployment, {
+    currentDeploymentId: "deploy-files",
+    expectedAssetCount: 1,
+  });
+  const asset = await t.query(api.lib.resolveAssetForHttp, { path });
+  expect(asset?.storageUrl).toContain("http");
+  const storedBody = await t.action(fileStorage.read, { storageId });
+  // The fake backend has no storage HTTP server. Only that network hop is stubbed.
+  const storageFetch = vi.fn(async (url: RequestInfo | URL) => {
+    expect(url).toBe(asset?.storageUrl);
+    return new Response(storedBody);
+  });
+  vi.stubGlobal("fetch", storageFetch);
+  return storageFetch;
+}
+
 describe("static file serving", () => {
-  test("serves index.html at the root", async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("serves a published child file at the root", async () => {
     const t = initConvexTest();
-    await storeAsset(
+    const storageFetch = await publishFileAsset(
       t,
       "/index.html",
       "<!doctype html><title>hi</title>",
@@ -46,6 +76,7 @@ describe("static file serving", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
     expect(await res.text()).toContain("<title>hi</title>");
+    expect(storageFetch).toHaveBeenCalledOnce();
   });
 
   test("serves an exact asset with immutable caching for hashed files", async () => {
@@ -74,16 +105,32 @@ describe("static file serving", () => {
 
   test("returns 304 for weak or listed If-None-Match validators", async () => {
     const t = initConvexTest();
-    await storeAsset(t, "/assets/app-B71cUw87.js", "x", "application/javascript; charset=utf-8");
+    const storageFetch = await publishFileAsset(t, "/index.html", "x", "text/html; charset=utf-8");
 
-    const first = await t.fetch("/assets/app-B71cUw87.js", {});
-    const etag = first.headers.get("ETag")!;
+    const first = await t.fetch("/", {});
+    const etag = first.headers.get("ETag");
     expect(etag).toBeTruthy();
 
-    const second = await t.fetch("/assets/app-B71cUw87.js", {
+    const second = await t.fetch("/", {
       headers: { "If-None-Match": `"not-current", W/${etag}` },
     });
     expect(second.status).toBe(304);
+    expect(await second.text()).toBe("");
+    expect(storageFetch).toHaveBeenCalledOnce();
+  });
+
+  test("returns an uncached 500 when a child download fails", async () => {
+    const t = initConvexTest();
+    const storageFetch = await publishFileAsset(t, "/index.html", "x", "text/html; charset=utf-8");
+    storageFetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
+    const unavailable = await t.fetch("/", {});
+    expect(unavailable.status).toBe(500);
+    expect(unavailable.headers.get("Cache-Control")).toBe("no-store");
+
+    storageFetch.mockRejectedValueOnce(new Error("Storage connection failed"));
+    const disconnected = await t.fetch("/", {});
+    expect(disconnected.status).toBe(500);
+    expect(disconnected.headers.get("Cache-Control")).toBe("no-store");
   });
 
   test("decodes percent-encoded asset paths", async () => {

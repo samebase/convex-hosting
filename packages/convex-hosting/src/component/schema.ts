@@ -5,26 +5,30 @@ export default defineSchema({
   staticAssets: defineTable({
     path: v.string(), // URL path, e.g., "/index.html", "/assets/main-abc123.js"
     storageId: v.optional(v.id("_storage")), // Reference to Convex file storage (used for HTML + non-CDN assets)
+    fileId: v.optional(v.string()), // File owned by the nested files component
     blobId: v.optional(v.string()), // convex-fs blob ID (used for CDN-served assets)
     contentType: v.string(), // MIME type, e.g., "text/html; charset=utf-8"
     deploymentId: v.string(), // UUID for garbage collection
   })
     .index("by_path", ["path"])
     .index("by_deploymentId", ["deploymentId"])
-    .index("by_storageId", ["storageId"]),
+    .index("by_storageId", ["storageId"])
+    .index("by_fileId", ["fileId"]),
 
   // Publication moves replaced storage files here. Missing non-HTML paths with
   // an extension can still resolve to these files. A later upload removes them
   // after expiresAt, at least seven days after replacement.
   retiredAssets: defineTable({
     path: v.string(),
-    storageId: v.id("_storage"),
+    storageId: v.optional(v.id("_storage")),
+    fileId: v.optional(v.string()),
     contentType: v.string(),
     deploymentId: v.string(),
     expiresAt: v.number(),
   })
     .index("by_path", ["path"])
     .index("by_storageId", ["storageId"])
+    .index("by_fileId", ["fileId"])
     .index("by_expiresAt", ["expiresAt"]),
 
   // Uploads stage their manifest in small chunks because the Convex CLI takes
@@ -34,12 +38,14 @@ export default defineSchema({
   stagedAssets: defineTable({
     path: v.string(),
     storageId: v.optional(v.id("_storage")),
+    fileId: v.optional(v.string()),
     blobId: v.optional(v.string()),
     contentType: v.string(),
     deploymentId: v.string(),
   })
     .index("by_deploymentId", ["deploymentId"])
-    .index("by_storageId", ["storageId"]),
+    .index("by_storageId", ["storageId"])
+    .index("by_fileId", ["fileId"]),
 
   // Old ConvexFS blobs are app-owned, so the component cannot delete them.
   // Persist the IDs until the CLI's app-level delete function succeeds. This
@@ -52,13 +58,15 @@ export default defineSchema({
   // publish, then deleted in bounded follow-up mutations. This avoids both a
   // large publish transaction and races with unrelated concurrent uploads.
   pendingStorageCleanup: defineTable({
-    storageId: v.id("_storage"),
+    storageId: v.optional(v.id("_storage")),
+    fileId: v.optional(v.string()),
   }).index("by_storageId", ["storageId"]),
 
   // Cleanup may be queued before the first successful deployment exists, so
   // its count cannot live only on deploymentInfo.
   cleanupState: defineTable({
     pendingBlobCleanupCount: v.number(),
+    fileStorageCleanupCursor: v.optional(v.string()),
   }),
 
   // Singleton table to track the current deployment

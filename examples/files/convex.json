@@ -1,8 +1,0 @@
-{
-  "functions": "convex",
-  "codegen": {
-    "fileType": "ts",
-    "legacyComponentApi": false
-  },
-  "$schema": "./node_modules/convex/schemas/convex.schema.json"
-}

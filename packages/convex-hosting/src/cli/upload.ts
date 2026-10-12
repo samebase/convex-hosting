@@ -156,7 +156,7 @@ function errorMessage(error: unknown): string {
 }
 
 interface UploadedLocations {
-  storageIds: string[];
+  fileStorageIds: string[];
   blobIds: string[];
 }
 
@@ -365,16 +365,16 @@ async function cleanUpFailedUpload(
   // publish already committed and removed them first. In the latter case the
   // component cleanup below sees the live references and keeps those files.
   const canCleanComponentFiles = !publishAttempted || discardSucceeded;
-  if (uploaded.storageIds.length > 0 && canCleanComponentFiles) {
+  if (uploaded.fileStorageIds.length > 0 && canCleanComponentFiles) {
     try {
-      let deleted = 0;
+      let deleted = await cleanUpPendingStorage(componentName);
       let stillReferenced = 0;
-      const chunks = chunkBySerializedArgument(uploaded.storageIds, (storageIds) => ({
-        storageIds,
+      const chunks = chunkBySerializedArgument(uploaded.fileStorageIds, (fileStorageIds) => ({
+        fileStorageIds,
       }));
-      for (const storageIds of chunks) {
+      for (const fileStorageIds of chunks) {
         const output = await convexRunAsync(componentName, "lib:deleteUploadedFiles", {
-          storageIds,
+          fileStorageIds,
         });
         const result = JSON.parse(output) as {
           deleted?: unknown;
@@ -385,10 +385,10 @@ async function cleanUpFailedUpload(
           stillReferenced += result.stillReferenced;
         }
       }
-      console.log(`Removed ${deleted} file(s) from the failed upload.`);
+      console.log(`Removed ${deleted} unreferenced file(s) during failure cleanup.`);
       if (stillReferenced > 0) {
         console.warn(
-          `Kept ${stillReferenced} file(s) because the live deployment references them. The publish may have completed even though its response was lost.`,
+          `Kept ${stillReferenced} registered file(s). The publish may have completed even though its response was lost.`,
         );
       }
     } catch (cleanupError) {
@@ -397,9 +397,9 @@ async function cleanUpFailedUpload(
           errorMessage(cleanupError),
       );
     }
-  } else if (uploaded.storageIds.length > 0) {
+  } else if (uploaded.fileStorageIds.length > 0) {
     console.warn(
-      `${uploaded.storageIds.length} component file(s) were left in place because the CLI could not cancel or confirm the publish.`,
+      `${uploaded.fileStorageIds.length} component file(s) were left in place because the CLI could not cancel or confirm the publish.`,
     );
   }
 
@@ -452,7 +452,7 @@ async function uploadWithConcurrency(
   cdnDeleteFunction: string,
 ): Promise<PublishResult> {
   const total = files.length;
-  const uploaded: UploadedLocations = { storageIds: [], blobIds: [] };
+  const uploaded: UploadedLocations = { fileStorageIds: [], blobIds: [] };
 
   // Separate CDN and storage files
   const cdnFiles: typeof files = [];
@@ -470,7 +470,7 @@ async function uploadWithConcurrency(
   let completed = 0;
   const allAssets: Array<{
     path: string;
-    storageId?: string;
+    fileStorageId?: string;
     blobId?: string;
     contentType: string;
     deploymentId: string;
@@ -523,7 +523,7 @@ async function uploadWithConcurrency(
           throw new Error("Storage upload returned no storageId for " + file.path);
         }
         storageIds[idx] = storageId;
-        uploaded.storageIds.push(storageId);
+        uploaded.fileStorageIds.push(storageId);
         completed++;
         const isHtml = file.contentType.startsWith("text/html");
         console.log(
@@ -534,7 +534,7 @@ async function uploadWithConcurrency(
       for (let i = 0; i < storageFiles.length; i++) {
         allAssets.push({
           path: storageFiles[i].path,
-          storageId: storageIds[i],
+          fileStorageId: storageIds[i],
           contentType: storageFiles[i].contentType,
           deploymentId,
         });
@@ -571,11 +571,16 @@ async function uploadWithConcurrency(
       });
     }
 
-    // Stage the manifest in portable command-line chunks. These rows are not
-    // served, so the previous deployment stays intact until publish succeeds.
-    const manifestChunks = chunkBySerializedArgument(allAssets, (assets) => ({
-      assets,
-    }));
+    // Bound nested file registrations as well as the serialized CLI argument.
+    // Staged rows stay invisible until the complete deployment publishes.
+    const manifestChunks: (typeof allAssets)[] = [];
+    for (let offset = 0; offset < allAssets.length; offset += 100) {
+      manifestChunks.push(
+        ...chunkBySerializedArgument(allAssets.slice(offset, offset + 100), (assets) => ({
+          assets,
+        })),
+      );
+    }
     for (let index = 0; index < manifestChunks.length; index++) {
       console.log(`  Staging manifest chunk ${index + 1}/${manifestChunks.length}...`);
       await convexRunAsync(componentName, "lib:stageAssets", {

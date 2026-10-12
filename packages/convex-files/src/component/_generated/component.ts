@@ -27,7 +27,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       cleanupUnregistered: FunctionReference<
         "mutation",
         "internal",
-        { before: number; cursor?: string },
+        { before: number; cursor?: string; limit?: number },
         {
           continueCursor: string | null;
           deleted: number;
@@ -123,6 +123,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { fileId: string },
         null,
+        Name
+      >;
+      removeUnregistered: FunctionReference<
+        "mutation",
+        "internal",
+        { storageId: string },
+        "deleted" | "registered" | "missing",
         Name
       >;
       rename: FunctionReference<

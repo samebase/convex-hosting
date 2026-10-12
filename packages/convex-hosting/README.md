@@ -60,8 +60,7 @@ app.use(hosting, { httpPrefix: "/" });
 export default app;
 ```
 
-This is the fastest serving mode. The component owns `/`, while your app's `convex/http.ts` routes
-move under `/api/...`.
+The component owns `/`, while your app's `convex/http.ts` routes move under `/api/...`.
 
 If existing callbacks or auth routes must stay at the root, use
 [app-owned root routing](#keep-existing-http-routes-at-the-root). To host the site under a sub-path,
@@ -113,8 +112,8 @@ export default http;
 ```
 
 Exact routes win over the static catch-all, so existing URLs keep working. The component still owns
-uploads, deployment state, and file storage. This mode adds an internal query and storage fetch on
-an uncached request, so prefer the component-owned mode when you do not need root-level app routes.
+uploads, deployment state, and file storage. Both routing modes resolve named files through the
+files child component and fetch their native storage URLs on uncached requests.
 
 ### Using non-Vite bundlers
 
@@ -232,6 +231,15 @@ available yet. Failed uploads leave the previous deployment live. Replaced non-H
 available for at least seven days, so pages that are already open can still load their scripts. A
 later upload removes expired files. See [INTEGRATION.md](./INTEGRATION.md) for upload limits and
 lifecycle details.
+
+New uploads are stored in the `hosting/files` child component with names such as
+`deployments/<deployment-id>/assets/main.js`. Hosting keeps the public URL path, live deployment,
+and retention records. The files component owns the named blobs. It is included in the hosting
+package and deploys with your app, with no separate installation or Convex deployment.
+
+When upgrading to 0.4, update the hosting package and deploy the backend before running the updated
+upload command. Existing assets remain readable in their original storage. Each later upload uses
+the files component; old assets continue through the usual retention and cleanup process.
 
 Convex HTTP routes currently support GET but not HEAD. Configure uptime checks to make a lightweight
 GET request rather than a HEAD request.

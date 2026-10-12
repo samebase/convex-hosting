@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   fmt: {
-    ignorePatterns: ["**/_generated/**", "**/routeTree.gen.ts"],
+    ignorePatterns: ["**/_generated/**", "**/routeTree.gen.ts", "**/vendor/**"],
     printWidth: 100,
     proseWrap: "always",
   },
@@ -15,7 +15,7 @@ export default defineConfig({
       builtin: true,
       browser: true,
     },
-    ignorePatterns: ["**/dist", "**/_generated", "**/routeTree.gen.ts"],
+    ignorePatterns: ["**/dist", "**/_generated", "**/routeTree.gen.ts", "**/vendor/**"],
     jsPlugins: [
       {
         name: "@convex-dev",

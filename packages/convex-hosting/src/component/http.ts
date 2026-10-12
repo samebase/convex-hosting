@@ -78,11 +78,16 @@ const serveStaticFile = httpAction(async (ctx, request) => {
     });
   }
 
-  if (!asset.storageId) {
+  const location = asset.fileId
+    ? { kind: "file" as const, id: asset.fileId, url: asset.storageUrl }
+    : asset.storageId
+      ? { kind: "storage" as const, id: asset.storageId }
+      : null;
+  if (!location) {
     return errorResponse(500, "Asset not available");
   }
 
-  const etag = `"${asset.storageId}"`;
+  const etag = `"${location.id}"`;
   const ifNoneMatch = request.headers.get("If-None-Match");
   const cacheControl = cacheControlFor(path);
 
@@ -93,7 +98,25 @@ const serveStaticFile = httpAction(async (ctx, request) => {
     });
   }
 
-  const blob = await ctx.storage.get(asset.storageId);
+  const headers = {
+    "Content-Type": contentType,
+    "Cache-Control": cacheControl,
+    ETag: etag,
+    "X-Content-Type-Options": "nosniff",
+  };
+  if (location.kind === "file") {
+    if (!location.url) return errorResponse(500, "Storage error");
+    let response;
+    try {
+      response = await fetch(location.url);
+    } catch {
+      return errorResponse(500, "Storage error");
+    }
+    if (!response.ok) return errorResponse(500, "Storage error");
+    return new Response(response.body, { status: 200, headers });
+  }
+
+  const blob = await ctx.storage.get(location.id);
   if (!blob) {
     // A same-name v1 to v2 migration can temporarily inherit an index row that
     // points at app-owned storage. Treat that interval like an empty component
@@ -113,12 +136,7 @@ const serveStaticFile = httpAction(async (ctx, request) => {
 
   return new Response(blob, {
     status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": cacheControl,
-      ETag: etag,
-      "X-Content-Type-Options": "nosniff",
-    },
+    headers,
   });
 });
 

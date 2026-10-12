@@ -27,24 +27,24 @@ component.use(files);
 export default component;
 ```
 
-An app can mount it with `defineApp()` and `app.use(files)` instead. Run `convex dev` to generate
-the component references. The [nested example](../../examples/files/README.md) has a complete upload
-and file lifecycle check.
+An app can mount it with `defineApp()` and `app.use(files)` instead. Run `convex dev` in the
+consuming app to generate the component references.
 
 ## API
 
 Call these functions through `components.files.lib` from the parent app or component:
 
-| Function                                   | Purpose                                                        |
-| ------------------------------------------ | -------------------------------------------------------------- |
-| `generateUploadUrl({})`                    | Create a native Convex upload URL in this component's storage. |
-| `register({ path, storageId })`            | Give an uploaded blob a path and return a stable file ID.      |
-| `get({ fileId })`                          | Read the file record, download URL, and native metadata.       |
-| `getByPath({ path })`                      | Read the same information by path.                             |
-| `list({ prefix, paginationOpts })`         | Read a page of file records in path order.                     |
-| `rename({ fileId, path })`                 | Change the path while preserving the file ID and blob.         |
-| `remove({ fileId })`                       | Delete the record and its blob. Repeated calls are safe.       |
-| `cleanupUnregistered({ before, cursor? })` | Delete a bounded page of old, unnamed uploads.                 |
+| Function                                           | Purpose                                                        |
+| -------------------------------------------------- | -------------------------------------------------------------- |
+| `generateUploadUrl({})`                            | Create a native Convex upload URL in this component's storage. |
+| `register({ path, storageId })`                    | Give an uploaded blob a path and return a stable file ID.      |
+| `get({ fileId })`                                  | Read the file record, download URL, and native metadata.       |
+| `getByPath({ path })`                              | Read the same information by path.                             |
+| `list({ prefix, paginationOpts })`                 | Read a page of file records in path order.                     |
+| `rename({ fileId, path })`                         | Change the path while preserving the file ID and blob.         |
+| `remove({ fileId })`                               | Delete the record and its blob. Repeated calls are safe.       |
+| `removeUnregistered({ storageId })`                | Cancel an upload, preserving any registered file.              |
+| `cleanupUnregistered({ before, cursor?, limit? })` | Delete a bounded page of old, unnamed uploads.                 |
 
 Upload bytes with an HTTP `POST` to the returned upload URL. Pass its returned `storageId` to
 `register`. Registration requires a blob in this component's storage. A blob from the parent app or
@@ -71,8 +71,13 @@ anyone who has it. This package adds names and file ownership, not an access-con
 ## Versioning and deployment
 
 This package is private and uses version `0.0.0` during development. It has no public release
-contract. Its source exports are for workspace use. The published hosting package does not depend on
-it yet.
+contract. Its source exports are for workspace use.
+
+Hosting mounts it as `hosting/files` and stores new uploads under
+`deployments/<deployment-id>/<asset-path>`. The existing SPA and SSR examples exercise that use.
+Hosting's build copies this component into its published package. Files is a build dependency, so
+consumers install hosting without needing a separately published files package. Changes to the
+included files code reach consumers through hosting's version.
 
 The component deploys with the app that uses it. It needs no separate Convex project or deployment.
 Publishing an npm package does not change running deployments. An upgrade requires a dependency
@@ -80,6 +85,5 @@ update and an app deployment.
 
 If published, its first release will be `0.1.0`, with a version and changelog independent of
 hosting. The packages can stay in this repository. Before publication, add built package exports and
-package-content checks, and include files in the release workflow. Publish and approve that version
-before releasing a public hosting package that depends on it. A `workspace:*` dependency does not
-bundle the private package into hosting.
+package-content checks, and include files in the release workflow. Hosting can then replace its
+included copy with a dependency on the published version.

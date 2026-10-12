@@ -239,6 +239,24 @@ describe("native file registry", () => {
     });
   });
 
+  test("canceling an upload deletes only an unregistered blob", async () => {
+    const t = convexTest(schema, modules);
+    const { unnamed, named } = await t.run(async (ctx) => ({
+      unnamed: await ctx.storage.store(new Blob(["incomplete"])),
+      named: await ctx.storage.store(new Blob(["registered"])),
+    }));
+    const fileId = await t.mutation(api.lib.register, { path: "kept.txt", storageId: named });
+
+    expect(await t.mutation(api.lib.removeUnregistered, { storageId: unnamed })).toBe("deleted");
+    expect(await t.mutation(api.lib.removeUnregistered, { storageId: unnamed })).toBe("missing");
+    expect(await t.mutation(api.lib.removeUnregistered, { storageId: named })).toBe("registered");
+    expect(await t.query(api.lib.get, { fileId })).toMatchObject({ storageId: named });
+    await t.run(async (ctx) => {
+      expect(await ctx.storage.get(unnamed)).toBeNull();
+      expect(await ctx.storage.get(named)).not.toBeNull();
+    });
+  });
+
   test("bounded cleanup advances past a full registered page to reach unregistered blobs", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));

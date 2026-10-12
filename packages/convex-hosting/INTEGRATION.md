@@ -45,8 +45,8 @@ app.use(hosting, { httpPrefix: "/" });
 export default app;
 ```
 
-This is the fastest serving mode because the component reads its storage directly. It is appropriate
-for new apps and apps whose HTTP routes can live under `/api`.
+This mode is appropriate for new apps and apps whose HTTP routes can live under `/api`. Hosting
+resolves new uploads through its files child component and fetches their native storage URLs.
 
 If existing webhook, auth, or API routes must stay at the root, use
 [App-owned root routing](#app-owned-root-routing). To host the static site under a sub-path, see
@@ -90,8 +90,8 @@ export default http;
 Exact routes win over the static catch-all. Uploads, deployment metadata, SPA configuration, and
 file storage remain inside the component, so you can remove the old `exposeUploadApi` wrappers.
 During a same-name 0.1.x→0.2.x migration this mode also keeps serving your existing v1 files from
-app storage until the first 0.2.x upload, so the live site never drops to the setup page. This
-compatibility mode adds an internal query and storage fetch on uncached requests. Use the
+app storage until the first 0.2.x upload, so the live site never drops to the setup page. This mode
+resolves named files and fetches storage URLs like the component-owned handler. Use the
 component-owned handler when preserving root-level app routes is not necessary.
 
 ### `package.json`

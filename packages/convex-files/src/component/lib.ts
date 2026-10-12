@@ -158,10 +158,27 @@ export const remove = mutation({
 
 const CLEANUP_PAGE_SIZE = 128;
 
+/** Cancels an upload that has not been registered, without deleting named files. */
+export const removeUnregistered = mutation({
+  args: { storageId: v.id("_storage") },
+  returns: v.union(v.literal("deleted"), v.literal("registered"), v.literal("missing")),
+  handler: async (ctx, { storageId }) => {
+    const registered = await ctx.db
+      .query("files")
+      .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
+      .unique();
+    if (registered) return "registered";
+    if (!(await ctx.db.system.get("_storage", storageId))) return "missing";
+    await ctx.storage.delete(storageId);
+    return "deleted";
+  },
+});
+
 export const cleanupUnregistered = mutation({
   args: {
     before: v.number(),
     cursor: v.optional(v.id("_storage")),
+    limit: v.optional(v.number()),
   },
   returns: v.object({
     scanned: v.number(),
@@ -169,16 +186,19 @@ export const cleanupUnregistered = mutation({
     isDone: v.boolean(),
     continueCursor: v.union(v.id("_storage"), v.null()),
   }),
-  handler: async (ctx, { before, cursor }) => {
+  handler: async (ctx, { before, cursor, limit = CLEANUP_PAGE_SIZE }) => {
     if (!Number.isFinite(before) || before > Date.now()) {
       throw new Error("Cleanup cutoff must be a finite timestamp at or before now.");
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > CLEANUP_PAGE_SIZE) {
+      throw new Error(`Cleanup page size must be an integer from 1 to ${CLEANUP_PAGE_SIZE}.`);
     }
     // An ID cursor remains usable when this page deletes its last scanned file.
     const candidates = await ctx.db.system
       .query("_storage")
       .withIndex("by_id", (q) => (cursor === undefined ? q : q.gt("_id", cursor)))
-      .take(CLEANUP_PAGE_SIZE + 1);
-    const page = candidates.slice(0, CLEANUP_PAGE_SIZE);
+      .take(limit + 1);
+    const page = candidates.slice(0, limit);
     let deleted = 0;
     for (const storageFile of page) {
       if (storageFile._creationTime >= before) continue;
@@ -190,7 +210,7 @@ export const cleanupUnregistered = mutation({
       await ctx.storage.delete(storageFile._id);
       deleted++;
     }
-    const isDone = candidates.length <= CLEANUP_PAGE_SIZE;
+    const isDone = candidates.length <= limit;
     return {
       scanned: page.length,
       deleted,
