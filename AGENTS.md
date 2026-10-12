@@ -8,6 +8,8 @@ Changes offered back to upstream live on branches in
 
 ## Layout
 
+- `README.md`: the documentation of `@samebase/convex-hosting`. `pnpm pack` copies it into the
+  package (`prepack`); do not add `packages/convex-hosting/README.md` to git.
 - `packages/convex-hosting`: the published component and CLI.
   - `src/component`: code that runs inside the component on Convex.
   - `src/client`: the API that apps import (`registerStaticRoutes`, `serveStaticAsset`, and more).

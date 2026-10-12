@@ -18,6 +18,12 @@ pnpm run dev
 The SSR example has its own schema, so it needs a separate Convex project. See
 [examples/tanstack-ssr/README.md](./examples/tanstack-ssr/README.md).
 
+## Documentation
+
+The root `README.md` is the documentation of `@samebase/convex-hosting`. The package's `prepack`
+script copies it into `packages/convex-hosting`, so npm shows the same text. Edit only the root
+README, and use absolute GitHub links in it: relative links break on npm.
+
 ## Releasing
 
 1. In a PR, bump `version` in the package's `package.json` and add a `CHANGELOG.md` entry for

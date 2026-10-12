@@ -20,3 +20,6 @@ next-example/
 dist/
 example/dist/
 .tanstack/
+
+# Copied from the root README by the package's prepack script.
+packages/convex-hosting/README.md

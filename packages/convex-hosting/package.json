@@ -60,6 +60,7 @@
     "build": "tsc --build ./tsconfig.build.json --force",
     "build:codegen": "convex codegen --component-dir ./src/component && pnpm run build",
     "prepare": "pnpm run build",
+    "prepack": "node -e \"require('node:fs').copyFileSync('../../README.md', 'README.md')\"",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --build ./tsconfig.build.json --watch --preserveWatchOutput"
   },
