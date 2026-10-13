@@ -5,7 +5,14 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { AssetConfigSchema } from "../workers-shared/utils/types.js";
-import { deploymentFlags, hasComponent, runComponent, type Cli, type Target } from "./convex.js";
+import {
+  deploymentFlags,
+  hasComponent,
+  readConvexEnv,
+  runComponent,
+  type Cli,
+  type Target,
+} from "./convex.js";
 import { readDist, type HandlingOptions } from "./files.js";
 
 const USAGE = `Usage:
@@ -17,7 +24,7 @@ Options:
                                 drop-trailing-slash, or none
   --not-found-handling <value>  none (default), single-page-application, or 404-page
   --component <name>            the component instance (default: hosting)
-  --preview-name <name>         the preview deployment`;
+  --preview-name <name>         the preview deployment (deploy only)`;
 
 /**
  * The CLI's state folder at the project root, like Wrangler's `.wrangler/`. It holds its own
@@ -136,11 +143,9 @@ function quote(arg: string): string {
 async function deploy(cli: Cli, options: Options, build: string) {
   const target: Target = {
     component: options.component,
-    flags: deploymentFlags(cli, options.previewName, true),
+    flags: deploymentFlags(cli, options.previewName),
   };
   const versionId = randomUUID();
-  // A build that typechecks `convex/` on a new project needs the module that `http.ts` imports.
-  writeVersionFile(cli, versionId);
   const marker = join(cli.cwd, FIRST_INSTALL_MARKER);
   rmSync(marker, { force: true });
 
@@ -192,19 +197,31 @@ async function deploy(cli: Cli, options: Options, build: string) {
 }
 
 /**
- * - `user`: a developer uploads to the development deployment (or a preview). The calls go where
- *   `npx convex run` goes by default, and the upload ends the deploy with `finishDeploy`. On a new
- *   clone, before the component exists, it writes the version file for `npx convex dev` to push
- *   and waits for the component.
+ * - `user`: a developer uploads to the development deployment that `npx convex dev` pushes. The
+ *   calls go where `npx convex run` goes by default, and the upload ends the deploy with
+ *   `finishDeploy`. On a new clone, before the component exists, it writes the version file for
+ *   `npx convex dev` to push and waits for the component.
  * - `deploy`: the upload inside `npx convex deploy --cmd`. Its calls go where the deploy goes.
  * - `afterPush`: the upload of a first install, after the push installed the component.
  */
 type UploadMode = "user" | "deploy" | "afterPush";
 
 async function upload(cli: Cli, options: Options, versionId: string, mode: UploadMode) {
+  // A user-run upload calls `finishDeploy` at once, which deletes the version that the deployment's
+  // code still names. `npx convex dev` then pushes the new id to the development deployment, but
+  // nobody pushes a preview or a deployment of a deploy key after a standalone upload.
+  if (
+    mode === "user" &&
+    (options.previewName !== undefined || readConvexEnv(cli).CONVEX_DEPLOY_KEY)
+  ) {
+    throw new Error(
+      "convex-hosting upload targets the development deployment that npx convex dev pushes. For a " +
+        "preview or a CONVEX_DEPLOY_KEY, use convex-hosting deploy.",
+    );
+  }
   const target: Target = {
     component: options.component,
-    flags: deploymentFlags(cli, options.previewName, mode !== "user"),
+    flags: mode === "user" ? [] : deploymentFlags(cli, options.previewName),
   };
   const dist = resolve(cli.cwd, options.dist);
   const { manifest, files } = await readDist(dist, options, cli.log);

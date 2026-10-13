@@ -122,7 +122,7 @@ Two cases are transient:
 | `--html-handling <value>`      | `auto-trailing-slash` (default), `force-trailing-slash`, `drop-trailing-slash`, `none` |
 | `--not-found-handling <value>` | `none` (default), `single-page-application`, `404-page`                                |
 | `--component <name>`           | The component instance, `hosting` by default                                           |
-| `--preview-name <name>`        | The preview deployment                                                                 |
+| `--preview-name <name>`        | The preview deployment, for `deploy` only                                              |
 
 The two handling options work as
 [Cloudflare documents them](https://developers.cloudflare.com/workers/static-assets/routing/).

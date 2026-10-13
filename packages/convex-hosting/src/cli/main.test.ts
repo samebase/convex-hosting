@@ -245,6 +245,21 @@ describe("upload", () => {
     expect(existsSync(join(cwd, VERSION_FILE))).toBe(false);
   });
 
+  test("refuses --preview-name and a deploy key: those deployments get deploy", async () => {
+    const refusal = "convex-hosting upload targets the development deployment";
+    const preview = fake(app(site));
+    expect(await main(["upload", "--dist", "dist", "--preview-name", "pr-7"], preview.cli)).toBe(1);
+    expect(preview.logs[preview.logs.length - 1]).toContain(refusal);
+    expect(preview.runs).toEqual([]);
+
+    const keyed = fake(
+      app({ ...site, ".env.local": "CONVEX_DEPLOY_KEY=prod:happy-cat-123|secret\n" }),
+    );
+    expect(await main(["upload", "--dist", "dist"], keyed.cli)).toBe(1);
+    expect(keyed.logs[keyed.logs.length - 1]).toContain(refusal);
+    expect(keyed.runs).toEqual([]);
+  });
+
   test("refuses a config above 900 KiB and names the file", async () => {
     const long = "x".repeat(450);
     const redirects = Array.from({ length: 2000 }, (_, i) => `/${i}${long} /${i}${long}-to 301`);
@@ -259,13 +274,7 @@ describe("upload", () => {
 describe("deploy", () => {
   test("runs the build and the upload inside npx convex deploy, then finishDeploy", async () => {
     const cwd = app(site);
-    let beforeBuild: string | undefined;
-    const { cli, pushes, runs, callArgs } = fake(cwd, {
-      push: async (cli, args) => {
-        beforeBuild = writtenVersionId(cwd);
-        return await innerUpload(cli, args);
-      },
-    });
+    const { cli, pushes, runs, callArgs } = fake(cwd, { push: innerUpload });
     expect(await main(["deploy", "--build", "vite build", "--dist", "dist"], cli)).toBe(0);
 
     expect(pushes).toHaveLength(1);
@@ -277,8 +286,6 @@ describe("deploy", () => {
     // Without a deploy key, `npx convex deploy` goes to production, so every run gets --prod.
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
     const versionId = writtenVersionId(cwd);
-    // The version file has the deploy's id before the build runs.
-    expect(beforeBuild).toBe(versionId);
     expect(callArgs("lib:startVersion")[0].versionId).toBe(versionId);
     expect(callArgs("lib:finishDeploy")).toEqual([{ versionId, pushed: true }]);
   });
@@ -386,8 +393,8 @@ describe("deploy", () => {
 });
 
 describe("deploymentFlags", () => {
-  const flags = (env: Record<string, string>, previewName?: string, implicitProd = true) =>
-    deploymentFlags(fake(app({}), { env }).cli, previewName, implicitProd);
+  const flags = (env: Record<string, string>, previewName?: string) =>
+    deploymentFlags(fake(app({}), { env }).cli, previewName);
 
   test("a deployment's own deploy key selects it", () => {
     expect(flags({ CONVEX_DEPLOY_KEY: "prod:happy-cat-123|secret" })).toEqual([]);
@@ -403,15 +410,14 @@ describe("deploymentFlags", () => {
 
   test("without a deploy key, a deploy's calls go to production", () => {
     expect(flags({})).toEqual(["--prod"]);
-    expect(flags({}, undefined, false)).toEqual([]);
     expect(flags({}, "pr-7")).toEqual(["--preview-name", "pr-7"]);
     expect(flags({ CONVEX_DEPLOY_KEY: "project:team:project|secret" })).toEqual(["--prod"]);
   });
 
   test("reads the deploy key from .env.local, and the environment wins", () => {
     const cwd = app({ ".env.local": "CONVEX_DEPLOY_KEY=preview:team:project|secret\n" });
-    expect(() => deploymentFlags(fake(cwd).cli, undefined, true)).toThrow("pass --preview-name");
+    expect(() => deploymentFlags(fake(cwd).cli, undefined)).toThrow("pass --preview-name");
     const env = { CONVEX_DEPLOY_KEY: "prod:happy-cat-123|secret" };
-    expect(deploymentFlags(fake(cwd, { env }).cli, undefined, true)).toEqual([]);
+    expect(deploymentFlags(fake(cwd, { env }).cli, undefined)).toEqual([]);
   });
 });

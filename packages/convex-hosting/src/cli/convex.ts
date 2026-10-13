@@ -55,7 +55,7 @@ export const nodeCli: Cli = {
  * The variables that the Convex CLI reads to select a deployment, in its order: the process
  * environment first, then `.env.local`, then `.env`.
  */
-function readConvexEnv(cli: Cli): Record<string, string | undefined> {
+export function readConvexEnv(cli: Cli): Record<string, string | undefined> {
   const fromFile = (name: string) => {
     const path = join(cli.cwd, name);
     return existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};
@@ -71,13 +71,9 @@ function readConvexEnv(cli: Cli): Record<string, string | undefined> {
  * (`preview:<team>:<project>`) needs `--preview-name`: `npx convex deploy` could otherwise pick the
  * Git branch, which `npx convex run` does not. Without a deploy key (a login, or a `project:` key),
  * `npx convex deploy` goes to production and `npx convex run` to development, so a deploy's calls
- * get `--prod` (`implicitProd`).
+ * get `--prod`.
  */
-export function deploymentFlags(
-  cli: Cli,
-  previewName: string | undefined,
-  implicitProd: boolean,
-): string[] {
+export function deploymentFlags(cli: Cli, previewName: string | undefined): string[] {
   const deployKey = readConvexEnv(cli).CONVEX_DEPLOY_KEY;
   if (deployKey) {
     const prefix = deployKey.split("|")[0].split(":");
@@ -101,7 +97,7 @@ export function deploymentFlags(
     }
   }
   if (previewName !== undefined) return ["--preview-name", previewName];
-  return implicitProd ? ["--prod"] : [];
+  return ["--prod"];
 }
 
 /** The component instance and the deployment that every call of one command reaches. */
