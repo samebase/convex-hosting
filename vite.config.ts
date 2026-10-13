@@ -7,6 +7,8 @@ export default defineConfig({
     ignorePatterns: [
       "**/_generated/**",
       "**/routeTree.gen.ts",
+      // Written by convex-hosting on every upload.
+      "**/*.generated.ts",
       "packages/convex-hosting/src/workers-shared/**",
     ],
     printWidth: 100,
@@ -25,6 +27,8 @@ export default defineConfig({
       "**/dist",
       "**/_generated",
       "**/routeTree.gen.ts",
+      // Written by convex-hosting on every upload.
+      "**/*.generated.ts",
       "packages/convex-hosting/src/workers-shared/**",
     ],
     jsPlugins: [

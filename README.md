@@ -54,7 +54,8 @@ export default http;
 
 `convex-hosting` writes `convex/hostingVersion.generated.ts` on every upload and deploy. Commit it.
 The committed value acts only when `npx convex dev` pushes a checkout that nobody has uploaded from:
-the site then answers 404 naming that version until the next upload.
+the site then answers 404 naming that version until the next upload. Every upload rewrites the file,
+so let your formatter and linter ignore `**/*.generated.ts`.
 
 ## Deploy
 

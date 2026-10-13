@@ -1,2 +1,2 @@
-// Written by convex-hosting on every upload. Commit it; the committed value does not matter.
-export const versionId = "2ceb3a16-09e7-410e-984e-c6af504888e9";
+// Written by convex-hosting. Commit it; its value acts only when a push bundles it.
+export const versionId = "18c2ed5e-569d-40ca-b9fb-d9f38d2c7a11";

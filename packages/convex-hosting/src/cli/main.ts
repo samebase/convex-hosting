@@ -284,7 +284,7 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
 function writeVersionFile(cli: Cli, versionId: string) {
   writeFileSync(
     join(cli.cwd, VERSION_FILE),
-    "// Written by convex-hosting on every upload. Commit it; the committed value does not matter.\n" +
+    "// Written by convex-hosting. Commit it; its value acts only when a push bundles it.\n" +
       `export const versionId = ${JSON.stringify(versionId)};\n`,
   );
 }

@@ -178,7 +178,9 @@ describe("upload", () => {
     const { cli, calls, logs } = fake(cwd, { installed: () => false });
     expect(await main(["upload", "--dist", "dist"], cli)).toBe(1);
     expect(calls()).toEqual(["probe"]);
-    expect(versionFile(cwd)).toMatch(/^\/\/ .*does not matter\.\nexport const versionId = "/);
+    expect(versionFile(cwd)).toMatch(
+      /^\/\/ Written by convex-hosting\..*\nexport const versionId = "[^"]+";\n$/,
+    );
     expect(logs[logs.length - 1]).toContain("Run convex-hosting upload again");
   });
 
