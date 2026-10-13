@@ -89,6 +89,14 @@ function fake(
   return { cli, runs, pushes, stored, logs, calls, callArgs };
 }
 
+/** Waits for `promise` while the fake timers advance. */
+async function withTimers<T>(promise: Promise<T>): Promise<T> {
+  let settled = false;
+  void promise.then(() => (settled = true));
+  while (!settled) await vi.advanceTimersByTimeAsync(1_000);
+  return await promise;
+}
+
 /** Runs the upload that `deploy` put in `--cmd`, the way the shell would. */
 function innerUpload(cli: Cli, args: string[]) {
   const command = args[args.indexOf("--cmd") + 1];
@@ -173,15 +181,38 @@ describe("upload", () => {
     expect(callArgs("lib:finishDeploy")).toEqual([{ versionId, pushed: true }]);
   });
 
-  test("on a new project, writes the version file and asks to upload again after the push", async () => {
+  test("on a new clone, writes the version file, waits for the push of the component, then uploads", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
+    const cwd = app(site);
+    // The version id in the version file at each probe.
+    const probes: (string | undefined)[] = [];
+    const { cli, calls, callArgs, logs } = fake(cwd, {
+      installed: () => {
+        probes.push(existsSync(join(cwd, VERSION_FILE)) ? writtenVersionId(cwd) : undefined);
+        return probes.length > 3;
+      },
+    });
+    expect(await withTimers(main(["upload", "--dist", "dist"], cli))).toBe(0);
+
+    expect(logs).toContainEqual(expect.stringContaining("npx convex dev now pushes the component"));
+    expect(versionFile(cwd)).toMatch(/^export const versionId = "[^"]+";\n$/);
+    expect(readFileSync(join(cwd, ".convex-hosting", ".gitignore"), "utf8")).toBe("*\n");
+    const versionId = writtenVersionId(cwd);
+    expect(probes).toEqual([undefined, versionId, versionId, versionId]);
+    expect(calls()[4]).toBe("lib:generateUploadUrls");
+    expect(callArgs("lib:finishDeploy")).toEqual([{ versionId, pushed: true }]);
+  });
+
+  test("on a new clone, stops when the component is not pushed in 2 minutes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     const cwd = app(site);
     const { cli, calls, logs } = fake(cwd, { installed: () => false });
-    expect(await main(["upload", "--dist", "dist"], cli)).toBe(1);
-    expect(calls()).toEqual(["probe"]);
-    expect(versionFile(cwd)).toMatch(
-      /^\/\/ Written by convex-hosting\..*\nexport const versionId = "[^"]+";\n$/,
+    expect(await withTimers(main(["upload", "--dist", "dist"], cli))).toBe(1);
+    // The first probe, then one every 3 seconds for 2 minutes.
+    expect(calls()).toEqual(Array.from({ length: 41 }, () => "probe"));
+    expect(logs[logs.length - 1]).toBe(
+      'The component "hosting" is not installed: npx convex dev did not push it in 2 minutes.',
     );
-    expect(logs[logs.length - 1]).toContain("Run convex-hosting upload again");
   });
 
   test("any other failure of the probe is an error", async () => {
@@ -229,7 +260,7 @@ describe("deploy", () => {
       installed: () => pushed,
       push: async (cli, args) => {
         const exitCode = await innerUpload(cli, args);
-        expect(existsSync(join(cwd, "dist", ".convex-hosting-first-install"))).toBe(true);
+        expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(true);
         expect(existsSync(join(cwd, VERSION_FILE))).toBe(true);
         pushed = true;
         return exitCode;
@@ -239,7 +270,7 @@ describe("deploy", () => {
 
     expect(calls()[0]).toBe("probe");
     expect(calls().slice(1, 3)).toEqual(["probe", "lib:generateUploadUrls"]);
-    expect(existsSync(join(cwd, "dist", ".convex-hosting-first-install"))).toBe(false);
+    expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
     expect(callArgs("lib:finishDeploy")).toEqual([
       { versionId: writtenVersionId(cwd), pushed: true },
     ]);

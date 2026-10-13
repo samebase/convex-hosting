@@ -34,7 +34,7 @@ import { httpRouter } from "convex/server";
 import { serveAsset } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
 import { httpAction } from "./_generated/server.js";
-import { versionId } from "./hostingVersion.generated.js";
+import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
@@ -52,10 +52,19 @@ http.route({
 export default http;
 ```
 
-`convex-hosting` writes `convex/hostingVersion.generated.ts` on every upload and deploy. Commit it.
-The committed value acts only when `npx convex dev` pushes a checkout that nobody has uploaded from:
-the site then answers 404 naming that version until the next upload. Every upload rewrites the file,
-so let your formatter and linter ignore `**/*.generated.ts`.
+`convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
+Wrangler's `.wrangler/`. Every upload and deploy writes the version to `.convex-hosting/version.js`.
+The folder has its own `.gitignore`, so git ignores it. One committed declaration,
+`convex/convex-hosting.d.ts`, types the module before the first upload:
+
+```ts
+declare module "*/.convex-hosting/version.js" {
+  export const versionId: string;
+}
+```
+
+A `tsconfig.json` that typechecks `convex/http.ts` through `convex/_generated/api`, such as the
+frontend's, also needs this file in its `include`.
 
 ## Deploy
 
@@ -87,11 +96,12 @@ With `npx convex dev` running, build and upload:
 vite build && npx convex-hosting upload --dist dist --not-found-handling single-page-application
 ```
 
-`upload` writes `convex/hostingVersion.generated.ts`, and `npx convex dev` pushes it within seconds.
-Until then, the development site answers 404.
+`upload` writes `.convex-hosting/version.js`, and `npx convex dev` pushes it within seconds. Until
+then, the development site answers 404.
 
-On a new project, before `npx convex dev` has pushed the component, `upload` writes the version file
-and stops. `npx convex dev` then pushes the component; run `upload` again.
+On a fresh clone, `npx convex dev` cannot bundle `convex/http.ts` until the first `upload` writes
+the version file, and `upload` waits up to 2 minutes for that push, which installs the component,
+before it uploads.
 
 Two cases are transient:
 
@@ -153,7 +163,7 @@ Cloudflare. To reload open tabs on a new version, add a query that returns the b
 // convex/siteVersion.ts
 import { v } from "convex/values";
 import { query } from "./_generated/server.js";
-import { versionId } from "./hostingVersion.generated.js";
+import { versionId } from "../.convex-hosting/version.js";
 
 export const get = query({ args: {}, returns: v.string(), handler: () => versionId });
 ```

@@ -2,7 +2,7 @@ import { httpRouter } from "convex/server";
 import { serveAsset } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
 import { httpAction } from "./_generated/server.js";
-import { versionId } from "./hostingVersion.generated.js";
+import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -19,14 +19,27 @@ Options:
   --component <name>            the component instance (default: hosting)
   --preview-name <name>         the preview deployment`;
 
-/** The file that `upload` writes and the app's `convex/http.ts` imports. Apps commit it. */
-export const VERSION_FILE = join("convex", "hostingVersion.generated.ts");
+/**
+ * The CLI's state folder at the project root, like Wrangler's `.wrangler/`. It holds its own
+ * `.gitignore`, so git ignores it without a line in the app's ignore file.
+ */
+const STATE_DIR = ".convex-hosting";
+
+/** The file that `upload` writes and the app's `convex/http.ts` imports. */
+export const VERSION_FILE = join(STATE_DIR, "version.js");
 
 /**
- * The inner `upload` of a first install writes this file in `<dist>` when the component is not
- * installed yet. `deploy` then uploads after the push.
+ * The inner `upload` of a first install writes this file when the component is not installed yet.
+ * `deploy` then uploads after the push.
  */
-const FIRST_INSTALL_MARKER = ".convex-hosting-first-install";
+const FIRST_INSTALL_MARKER = join(STATE_DIR, "first-install");
+
+/**
+ * On a new clone, a user-run `upload` retries the probe every 3 seconds while `npx convex dev`
+ * pushes the component, for up to 2 minutes.
+ */
+const PROBE_RETRY_MS = 3_000;
+const PROBE_TIMEOUT_MS = 2 * 60 * 1000;
 
 /** `deploy` refreshes the lock this often while `npx convex deploy` runs. */
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -126,7 +139,7 @@ async function deploy(cli: Cli, options: Options, build: string) {
     flags: deploymentFlags(cli, options.previewName, true),
   };
   const versionId = randomUUID();
-  const marker = join(resolve(cli.cwd, options.dist), FIRST_INSTALL_MARKER);
+  const marker = join(cli.cwd, FIRST_INSTALL_MARKER);
   rmSync(marker, { force: true });
 
   const previewFlags =
@@ -195,8 +208,8 @@ async function deploy(cli: Cli, options: Options, build: string) {
 /**
  * - `user`: a developer uploads to the development deployment (or a preview). The calls go where
  *   `npx convex run` goes by default, and the upload ends the deploy with `finishDeploy`. On a new
- *   project, before the component exists, it writes the version file for `npx convex dev` to push
- *   and stops.
+ *   clone, before the component exists, it writes the version file for `npx convex dev` to push
+ *   and waits for the component.
  * - `deploy`: the upload inside `npx convex deploy --cmd`. Its calls go where the deploy goes.
  * - `afterPush`: the upload of a first install, after the push installed the component.
  */
@@ -219,14 +232,19 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
     if (mode === "afterPush") throw new Error(`${missing} after the push.`);
     writeVersionFile(cli, versionId);
     if (mode === "deploy") {
-      writeFileSync(join(dist, FIRST_INSTALL_MARKER), "");
+      writeStateFile(cli, FIRST_INSTALL_MARKER, "");
       cli.log(`${missing} yet. The push installs it, and the upload runs after the push.`);
       return;
     }
-    throw new Error(
-      `${missing} yet. Wrote ${VERSION_FILE}: npx convex dev now pushes the component. Run ` +
-        "convex-hosting upload again after that push.",
-    );
+    cli.log(`${missing} yet. Wrote ${VERSION_FILE}: npx convex dev now pushes the component.`);
+    const deadline = Date.now() + PROBE_TIMEOUT_MS;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, PROBE_RETRY_MS));
+      if (await hasComponent(cli, target)) break;
+      if (Date.now() >= deadline) {
+        throw new Error(`${missing}: npx convex dev did not push it in 2 minutes.`);
+      }
+    }
   }
 
   cli.log(`Uploading version ${versionId}: ${manifest.entries.length} files.`);
@@ -282,11 +300,17 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
 }
 
 function writeVersionFile(cli: Cli, versionId: string) {
-  writeFileSync(
-    join(cli.cwd, VERSION_FILE),
-    "// Written by convex-hosting. Commit it; its value acts only when a push bundles it.\n" +
-      `export const versionId = ${JSON.stringify(versionId)};\n`,
-  );
+  writeStateFile(cli, VERSION_FILE, `export const versionId = ${JSON.stringify(versionId)};\n`);
+}
+
+/** Writes a file of the state folder, and the folder's `.gitignore` when it is absent. */
+function writeStateFile(cli: Cli, path: string, body: string) {
+  const gitignore = join(cli.cwd, STATE_DIR, ".gitignore");
+  if (!existsSync(gitignore)) {
+    mkdirSync(join(cli.cwd, STATE_DIR), { recursive: true });
+    writeFileSync(gitignore, "*\n");
+  }
+  writeFileSync(join(cli.cwd, path), body);
 }
 
 /** Stores one file through an upload URL and returns its storage id. */
