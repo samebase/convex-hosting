@@ -54,7 +54,6 @@ export async function readDist(
         entries.push({
           path,
           sha256: createHash("sha256").update(bytes).digest("hex"),
-          size: bytes.length,
           contentType: getContentType(file) ?? undefined,
         });
         files.set(path, file);

@@ -63,7 +63,6 @@ const manifestSchema = z.object({
     z.object({
       path: z.string().startsWith("/"),
       sha256: z.string().regex(/^[0-9a-f]{64}$/),
-      size: z.number().int().nonnegative(),
       contentType: z.string().optional(),
     }),
   ),
@@ -74,7 +73,6 @@ export type Manifest = z.input<typeof manifestSchema>;
 const entryFields = {
   path: v.string(),
   sha256: v.string(),
-  size: v.number(),
   contentType: v.optional(v.string()),
 };
 
@@ -146,7 +144,7 @@ export const startVersion = internalAction({
         versionId,
         entries: manifest.entries
           .slice(start, start + CREATE_BATCH)
-          .map(({ path, sha256, size, contentType }) => ({ path, sha256, size, contentType })),
+          .map(({ path, sha256, contentType }) => ({ path, sha256, contentType })),
       });
     }
     return null;
@@ -194,11 +192,7 @@ export const createEntries = internalMutation({
     for (const entry of entries) {
       const existing = await getEntry(ctx, versionId, entry.path);
       if (existing !== null) {
-        if (
-          existing.sha256 !== entry.sha256 ||
-          existing.size !== entry.size ||
-          existing.contentType !== entry.contentType
-        ) {
+        if (existing.sha256 !== entry.sha256 || existing.contentType !== entry.contentType) {
           throw new ConvexError(`Version ${versionId} has other contents at ${entry.path}.`);
         }
         continue;
@@ -215,7 +209,6 @@ export const createEntries = internalMutation({
         versionId,
         path: entry.path,
         sha256: entry.sha256,
-        size: entry.size,
         contentType: entry.contentType,
         storageId: recorded?.storageId,
       });
@@ -255,12 +248,8 @@ export const recordFiles = internalMutation({
       if (entry === null) throw new ConvexError(`Version ${versionId} has no file ${path}.`);
       if (entry.storageId !== undefined) continue;
       const stored = await ctx.db.system.get("_storage", storageId);
-      if (
-        stored === null ||
-        base64ToHex(stored.sha256) !== entry.sha256 ||
-        stored.size !== entry.size
-      ) {
-        throw new ConvexError(`The file stored for ${path} does not match its sha256 and size.`);
+      if (stored === null || base64ToHex(stored.sha256) !== entry.sha256) {
+        throw new ConvexError(`The file stored for ${path} does not match its sha256.`);
       }
       await ctx.db.patch("entries", entry._id, { storageId });
     }

@@ -171,7 +171,6 @@ describe("upload", () => {
     expect(manifest.entries).toContainEqual({
       path: "/index.html",
       sha256: createHash("sha256").update("<h1>Home</h1>").digest("hex"),
-      size: 13,
       contentType: "text/html; charset=utf-8",
     });
     // Two entries with the same bytes share one stored file.

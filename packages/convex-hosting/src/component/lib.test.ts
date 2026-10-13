@@ -19,7 +19,6 @@ async function manifestOf(files: Files, config: Manifest["config"]): Promise<Man
     Object.entries(files).map(async ([path, { body, contentType }]) => ({
       path,
       sha256: await sha256Hex(body),
-      size: new TextEncoder().encode(body).length,
       contentType,
     })),
   );
@@ -111,7 +110,7 @@ describe("upload", () => {
     ]);
   });
 
-  test("recordFiles checks the stored file's sha256 and size", async () => {
+  test("recordFiles checks the stored file's sha256", async () => {
     const t = convexTest(schema, modules);
     const manifest = await manifestOf({ "/a.txt": { body: "a" } }, {});
     const manifestId = await t.run((ctx) =>
@@ -125,7 +124,7 @@ describe("upload", () => {
         versionId: "v1",
         files: [{ path: "/a.txt", storageId: wrong }],
       }),
-    ).rejects.toThrow("does not match its sha256 and size");
+    ).rejects.toThrow("does not match its sha256");
     expect(await t.mutation(internal.lib.finishVersion, { versionId: "v1" })).toBe(false);
 
     const right = await t.run((ctx) => ctx.storage.store(new Blob(["a"])));

@@ -18,9 +18,11 @@ export default defineSchema({
     versionId: v.string(),
     /** The URL path of the file, such as `/assets/index-a1b2.js`. */
     path: v.string(),
-    /** Hex. */
+    /**
+     * Hex: the CLI computes it in hex and the ETag carries it in hex. The one conversion from the
+     * base64 of Convex's `_storage` happens in `recordFiles`.
+     */
     sha256: v.string(),
-    size: v.number(),
     /** Absent when the `mime` package has no type for the file name. */
     contentType: v.optional(v.string()),
     /** Absent until `recordFiles` attaches the stored file. */

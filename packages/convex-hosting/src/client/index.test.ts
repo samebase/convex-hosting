@@ -20,7 +20,7 @@ async function setup() {
   );
   const manifest = {
     config: {},
-    entries: [{ path: entry.path, sha256, size: entry.body.length, contentType: "text/html" }],
+    entries: [{ path: entry.path, sha256, contentType: "text/html" }],
   };
   const manifestId = await t.run((ctx) => ctx.storage.store(new Blob([JSON.stringify(manifest)])));
   await t.action(internal.lib.startVersion, { versionId: "v1", manifestId });
