@@ -61,15 +61,21 @@ for the apps Samebase makes. It does not need feature parity with them.
 
 ## Data model
 
-| Table      | Fields                                                                                                                                                                                          | Purpose                                                   |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `versions` | `versionId`, `state` (`uploading`, `ready`, `deleting`), `config` (a JSON string), `manifestSha256`, `entryCount`, `createdAt`, `liveAt?`, `supersededAt?`. Indexes on `versionId` and `state`. | One row per upload.                                       |
-| `entries`  | `versionId`, `path`, `sha256`, `size`, `contentType`, `immutable`, `storageId?`. Indexes on `[versionId, path]`, `[immutable, path]`, and `storageId`.                                          | The manifest of a version. `storageId` is set per upload. |
-| `site`     | `liveVersionId?`, `storageScanCursor?`.                                                                                                                                                         | One row: the pointer and the cleanup cursor.              |
+| Table            | Fields                                                                                                                                                                                          | Purpose                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `versions`       | `versionId`, `state` (`uploading`, `ready`, `deleting`), `manifestSha256`, `entryCount`, `createdAt`, `liveAt?`, `supersededAt?`, `codePushAt?`. Indexes on `versionId`, `state`, `codePushAt`. | One row per upload.                                       |
+| `versionConfigs` | `versionId`, `config` (a JSON string). Index on `versionId`.                                                                                                                                    | The config of a version.                                  |
+| `entries`        | `versionId`, `path`, `sha256`, `size`, `contentType`, `immutable`, `storageId?`, `ready`. Indexes on `[versionId, path]`, `[ready, immutable, path]`, and `storageId`.                          | The manifest of a version. `storageId` is set per upload. |
+| `site`           | `liveVersionId?`, `versionScanCursor?`, `storageScanCursor?`.                                                                                                                                   | One row: the pointer and the cleanup cursors.             |
 
 `config` is a JSON string because Convex allows 1,024 fields per object and the parsed static
-redirects of the asset worker are keyed by path. The parsers' own limits (100 header rules, 2,000
-static and 100 dynamic redirects) keep it far below the 1 MiB document limit.
+redirects of the asset worker are keyed by path. It is at most 256 KiB. It has its own table so that
+a page of 200 version rows stays far below the 16 MiB that one transaction can read.
+
+`codePushAt` is the time of the most recent activation that came after a code push: from then on the
+backend ran this version's renderer. A file-only activation never clears it. `ready` on an entry is
+set in the transaction that makes its version ready, so the immutable lookup is one descending range
+read on `[ready, immutable, path]` that entries of unfinished uploads never enter.
 
 These tables replace `staticAssets`, `stagedAssets`, `retiredAssets`, `pendingStorageCleanup`,
 `pendingBlobCleanup`, `cleanupState`, and `deploymentInfo`. The convex-fs CDN path and the v1
@@ -152,12 +158,13 @@ calls and the storage egress per request before calling this a default for apps 
    version accepts files.
 5. `finishVersion({ versionId })` checks, in batches of 500 entries, that the entry count matches,
    every entry has a `storageId`, and no immutable path has other bytes in the newest ready version
-   that has it (two uploads can start together); it sets `ready` or returns the entries that still
-   lack one.
+   that has it (two uploads can start together). Then one mutation sets `ready` on the version and
+   on every entry (at most 4,000 writes). Otherwise it returns the entries that still lack a file.
+   Components cannot use `paginate`, so the batches use the last path as the cursor.
 6. `activate({ versionId, afterCodePush })` requires `ready`, sets the pointer, `liveAt`, and
-   `supersededAt` on the old live version, and records whether a code push came before it. A plain
-   `upload` activates at once with `afterCodePush: false`; `deploy` activates after the code push
-   with `true`.
+   `supersededAt` on the old live version, and sets `codePushAt` when a code push came before it,
+   also when the version was live already. A plain `upload` activates at once with
+   `afterCodePush: false`; `deploy` activates after the code push with `true`.
 
 The `versionId` is made before the build (`v_` plus 26 base32 characters) and saved with the
 manifest digest in `<dist>/.convex-hosting/version.json`. An upload reuses it when the digest
@@ -200,22 +207,22 @@ schedules itself again at once while work remains, so a large version is gone wi
 hours:
 
 - Eligible for deletion, for a version that is not live: an `uploading` version older than one day;
-  a version activated without a code push (`afterCodePush: false`), seven days after a later
-  activation superseded it; a version activated after a code push, or a `ready` version that never
-  went live, when a later version was activated after a code push and that activation is more than
-  seven days old (its `liveAt` is after this version's `liveAt`, or after its `createdAt` if it
-  never went live). The backend runs the renderer of the last code push, and a file-only activation
-  does not replace it, so the files of that renderer's version must stay. A never-activated version
-  can be a release whose push succeeded and whose activation failed. The newest code-push activation
-  that is more than seven days old comes from the index on `[activatedAfterCodePush, liveAt]`.
-- Each run checks the next 200 versions after a cursor in `site` and starts again at the oldest
-  version when the scan ends.
+  a version without `codePushAt`, seven days after a later activation superseded it; a version with
+  `codePushAt`, or a `ready` version that never went live, when another version has a later
+  `codePushAt` (after this version's `codePushAt`, or after its `createdAt` if it never went live)
+  and that `codePushAt` is more than seven days old. The backend runs the renderer of the last code
+  push, and file-only activations, a rollback included, do not replace it, so the files of that
+  renderer's version must stay. A never-activated version can be a release whose push succeeded and
+  whose activation failed. The newest `codePushAt` that is more than seven days old comes from one
+  read on its index.
+- Each run checks the next 200 versions after a cursor in `site` (a `_creationTime`) and starts
+  again at the oldest version when the scan ends. Components cannot use `paginate`.
 - Deletion first sets `deleting` in the same transaction that checks eligibility. `activate`,
   `startVersion`, `recordFile`, `finishVersion`, and the immutable fallback reject a `deleting`
   version. Then the entries and their storage objects go in batches, then the row.
-- Storage objects older than one day that no entry references, found by a cursor scan of `_storage`
-  with the `entries.storageId` index: delete them. They come from uploads whose `recordFile` call
-  never ran.
+- Storage objects older than one day that no entry references, found by a scan of `_storage` by
+  creation time from a cursor in `site`, with the `entries.storageId` index: delete them. They come
+  from uploads whose `recordFile` call never ran.
 
 Static rollback: the last activated versions stay seven days, so `activate` on one of them is a
 rollback of the files. SSR rollback is a release of the older commit.

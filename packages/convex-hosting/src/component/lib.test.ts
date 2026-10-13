@@ -178,6 +178,39 @@ describe("upload", () => {
     );
   });
 
+  test("finishVersion checks a version in batches", async () => {
+    const t = initConvexTest();
+    const versionId = testVersionId("a");
+    const many: Record<string, TestFile> = {};
+    for (let index = 0; index < 501; index++) {
+      many[`/file-${String(index).padStart(3, "0")}.txt`] = {
+        body: `file ${index}`,
+        contentType: "text/plain",
+      };
+    }
+    await startTestVersion(t, versionId, many);
+    expect((await t.action(internal.lib.finishVersion, { versionId })).pending).toHaveLength(501);
+
+    for (const [path, file] of Object.entries(many).slice(0, 500)) {
+      const storageId = await store(t, file.body);
+      await t.mutation(internal.lib.recordFile, { versionId, path, storageId });
+    }
+    // The only file left is in the second batch.
+    expect(await t.action(internal.lib.finishVersion, { versionId })).toMatchObject({
+      state: "uploading",
+      pending: [{ path: "/file-500.txt" }],
+    });
+
+    const storageId = await store(t, "file 500");
+    await t.mutation(internal.lib.recordFile, { versionId, path: "/file-500.txt", storageId });
+    expect(await t.action(internal.lib.finishVersion, { versionId })).toEqual({
+      state: "ready",
+      pending: [],
+    });
+    const entries = await t.run(async (ctx) => await ctx.db.query("entries").collect());
+    expect(entries.every((entry) => entry.ready)).toBe(true);
+  });
+
   test("the manifest is checked", async () => {
     const t = initConvexTest();
     const versionId = testVersionId("a");
@@ -244,6 +277,21 @@ describe("lookups", () => {
     expect(old).toMatchObject({ handled: true, status: 200, body: { contentType: JS } });
     // A mutable path never falls back to another version.
     expect(await route(t, "/old.txt")).toEqual({ handled: false });
+  });
+
+  test("finds a ready entry behind many unfinished uploads of the same path", async () => {
+    const t = initConvexTest();
+    const old = { "/assets/old.js": { body: "old", contentType: JS, immutable: true } };
+    await uploadTestVersion(t, testVersionId("a"), old);
+    for (const letter of "bcdefghij") await startTestVersion(t, testVersionId(letter), old);
+    await deployTestVersion(t, testVersionId("k"), files);
+
+    expect(await route(t, "/assets/old.js")).toMatchObject({ handled: true, status: 200 });
+    await expect(
+      startTestVersion(t, testVersionId("l"), {
+        "/assets/old.js": { body: "new", contentType: JS, immutable: true },
+      }),
+    ).rejects.toThrow(`version ${testVersionId("a")} has different bytes`);
   });
 
   test("nothing from an uploading or deleting version", async () => {
@@ -366,6 +414,65 @@ describe("cleanup", () => {
     expect(await versionStates(t)).toEqual({ [testVersionId("c")]: "ready" });
   });
 
+  test("keeps a code-push version after a file-only rollback to it is superseded", async () => {
+    const t = initConvexTest();
+    await uploadTestVersion(t, testVersionId("a"), files);
+    await t.mutation(internal.lib.activate, { versionId: testVersionId("a"), afterCodePush: true });
+    vi.setSystemTime(T0 + DAY);
+    await deployTestVersion(t, testVersionId("b"), files);
+    vi.setSystemTime(T0 + 2 * DAY);
+    // A file-only rollback to a, then another plain upload: the backend still runs renderer a.
+    await t.mutation(internal.lib.activate, {
+      versionId: testVersionId("a"),
+      afterCodePush: false,
+    });
+    vi.setSystemTime(T0 + 3 * DAY);
+    await deployTestVersion(t, testVersionId("c"), files);
+
+    vi.setSystemTime(T0 + 30 * DAY);
+    await t.mutation(internal.lib.cleanup, {});
+    expect(await versionStates(t)).toEqual({
+      [testVersionId("a")]: "ready",
+      [testVersionId("c")]: "ready",
+    });
+  });
+
+  test("reads small version rows, because configs live in their own table", async () => {
+    const t = initConvexTest();
+    await deployTestVersion(t, testVersionId("a"), files);
+    const config = JSON.stringify({ base_path: `/${"x".repeat(256 * 1024 - 40)}/` });
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 205; index++) {
+        const versionId = `v_${index}`;
+        await ctx.db.insert("versions", {
+          versionId,
+          state: "ready",
+          manifestSha256: "",
+          entryCount: 0,
+          createdAt: T0,
+          liveAt: T0,
+          supersededAt: T0,
+        });
+        await ctx.db.insert("versionConfigs", { versionId, config });
+      }
+    });
+    // One cleanup call reads at most 200 version rows; Convex stops a transaction at 16 MiB read.
+    const page = await t.run(async (ctx) => await ctx.db.query("versions").take(200));
+    const pageBytes = page.reduce((total, row) => total + JSON.stringify(row).length, 0);
+    expect(pageBytes).toBeLessThan(64 * 1024);
+    expect(200 * config.length).toBeGreaterThan(16 * 1024 * 1024);
+
+    vi.setSystemTime(T0 + 8 * DAY);
+    let done = false;
+    for (let call = 0; call < 10 && !done; call++) {
+      ({ done } = await t.mutation(internal.lib.cleanup, {}));
+    }
+    expect(done).toBe(true);
+    expect(await versionStates(t)).toEqual({ [testVersionId("a")]: "ready" });
+    const configs = await t.run(async (ctx) => await ctx.db.query("versionConfigs").collect());
+    expect(configs.map((row) => row.versionId)).toEqual([testVersionId("a")]);
+  });
+
   test("checks the versions after the first page in later calls", async () => {
     const t = initConvexTest();
     await deployTestVersion(t, testVersionId("a"), files);
@@ -376,11 +483,10 @@ describe("cleanup", () => {
         await ctx.db.insert("versions", {
           versionId: `v_${index}`,
           state: "ready",
-          config: "{}",
           manifestSha256: "",
           entryCount: 0,
           createdAt: T0,
-          ...(expired ? { liveAt: T0, supersededAt: T0, activatedAfterCodePush: false } : {}),
+          ...(expired ? { liveAt: T0, supersededAt: T0 } : {}),
         });
       }
     });
@@ -417,6 +523,21 @@ describe("cleanup", () => {
 
     expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: true });
     expect(await versionStates(t)).toEqual({ [testVersionId("b")]: "ready" });
+  });
+
+  test("scans storage in batches and continues where it stopped", async () => {
+    const t = initConvexTest();
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 250; index++) await ctx.storage.store(new Blob([`${index}`]));
+    });
+    const count = async () =>
+      (await t.run(async (ctx) => await ctx.db.system.query("_storage").collect())).length;
+
+    vi.setSystemTime(T0 + 2 * DAY);
+    await t.mutation(internal.lib.cleanup, {});
+    expect(await count()).toBe(50);
+    await t.mutation(internal.lib.cleanup, {});
+    expect(await count()).toBe(0);
   });
 
   test("deletes an unreferenced object and an abandoned upload older than a day", async () => {
