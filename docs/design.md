@@ -27,9 +27,11 @@ Deploys do not interleave. A deploy holds a lock in the component from its first
 cleanup ends; a second deploy that starts meanwhile is refused with a message that names the first.
 Because nothing else can be in flight, the end of a deploy is a safe moment to delete: once the push
 has landed, the CLI tells the component, and the component deletes every other version and every
-stored file nothing references. The lock expires 15 minutes after the deploy's last call to the
-component, so a deploy that dies does not block the next one for long, while a deploy that is still
-uploading keeps the lock by its calls.
+stored file nothing references. Every call of the deploy refreshes the lock, and during the push, when
+the CLI makes no other call, it refreshes the lock every 30 seconds. The lock expires 2 minutes after
+the last refresh, so a dead deploy frees itself in 2 minutes with nobody involved, while a live one,
+however slow its upload or push, keeps it. There is no cancel command: waiting 2 minutes is the
+cancel.
 
 ## Deploy
 
@@ -55,7 +57,7 @@ deploy key and `--preview-name` together are an error, because the Convex CLI wo
       and a manifest can be megabytes; (`npx convex run` stays the transport because it handles
       every way a deployment is selected: login, deploy keys, previews by name;)
    3. calls `startVersion` with the manifest's storage id. The component takes the lock, or refuses
-      when another version holds it and has called less than 15 minutes ago. It creates the version
+      when another version holds it and has refreshed it less than 2 minutes ago. It creates the version
       in state `uploading` and its entries, in batches that fit Convex's transaction limits, and
       gives each entry whose sha256 a recorded entry already has that entry's stored file;
    4. loops: asks for a page of entries without a file, gets upload URLs for them, uploads the
@@ -66,7 +68,8 @@ deploy key and `--preview-name` together are an error, because the Convex CLI wo
    6. writes `convex/hostingVersion.generated.ts` with the id. The two dots keep Convex from treating
       the file as a function module; it is bundled as an import of `http.ts`.
    Then, still inside `npx convex deploy`, Convex bundles `convex/` with the new id and pushes. The
-   push is the switch.
+   push is the switch. While `npx convex deploy` runs, the CLI calls `heartbeat` every 30 seconds
+   so the lock stays alive through the push.
 3. When `npx convex deploy` returns success, the CLI calls `finishDeploy` for the id with
    `pushed: true`. The component deletes every other version, its entries, and the stored files no
    remaining entry uses, then every file in `_storage` that no entry references (this deploy's
@@ -106,16 +109,16 @@ development deployment, where that version does not exist, until the next `uploa
 deploys belong in CI or a separate checkout.
 
 **Two deploys at once.** The second is refused at `startVersion` with the first's version id and the
-minutes since its last call. Its build has run for nothing; the user retries.
+seconds since it last refreshed the lock. Its build has run for nothing; the user retries.
 
-**Failures.** A deploy that dies holding the lock blocks the next deploy until 15 minutes after its
-last call; the next deploy's cleanup deletes its version. A deploy whose push landed but whose
+**Failures.** A deploy that dies holding the lock blocks the next deploy until 2 minutes after its
+last refresh; the next deploy's cleanup deletes its version. A deploy whose push landed but whose
 `finishDeploy` never ran leaves the old versions until the next deploy; its own version is the one
 the code names, and the next deploy deletes it only after its own push. A push that the command
 reports as failed may still have landed; the site then serves the new version, the lock is released
-as for a failure, and the next deploy is a normal one. The one case with no answer: a deploy that
-stalls more than 15 minutes between its last call and its push lets the next deploy delete its
-version; when its push lands, the site answers 404 naming the missing version, and a redeploy fixes
+as for a failure, and the next deploy is a normal one. The one case with no answer: a deploy whose
+process stops for more than 2 minutes, for example on a laptop that sleeps, and whose push still
+lands afterwards, lets the next deploy delete its version; when its push lands, the site answers 404 naming the missing version, and a redeploy fixes
 it. No resume logic.
 
 **Browsers.** A page opened before a deploy keeps asking for its hashed files, which now answer
@@ -192,7 +195,7 @@ rules, 2,000 static and 100 dynamic redirects) fit unless paths are very long.
 Functions. The CLI calls the internal ones with `npx convex run --component`; `serveAsset` calls the
 public one through the component reference (an app can call only a component's public functions,
 and clients cannot call them at all). Every internal call for the locked version refreshes
-`lastCallAt`.
+`lastCallAt`, and `heartbeat` exists to do only that.
 
 | Function             | Kind              | Does                                                                                                       |
 | -------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -201,6 +204,7 @@ and clients cannot call them at all). Every internal call for the locked version
 | `missingEntries`     | internal query    | Returns one page of the version's entries without a file.                                                  |
 | `recordFiles`        | internal mutation | Attaches stored files to entries after checking sha256 and size.                                           |
 | `finishVersion`      | internal mutation | Marks the version `ready` when it finds no entry without a file; otherwise says that one exists.           |
+| `heartbeat`          | internal mutation | Refreshes the lock's timestamp. The CLI calls it every 30 seconds while `npx convex deploy` runs.          |
 | `finishDeploy`       | internal mutation | With `pushed`: deletes every other version, their entries, and the stored files no remaining entry uses, then `_storage` files no entry references; one batch per call, scheduling itself with `runAfter(0)` while work remains; releases the lock at the end. Without `pushed`: releases the lock. |
 | `route`              | public query      | Runs Cloudflare's `canFetch` and `handleRequest` for one request against one version; reports the version's state. |
 
