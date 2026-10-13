@@ -216,6 +216,9 @@ importers:
 
   packages/convex-hosting-tanstack-start:
     dependencies:
+      '@samebase/convex-hosting':
+        specifier: workspace:^
+        version: link:../convex-hosting
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@0.3.3
         version: '@voidzero-dev/vite-plus-core@0.3.3(@types/node@24.10.8)(esbuild@0.27.0)(jiti@2.7.0)(typescript@5.9.3)'

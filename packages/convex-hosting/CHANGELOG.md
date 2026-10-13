@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.4.0
+
+A rewrite of the component and the CLI around one live version per deployment, served by the code of
+Cloudflare's Workers Static Assets handler.
+
+**0.4.0 is a new install.** The component's tables are new (`versions`, `entries`, and `site`), so
+the upgrade starts with no live version: the first `deploy` pushes the backend, then uploads, and
+the site answers 404 until the upload ends. The old tables (`staticAssets`, `stagedAssets`,
+`retiredAssets`, `pendingStorageCleanup`, `pendingBlobCleanup`, `cleanupState`, and
+`deploymentInfo`) stay with their documents until you delete them by hand in the Convex dashboard.
+The hourly cleanup deletes the 0.3.x files from the component's storage, because no 0.4 version
+refers to them. There is no in-place migration. See "Upgrading to 0.4" in the README.
+
+Breaking changes:
+
+- SPA fallback is no longer the default. Upload with `--not-found-handling single-page-application`
+  for it; it serves `index.html` only to page loads, so a missing script gets a 404. `--no-spa` and
+  the `spaFallback` option are gone.
+- The convex-fs CDN mode (`--cdn`, `cdnBaseUrl`) and the 0.1.x app-storage fallback are gone.
+- `serveStaticAsset(ctx, component, request, { exact })` looks up exact paths and has no `path` or
+  `spaFallback` option; `exact: false` applies the version's routing settings. `decodeRequestPath`
+  is gone.
+- `exposeDeploymentQuery` returns `getLiveVersion` (`{ versionId, liveAt }` or `null`) instead of
+  `getCurrentDeployment`. `UpdateBanner` and `useDeploymentUpdates` look up
+  `api.hosting.getLiveVersion` and take a `getLiveVersion` reference.
+- `_headers` and `_redirects` at the root of the build output are now the version's header and
+  redirect rules, with Cloudflare's syntax and limits, not only files that the upload skips.
+- Retention follows the version: hashed files (`--immutable`, default `/assets/**`) of previous
+  versions stay reachable, other paths do not. A version replaced more than seven days ago is
+  deleted by an hourly job, not by a later upload.
+- `upload` and `deploy`: `--prod`, `--build`, `--no-spa`, and `--cdn` are gone. `deploy` needs
+  `CONVEX_DEPLOY_KEY` or `--preview-name`, and fails when `--preview-name` meets a production or
+  development deploy key.
+- `deploy` uploads the files inside `npx convex deploy --cmd`, before the push, makes the version
+  live after it, and then verifies the site.
+
+New:
+
+- Routing modes from Cloudflare: `--html-handling` (`auto-trailing-slash` by default) and
+  `--not-found-handling` (`none`, `single-page-application`, `404-page`), stored per version.
+- `.assetsignore` excludes files, as on Cloudflare.
+- `--immutable <preset|glob>` with presets for Vite, Next.js, Astro, and SvelteKit. Immutable files
+  get a one-year cache.
+- `upload --version-id` and `--no-activate`; a rerun of the same build continues its upload.
+- `deploy --build-command`, `--skip-build` (which reuses the build's version ID), `--verify-path`,
+  and `--site-url` for a custom domain. Verification checks the ETag of `/index.html`, or the
+  `convex-hosting-version` meta tag that `@samebase/convex-hosting-tanstack-start` 0.4.0 writes into
+  server-rendered pages, and `lib:getLiveVersion`.
+- The build output needs no `index.html`.
+- Limits: 4,000 files per version, 25 MiB per file, 1,024 bytes per path, and 256 KiB of rules.
+
 ## 0.3.2
 
 - Responses that the package sends when no uploaded file answers (400, 404, and 500) now have
