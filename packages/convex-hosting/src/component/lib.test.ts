@@ -58,10 +58,9 @@ async function uploadVersion(
 
 async function tables(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => ({
-    versions: (await ctx.db.query("versions").collect()).map((v) => [v.versionId, v.state]),
+    versions: (await ctx.db.query("versions").collect()).map((v) => [v.versionId, v.state.kind]),
     entries: (await ctx.db.query("entries").collect()).map((e) => `${e.versionId}${e.path}`),
     files: (await ctx.db.system.query("_storage").collect()).length,
-    lock: (await ctx.db.query("deploy").collect()).map((d) => d.versionId),
   }));
 }
 
@@ -112,7 +111,6 @@ describe("upload", () => {
   test("knownFiles returns the stored files that entries of any version have", async () => {
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
-    await t.mutation(internal.lib.releaseLock, { versionId: "v1" });
     const index = await t.run(
       async (ctx) =>
         (
@@ -156,100 +154,92 @@ describe("upload", () => {
   });
 });
 
-describe("lock", () => {
-  test("a second createVersion is refused while a young lock exists", async () => {
-    const t = convexTest(schema, modules);
-    await createVersion(t, "v1");
-    await expect(createVersion(t, "v2")).rejects.toThrow(
-      /A deploy of version v1 is in progress: it refreshed the lock \d+ seconds ago/,
-    );
-  });
+const DAY = 24 * 60 * 60 * 1000;
 
-  test("a lock older than 2 minutes is taken over", async () => {
-    vi.useFakeTimers();
-    const t = convexTest(schema, modules);
-    await createVersion(t, "v1");
-    vi.advanceTimersByTime(2 * 60 * 1000 + 1);
-    await createVersion(t, "v2");
-    expect((await tables(t)).lock).toEqual(["v2"]);
-  });
-
-  test("heartbeat refreshes the lock", async () => {
-    vi.useFakeTimers();
-    const t = convexTest(schema, modules);
-    await createVersion(t, "v1");
-    vi.advanceTimersByTime(90 * 1000);
-    await t.mutation(internal.lib.heartbeat, { versionId: "v1" });
-
-    // 90 seconds after the heartbeat, the lock is still young.
-    vi.advanceTimersByTime(90 * 1000);
-    await expect(createVersion(t, "v2")).rejects.toThrow("A deploy of version v1 is in progress");
-  });
-
-  test("a heartbeat before createVersion does nothing: the lock is not taken yet", async () => {
-    const t = convexTest(schema, modules);
-    await t.mutation(internal.lib.heartbeat, { versionId: "v1" });
-    await createVersion(t, "v2");
-    await t.mutation(internal.lib.heartbeat, { versionId: "v1" });
-    expect((await tables(t)).lock).toEqual(["v2"]);
-  });
-
-  test("a deploy that lost its lock fails; releaseLock has nothing to release", async () => {
-    vi.useFakeTimers();
-    const t = convexTest(schema, modules);
-    await createVersion(t, "v1");
-    vi.advanceTimersByTime(2 * 60 * 1000 + 1);
-    await createVersion(t, "v2");
-    const entry = await storedEntry(t, "/a.txt", "a");
-    const lost = "The deploy of version v1 lost its lock: a deploy of version v2 holds it.";
-    await expect(
-      t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [entry] }),
-    ).rejects.toThrow(lost);
-    await expect(t.mutation(internal.lib.finishVersion, { versionId: "v1" })).rejects.toThrow(lost);
-    await expect(t.mutation(internal.lib.heartbeat, { versionId: "v1" })).rejects.toThrow(lost);
-    await expect(t.mutation(internal.lib.finishDeploy, { versionId: "v1" })).rejects.toThrow(lost);
-
-    await t.mutation(internal.lib.releaseLock, { versionId: "v1" });
-    expect((await tables(t)).lock).toEqual(["v2"]);
-  });
-});
-
-describe("finishDeploy", () => {
-  test("deletes the other versions and the unreferenced files, then releases", async () => {
+describe("markLive", () => {
+  test("marks a ready version live; a live version stays as it is", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
-    await t.mutation(internal.lib.finishDeploy, { versionId: "v1" });
+    await t.mutation(api.lib.markLive, { versionId: "v1" });
+    const state = async () =>
+      await t.run(
+        async (ctx) =>
+          (
+            await ctx.db
+              .query("versions")
+              .withIndex("by_versionId", (q) => q.eq("versionId", "v1"))
+              .unique()
+          )?.state,
+      );
+    const live = await state();
+    expect(live).toEqual({ kind: "live", at: Date.now() });
+    vi.advanceTimersByTime(1000);
+    await t.mutation(api.lib.markLive, { versionId: "v1" });
+    expect(await state()).toEqual(live);
+    expect((await route(t, "v1", "/")).state).toBe("live");
+  });
+
+  test("refuses a version that is uploading or does not exist", async () => {
+    const t = convexTest(schema, modules);
+    await createVersion(t, "v1");
+    await expect(t.mutation(api.lib.markLive, { versionId: "v1" })).rejects.toThrow(
+      "Version v1 is still uploading.",
+    );
+    await expect(t.mutation(api.lib.markLive, { versionId: "v2" })).rejects.toThrow(
+      "Version v2 does not exist.",
+    );
+  });
+});
+
+describe("collect", () => {
+  test("a new live version deletes the version live before it and the files only it used", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    await t.mutation(api.lib.markLive, { versionId: "v1" });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    // The config file is gone; the three files stay.
-    expect((await tables(t)).files).toBe(3);
+    // Three files and the config file.
+    expect((await tables(t)).files).toBe(4);
 
     // v2 keeps index.html and replaces the script.
+    vi.advanceTimersByTime(1000);
     await uploadVersion(t, "v2", {
       "/index.html": site["/index.html"],
       "/assets/app-b2.js": { body: "console.log(2)", contentType: "text/javascript" },
     });
-    // A stored file that no entry references, such as an upload that was never recorded.
-    await t.run((ctx) => ctx.storage.store(new Blob(["orphan"])));
-    await t.mutation(internal.lib.finishDeploy, { versionId: "v2" });
+    await t.mutation(api.lib.markLive, { versionId: "v2" });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-
+    // index.html, the new script, and the two config files, which are younger than a day.
     expect(await tables(t)).toEqual({
-      versions: [["v2", "ready"]],
+      versions: [["v2", "live"]],
       entries: ["v2/index.html", "v2/assets/app-b2.js"],
-      files: 2,
-      lock: [],
+      files: 4,
     });
+
+    // A day later, the next pass deletes the files that no entry references.
+    vi.advanceTimersByTime(DAY + 1);
+    await t.mutation(internal.lib.collect, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await tables(t)).files).toBe(2);
   });
 
-  test("releaseLock releases the lock and keeps the version", async () => {
+  test("deletes the versions that never became live once they are a day old", async () => {
+    vi.useFakeTimers();
     const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site);
-    await t.mutation(internal.lib.releaseLock, { versionId: "v1" });
-    const after = await tables(t);
-    expect(after.versions).toEqual([["v1", "ready"]]);
-    expect(after.lock).toEqual([]);
-    expect(after.files).toBe(4);
+    // An upload that died, and a deploy whose push failed.
+    await createVersion(t, "died");
+    await uploadVersion(t, "unpushed", { "/a.txt": { body: "a" } });
+    vi.advanceTimersByTime(DAY + 1);
+    // A deploy that is about to push.
+    await uploadVersion(t, "young", { "/b.txt": { body: "b" } });
+    await uploadVersion(t, "v3", site);
+    await t.mutation(api.lib.markLive, { versionId: "v3" });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await tables(t)).versions).toEqual([
+      ["young", "ready"],
+      ["v3", "live"],
+    ]);
   });
 });
 

@@ -5,7 +5,15 @@ export default defineSchema({
   /** One uploaded build of the site. */
   versions: defineTable({
     versionId: v.string(),
-    state: v.union(v.literal("uploading"), v.literal("ready")),
+    /**
+     * `live` carries the time the first request of the version's pushed code marked it live, so a
+     * version cannot have a live time without being live.
+     */
+    state: v.union(
+      v.object({ kind: v.literal("uploading") }),
+      v.object({ kind: v.literal("ready") }),
+      v.object({ kind: v.literal("live"), at: v.number() }),
+    ),
     /**
      * The JSON of Cloudflare's `AssetConfig`. A string, because `redirects.staticRules` has one
      * field per rule and Convex limits an object to 1,024 fields.
@@ -34,10 +42,4 @@ export default defineSchema({
     .index("by_version_path", ["versionId", "path"])
     .index("by_sha256", ["sha256"])
     .index("by_storageId", ["storageId"]),
-
-  /** The deploy lock: one row at most, for the version whose deploy is in flight. */
-  deploy: defineTable({
-    versionId: v.string(),
-    lastCallAt: v.number(),
-  }),
 });

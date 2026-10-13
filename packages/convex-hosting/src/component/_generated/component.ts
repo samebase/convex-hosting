@@ -24,6 +24,13 @@ import type { FunctionReference } from "convex/server";
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
     lib: {
+      markLive: FunctionReference<
+        "mutation",
+        "internal",
+        { versionId: string },
+        null,
+        Name
+      >;
       route: FunctionReference<
         "query",
         "internal",
@@ -39,7 +46,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             headers: Array<{ name: string; value: string }>;
             status: number;
           };
-          state: "uploading" | "ready" | null;
+          state: "uploading" | "ready" | "live" | null;
         },
         Name
       >;

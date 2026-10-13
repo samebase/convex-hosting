@@ -11,8 +11,8 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
   query,
-  type MutationCtx,
   type QueryCtx,
 } from "./_generated/server.js";
 
@@ -22,19 +22,28 @@ import {
  */
 const COMPATIBILITY_DATE = "2025-04-01";
 
-/** A lock that nothing has refreshed for this long is free. */
-const LOCK_EXPIRY_MS = 2 * 60 * 1000;
+/**
+ * A version that never became live, and a stored file that no entry references, are garbage once
+ * they are a day old: a failed deploy leaves them, and an upload in progress is younger. This age
+ * bounds the garbage of failed deploys; it decides nothing about what is served.
+ */
+const GARBAGE_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Entries that one `finishDeploy` call deletes. Each entry reads one index range (`by_storageId`)
- * of at most one document, and deletes the entry and at most one stored file: 1,000 entries are
- * 1,001 index ranges, at most 2,000 documents read, and 2,000 writes. One version document (at most
- * 1 MiB) and entries below 4 KiB keep the bytes read and written below 10 MiB of 16 MiB.
+ * Entries that one `collect` call deletes. Each entry reads one index range (`by_storageId`) of at
+ * most one document, and deletes the entry and at most one stored file. With the scan of
+ * `versions` and the range of the version's entries, 1,000 entries are 1,002 index ranges of 4,096,
+ * 2,000 documents read of 32,000 besides the versions, and at most 2,002 writes of 16,000 with the
+ * version and the next call. Entries below 4 KiB read at most 8 MiB with their lookups, which leaves
+ * 8 MiB of the 16 MiB read limit for the version documents that the call reads to find the newest
+ * live one: the live versions and the versions of the last day that never became live. That is
+ * eight versions at the largest config the CLI allows (900 KiB), and hundreds at a config of a few
+ * KiB.
  */
 const DELETE_BATCH = 1000;
 
 /**
- * `_storage` documents that one `finishDeploy` call reads. Each one reads one index range
+ * `_storage` documents that one `collect` call reads. Each one reads one index range
  * (`by_storageId`) of at most one entry and may delete the file: 1,000 files are 1,000 index ranges,
  * at most 2,000 documents read, and 1,000 writes.
  */
@@ -73,23 +82,6 @@ async function getVersionOrThrow(ctx: QueryCtx, versionId: string) {
   return version;
 }
 
-/**
- * Every internal call of a deploy after `createVersion` checks that its version still holds the
- * lock and refreshes `lastCallAt`. A deploy whose lock expired and was taken by another deploy, or
- * released, fails.
- */
-async function holdLock(ctx: MutationCtx, versionId: string) {
-  const lock = await ctx.db.query("deploy").first();
-  if (lock === null || lock.versionId !== versionId) {
-    throw new ConvexError(
-      `The deploy of version ${versionId} lost its lock` +
-        (lock === null ? "." : `: a deploy of version ${lock.versionId} holds it.`),
-    );
-  }
-  await ctx.db.patch("deploy", lock._id, { lastCallAt: Date.now() });
-  return lock;
-}
-
 async function isUnreferenced(ctx: QueryCtx, storageId: Id<"_storage">) {
   const entry = await ctx.db
     .query("entries")
@@ -106,8 +98,8 @@ export const generateUploadUrls = internalMutation({
 });
 
 /**
- * Starts a version: reads its config from storage, then takes the lock or refuses, and creates the
- * version in state `uploading`. Idempotent for the same id and config.
+ * Starts a version: reads its config from storage and creates the version in state `uploading`.
+ * Idempotent for the same id and config.
  */
 export const createVersion = internalAction({
   args: { versionId: v.string(), configId: v.id("_storage") },
@@ -124,30 +116,14 @@ export const createVersion = internalAction({
   },
 });
 
-/** The writes of `createVersion`: takes the lock or refuses, and creates the version. */
+/** The write of `createVersion`: creates the version, unless it exists with the same config. */
 export const insertVersion = internalMutation({
   args: { versionId: v.string(), config: v.string() },
   returns: v.null(),
   handler: async (ctx, { versionId, config }) => {
-    const now = Date.now();
-    const lock = await ctx.db.query("deploy").first();
-    if (lock === null) {
-      await ctx.db.insert("deploy", { versionId, lastCallAt: now });
-    } else {
-      const idle = now - lock.lastCallAt;
-      if (lock.versionId !== versionId && idle < LOCK_EXPIRY_MS) {
-        throw new ConvexError(
-          `A deploy of version ${lock.versionId} is in progress: it refreshed the lock ` +
-            `${Math.floor(idle / 1000)} seconds ago. Try again when it ends. A deploy that stopped ` +
-            "frees the lock 2 minutes after its last refresh.",
-        );
-      }
-      await ctx.db.patch("deploy", lock._id, { versionId, lastCallAt: now });
-    }
-
     const version = await getVersion(ctx, versionId);
     if (version === null) {
-      await ctx.db.insert("versions", { versionId, state: "uploading", config });
+      await ctx.db.insert("versions", { versionId, state: { kind: "uploading" }, config });
     } else if (version.config !== config) {
       throw new ConvexError(`Version ${versionId} exists with a different config.`);
     }
@@ -157,7 +133,7 @@ export const insertVersion = internalMutation({
 
 /**
  * The stored file of each hash that an entry of any version already has, in the order of
- * `sha256s`. A query cannot write, so this call does not refresh the lock.
+ * `sha256s`.
  *
  * Each hash reads one index range (`by_sha256`) of at most one document. The CLI sends at most
  * 8,000 characters of arguments, which hold at most 119 hashes of 67 characters: 119 index ranges
@@ -187,8 +163,8 @@ export const knownFiles = internalQuery({
  * Each entry reads one index range (`by_version_path`) of at most one document and one `_storage`
  * document, and writes at most one document. The CLI sends at most 8,000 characters of arguments,
  * and an entry takes at least 135 of them (its sha256 and storage id alone are 96), so a call has
- * at most 60 entries: 60 index ranges of 4,096, at most 123 documents read of 32,000 with the lock
- * and the version, and 61 writes of 16,000.
+ * at most 60 entries: 60 index ranges of 4,096, at most 121 documents read of 32,000 with the
+ * version, and 60 writes of 16,000.
  */
 export const recordFiles = internalMutation({
   args: {
@@ -204,10 +180,9 @@ export const recordFiles = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { versionId, entries }) => {
-    await holdLock(ctx, versionId);
     const version = await getVersionOrThrow(ctx, versionId);
-    if (version.state !== "uploading") {
-      throw new ConvexError(`Version ${versionId} is ${version.state}, not uploading.`);
+    if (version.state.kind !== "uploading") {
+      throw new ConvexError(`Version ${versionId} is ${version.state.kind}, not uploading.`);
     }
     for (const entry of entries) {
       const existing = await getEntry(ctx, versionId, entry.path);
@@ -233,61 +208,71 @@ export const recordFiles = internalMutation({
   },
 });
 
-/** Marks the version `ready`. The CLI calls it after every `recordFiles` batch succeeded. */
+/**
+ * Marks an `uploading` version `ready`. The CLI calls it after every `recordFiles` batch succeeded.
+ * A version that is already `ready` or `live` stays as it is.
+ */
 export const finishVersion = internalMutation({
   args: { versionId: v.string() },
   returns: v.null(),
   handler: async (ctx, { versionId }) => {
-    await holdLock(ctx, versionId);
     const version = await getVersionOrThrow(ctx, versionId);
-    await ctx.db.patch("versions", version._id, { state: "ready" });
+    if (version.state.kind === "uploading") {
+      await ctx.db.patch("versions", version._id, { state: { kind: "ready" } });
+    }
     return null;
   },
 });
 
 /**
- * Refreshes the lock. The CLI calls it every 30 seconds from the build to the end of the push. A
- * lock can be lost only after it was taken, and `createVersion` takes it when it creates the
- * version: before that, there is nothing to refresh, and the call does nothing.
+ * Marks a `ready` version `live` and schedules `collect`. `serveAsset` calls it at the first
+ * request that the version's pushed code serves; a version that is already live stays as it is, so
+ * concurrent first requests are fine.
  */
-export const heartbeat = internalMutation({
+export const markLive = mutation({
   args: { versionId: v.string() },
   returns: v.null(),
   handler: async (ctx, { versionId }) => {
-    if ((await getVersion(ctx, versionId)) === null) return null;
-    await holdLock(ctx, versionId);
+    const version = await getVersionOrThrow(ctx, versionId);
+    if (version.state.kind === "live") return null;
+    if (version.state.kind === "uploading") {
+      throw new ConvexError(`Version ${versionId} is still uploading.`);
+    }
+    await ctx.db.patch("versions", version._id, { state: { kind: "live", at: Date.now() } });
+    await ctx.scheduler.runAfter(0, internal.lib.collect, {});
     return null;
   },
 });
 
 /**
- * Ends the deploy of `versionId` after its push, only while it holds the lock: deletes the other
- * versions with their entries and the stored files no remaining entry uses, then every `_storage`
- * file that no entry references, one batch per call, and releases the lock after the last batch.
+ * Deletes, one batch per call, scheduling itself with `runAfter(0)` while work remains: the live
+ * versions older than the newest live one, whose code is gone because the newest one has served
+ * since; the versions that are not live and older than `GARBAGE_AGE_MS`; their entries and the
+ * stored files that no remaining entry uses; then the `_storage` files that no entry references and
+ * that are older than `GARBAGE_AGE_MS`.
  */
-export const finishDeploy = internalMutation({
+export const collect = internalMutation({
   args: {
-    versionId: v.string(),
     /** The `_creationTime` of the last `_storage` file that the previous batch read. */
     storageCursor: v.optional(v.number()),
   },
   returns: v.null(),
-  handler: async (ctx, { versionId, storageCursor }) => {
-    const lock = await holdLock(ctx, versionId);
+  handler: async (ctx, { storageCursor }) => {
+    const garbageBefore = Date.now() - GARBAGE_AGE_MS;
 
     if (storageCursor === undefined) {
-      let other: Doc<"versions"> | null = null;
-      for await (const version of ctx.db.query("versions")) {
-        if (version.versionId !== versionId) {
-          other = version;
-          break;
-        }
+      const versions = await ctx.db.query("versions").collect();
+      let newestLiveAt = -Infinity;
+      for (const { state } of versions) {
+        if (state.kind === "live") newestLiveAt = Math.max(newestLiveAt, state.at);
       }
-      if (other !== null) {
-        const otherId = other.versionId;
+      const garbage = versions.find(({ state, _creationTime }) =>
+        state.kind === "live" ? state.at < newestLiveAt : _creationTime < garbageBefore,
+      );
+      if (garbage !== undefined) {
         const entries = await ctx.db
           .query("entries")
-          .withIndex("by_version_path", (q) => q.eq("versionId", otherId))
+          .withIndex("by_version_path", (q) => q.eq("versionId", garbage.versionId))
           .take(DELETE_BATCH);
         for (const entry of entries) {
           await ctx.db.delete("entries", entry._id);
@@ -295,44 +280,28 @@ export const finishDeploy = internalMutation({
             await ctx.storage.delete(entry.storageId);
           }
         }
-        if (entries.length < DELETE_BATCH) await ctx.db.delete("versions", other._id);
-        await ctx.scheduler.runAfter(0, internal.lib.finishDeploy, { versionId });
+        if (entries.length < DELETE_BATCH) await ctx.db.delete("versions", garbage._id);
+        await ctx.scheduler.runAfter(0, internal.lib.collect, {});
         return null;
       }
     }
 
-    const files = await (
-      storageCursor === undefined
-        ? ctx.db.system.query("_storage")
-        : ctx.db.system
-            .query("_storage")
-            .withIndex("by_creation_time", (q) => q.gt("_creationTime", storageCursor))
-    ).take(SWEEP_BATCH);
+    const files = await ctx.db.system
+      .query("_storage")
+      .withIndex("by_creation_time", (q) =>
+        storageCursor === undefined
+          ? q.lt("_creationTime", garbageBefore)
+          : q.gt("_creationTime", storageCursor).lt("_creationTime", garbageBefore),
+      )
+      .take(SWEEP_BATCH);
     for (const file of files) {
       if (await isUnreferenced(ctx, file._id)) await ctx.storage.delete(file._id);
     }
     if (files.length === SWEEP_BATCH) {
-      await ctx.scheduler.runAfter(0, internal.lib.finishDeploy, {
-        versionId,
+      await ctx.scheduler.runAfter(0, internal.lib.collect, {
         storageCursor: files[files.length - 1]._creationTime,
       });
-      return null;
     }
-    await ctx.db.delete("deploy", lock._id);
-    return null;
-  },
-});
-
-/**
- * Releases the lock of `versionId` after a failed deploy. The version stays, so a retry reuses its
- * files. When the lock is no longer its own, there is nothing to release.
- */
-export const releaseLock = internalMutation({
-  args: { versionId: v.string() },
-  returns: v.null(),
-  handler: async (ctx, { versionId }) => {
-    const lock = await ctx.db.query("deploy").first();
-    if (lock !== null && lock.versionId === versionId) await ctx.db.delete("deploy", lock._id);
     return null;
   },
 });
@@ -340,13 +309,14 @@ export const releaseLock = internalMutation({
 const routeHeaders = v.record(v.string(), v.string());
 
 /**
- * Runs Cloudflare's asset handler for one request against one version. `state` is `null` when the
- * version does not exist. `asset` is `null` when the version is not `ready` or no asset answers.
+ * Runs Cloudflare's asset handler for one request against one version. `state` is the kind of the
+ * version's state, or `null` when the version does not exist. `asset` is `null` when the version
+ * is still uploading or does not exist, or when no asset answers.
  */
 export const route = query({
   args: { versionId: v.string(), method: v.string(), url: v.string(), headers: routeHeaders },
   returns: v.object({
-    state: v.union(v.literal("uploading"), v.literal("ready"), v.null()),
+    state: v.union(v.literal("uploading"), v.literal("ready"), v.literal("live"), v.null()),
     asset: v.union(
       v.null(),
       v.object({
@@ -359,9 +329,9 @@ export const route = query({
   }),
   handler: async (ctx, { versionId, method, url, headers }) => {
     const version = await getVersion(ctx, versionId);
-    if (version === null || version.state === "uploading") {
-      return { state: version?.state ?? null, asset: null };
-    }
+    if (version === null) return { state: null, asset: null };
+    const state = version.state.kind;
+    if (state === "uploading") return { state, asset: null };
 
     const configuration = normalizeConfiguration({
       ...AssetConfigSchema.parse(JSON.parse(version.config)),
@@ -392,7 +362,7 @@ export const route = query({
     };
 
     if (!(await canFetch(request, env, configuration, exists))) {
-      return { state: "ready" as const, asset: null };
+      return { state, asset: null };
     }
     const response = await handleRequest(
       request,
@@ -412,13 +382,13 @@ export const route = query({
       // not stay in a cache.
       if (bodyUrl === null) {
         return {
-          state: "ready" as const,
+          state,
           asset: { status: 404, headers: [{ name: "cache-control", value: "no-store" }], bodyUrl },
         };
       }
     }
     return {
-      state: "ready" as const,
+      state,
       asset: {
         status: response.status,
         headers: [...response.headers].map(([name, value]) => ({ name, value })),

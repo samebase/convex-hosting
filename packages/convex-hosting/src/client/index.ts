@@ -6,10 +6,11 @@ import type { ComponentApi } from "../component/_generated/component.js";
  *
  * Returns `null` when no asset matches, so the app continues (a static site answers 404, a
  * server-rendered site renders the page). A version that does not exist or is still uploading
- * answers 404, so a half-installed site does not render pages without their files.
+ * answers 404, so a half-installed site does not render pages without their files. The first
+ * request for a `ready` version marks it live, which deletes the versions that were live before it.
  */
 export async function serveAsset(
-  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery">,
+  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
   component: ComponentApi,
   request: Request,
   versionId: string,
@@ -20,13 +21,15 @@ export async function serveAsset(
     url: request.url,
     headers: handlerHeaders(request.headers),
   });
-  if (state !== "ready") {
+  if (state === null || state === "uploading") {
     const problem = state === null ? "does not exist" : "is still uploading";
     return new Response(`Version ${versionId} of the site ${problem}.`, {
       status: 404,
       headers: NO_STORE,
     });
   }
+  // Only the pushed code knows which version the deployment runs, so its first request reports it.
+  if (state === "ready") await ctx.runMutation(component.lib.markLive, { versionId });
   if (asset === null) return null;
 
   const headers = new Headers();
