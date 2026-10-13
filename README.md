@@ -100,9 +100,11 @@ vite build && npx convex-hosting upload --dist dist --not-found-handling single-
 `upload` writes `.convex-hosting/version.js`, and `npx convex dev` pushes it within seconds. Until
 then, the development site answers 404.
 
-On a fresh clone, `npx convex dev` cannot bundle `convex/http.ts` until the first `upload` writes
-the version file, and `upload` waits up to 2 minutes for that push, which installs the component,
-before it uploads.
+On a fresh clone, run `convex-hosting upload` before `npx convex dev`. `upload` writes
+`.convex-hosting/version.js` and waits up to 2 minutes for the push that `npx convex dev` makes once
+you start it. If `npx convex dev` was already running and reported the missing module, restart it
+after `upload` wrote the file, because Convex's watcher does not look again at a module that failed
+to resolve.
 
 Two cases are transient:
 
