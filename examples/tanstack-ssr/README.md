@@ -13,7 +13,6 @@ count from a Convex query, and after React hydrates, the count stays live.
 - [`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start) makes
   TanStack Start run in the Convex runtime: `vite.config.ts` adds its `convexSsr()` plugin, and
   `src/server.ts` re-exports its server entry.
-- `public/index.html` exists only because the uploader requires an `index.html`.
 
 ## Run
 

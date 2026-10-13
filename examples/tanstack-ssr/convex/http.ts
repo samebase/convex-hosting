@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { decodeRequestPath, serveStaticAsset } from "@samebase/convex-hosting";
+import { serveStaticAsset } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
 import { httpAction } from "./_generated/server.js";
 
@@ -15,8 +15,7 @@ http.route({
 
     // A missing script from another build must stay a 404, not a page. Don't
     // let a CDN cache it: the file may be uploaded a moment later.
-    const path = decodeRequestPath(new URL(request.url).pathname);
-    if (path === null || path.startsWith("/assets/")) {
+    if (new URL(request.url).pathname.startsWith("/assets/")) {
       return new Response("Not Found", {
         status: 404,
         headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" },
