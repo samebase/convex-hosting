@@ -9,10 +9,8 @@ export default defineSchema({
     manifestSha256: v.string(),
     entryCount: v.number(),
     createdAt: v.number(),
-    // The most recent activation.
+    // The most recent activation. A version that is not live and has it was superseded.
     liveAt: v.optional(v.number()),
-    // When a later activation replaced this version as the live one.
-    supersededAt: v.optional(v.number()),
     // The most recent activation that came after a code push (`deploy`): from then on the backend
     // ran this version's renderer. A file-only activation never clears it.
     codePushAt: v.optional(v.number()),

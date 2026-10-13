@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { checkUploadLimits, collectFiles, MAX_FILES } from "./collectFiles.js";
+import { checkUploadLimits, collectFiles } from "./collectFiles.js";
 import { writeDist } from "./fakeCli.test.helpers.js";
 
 describe("collectFiles", () => {
@@ -82,13 +82,13 @@ describe("upload limits", () => {
     expect(() =>
       checkUploadLimits(
         "dist",
-        Array.from({ length: MAX_FILES }, (_, index) => file(index)),
+        Array.from({ length: 4000 }, (_, index) => file(index)),
       ),
     ).not.toThrow();
     expect(() =>
       checkUploadLimits(
         "dist",
-        Array.from({ length: MAX_FILES + 1 }, (_, index) => file(index)),
+        Array.from({ length: 4001 }, (_, index) => file(index)),
       ),
     ).toThrow("dist has 4001 files. A version holds at most 4000.");
   });

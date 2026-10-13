@@ -21,11 +21,7 @@ const routed = {
     { name: "content-type", value: "text/javascript" },
     { name: "etag", value: '"abc-12345678"' },
   ],
-  body: {
-    storageId: "s1",
-    storageUrl: "https://storage.example/s1",
-    contentType: "text/javascript",
-  },
+  body: { storageId: "s1", storageUrl: "https://storage.example/s1" },
 };
 
 async function invokeStaticRoute(path: string, runQuery: ReturnType<typeof vi.fn>, init = {}) {

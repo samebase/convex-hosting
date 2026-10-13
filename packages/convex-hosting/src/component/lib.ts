@@ -10,6 +10,14 @@ import {
 } from "../workers-shared/utils/configuration/constants.js";
 import { mockJaegerBinding } from "../workers-shared/utils/tracing.js";
 import { AssetConfigSchema, type AssetConfig } from "../workers-shared/utils/types.js";
+import {
+  COMPATIBILITY_DATE,
+  MAX_CONFIG_BYTES,
+  MAX_ENTRIES,
+  MAX_FILE_BYTES,
+  MAX_PATH_BYTES,
+  VERSION_ID_PATTERN,
+} from "../contract.js";
 import { internal } from "./_generated/api.js";
 import type { Doc, Id } from "./_generated/dataModel.js";
 import {
@@ -23,8 +31,6 @@ import {
 import { etagMatches } from "./serving.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_ENTRIES = 4000;
-const MAX_CONFIG_BYTES = 256 * 1024;
 /** Entries per `writeEntries` mutation. */
 const ENTRY_WRITE_BATCH = 500;
 /** Versions that one `cleanup` call checks for expiry. */
@@ -39,11 +45,9 @@ const NEWER_THAN_LIVE_ROWS = 8;
  */
 const CLEANUP_BUDGET = 200;
 const VERSION_DELETE_COST = 8;
-/** The first date with navigation detection (`Sec-Fetch-Mode`) in the asset worker. */
-const NAVIGATION_COMPATIBILITY_DATE = "2025-04-01";
 
 const manifestSchema = z.object({
-  versionId: z.string().regex(/^v_[a-z2-7]{26}$/),
+  versionId: z.string().regex(VERSION_ID_PATTERN),
   config: AssetConfigSchema,
   entries: z
     .array(
@@ -51,15 +55,11 @@ const manifestSchema = z.object({
         path: z
           .string()
           .startsWith("/")
-          .refine((path) => new TextEncoder().encode(path).byteLength <= 1024, {
-            message: "A path can have at most 1,024 bytes.",
+          .refine((path) => new TextEncoder().encode(path).byteLength <= MAX_PATH_BYTES, {
+            message: `A path can have at most ${MAX_PATH_BYTES} bytes.`,
           }),
         sha256: z.string().regex(/^[0-9a-f]{64}$/),
-        size: z
-          .number()
-          .int()
-          .nonnegative()
-          .max(25 * 1024 * 1024),
+        size: z.number().int().nonnegative().max(MAX_FILE_BYTES),
         contentType: z.string(),
         immutable: z.boolean(),
       }),
@@ -121,16 +121,7 @@ export const startVersion = internalAction({
         const batch = manifest.entries.slice(start, start + ENTRY_WRITE_BATCH);
         const batchPending: Array<Infer<typeof pendingEntryValidator>> = await ctx.runMutation(
           internal.lib.writeEntries,
-          {
-            versionId,
-            entries: batch.map((entry) => ({
-              path: entry.path,
-              sha256: entry.sha256,
-              size: entry.size,
-              contentType: entry.contentType,
-              immutable: entry.immutable,
-            })),
-          },
+          { versionId, entries: batch },
         );
         pending.push(...batchPending);
       }
@@ -414,13 +405,7 @@ export const activate = internalMutation({
     if (afterCodePush) await ctx.db.patch("versions", version._id, { codePushAt: now });
     if (previousVersionId === versionId) return { previousVersionId };
 
-    if (previousVersionId !== null) {
-      const previous = await getVersion(ctx, previousVersionId);
-      if (previous !== null) {
-        await ctx.db.patch("versions", previous._id, { supersededAt: now });
-      }
-    }
-    await ctx.db.patch("versions", version._id, { liveAt: now, supersededAt: undefined });
+    await ctx.db.patch("versions", version._id, { liveAt: now });
     if (site === null) {
       await ctx.db.insert("site", { liveVersionId: versionId });
     } else {
@@ -460,14 +445,7 @@ export const route = query({
       handled: v.literal(true),
       status: v.number(),
       headers: headerListValidator,
-      body: v.union(
-        v.object({
-          storageId: v.id("_storage"),
-          storageUrl: v.string(),
-          contentType: v.string(),
-        }),
-        v.null(),
-      ),
+      body: v.union(v.object({ storageId: v.id("_storage"), storageUrl: v.string() }), v.null()),
     }),
   ),
   handler: async (ctx, { method, url, headers, exact }) => {
@@ -496,7 +474,6 @@ export const route = query({
       .unique();
     if (configRow === null) throw new Error(`Version ${version.versionId} has no config.`);
     const versionConfig: AssetConfig = JSON.parse(configRow.config);
-    versionConfig.compatibility_date ??= NAVIGATION_COMPATIBILITY_DATE;
     if (exact) {
       versionConfig.html_handling = "none";
       versionConfig.not_found_handling = "none";
@@ -515,7 +492,11 @@ export const route = query({
     const exists = async (path: string) => {
       let entry = lookups.get(path);
       if (entry === undefined) {
-        entry = await lookupEntry(ctx, version, path);
+        // The live version's entry at `path`; else, for an immutable path, the newest entry at
+        // `path` of a ready version newer than live.
+        const own = await getEntry(ctx, version.versionId, path);
+        entry =
+          own?.storageId !== undefined ? own : await newestNewerImmutableEntry(ctx, version, path);
         lookups.set(path, entry);
       }
       if (entry === null) return null;
@@ -578,11 +559,7 @@ export const route = query({
     if (response.body !== null && served.entry?.storageId !== undefined) {
       const storageUrl = await ctx.storage.getUrl(served.entry.storageId);
       if (storageUrl === null) throw new Error(`The object for ${served.entry.path} is missing.`);
-      body = {
-        storageId: served.entry.storageId,
-        storageUrl,
-        contentType: served.entry.contentType,
-      };
+      body = { storageId: served.entry.storageId, storageUrl };
     }
     return {
       handled: true as const,
@@ -686,10 +663,10 @@ export const cleanup = internalMutation({
 
 /**
  * Whether a version that is not live can go. An `uploading` version goes after a day. A ready
- * version that was live without a code push goes at once: nothing serves a superseded version. A
- * version activated after a code push, or one that never went live (a release whose push succeeded
- * and whose activation failed), can be the version of the renderer that the backend runs, and its
- * files go only after a later code push. `codePush` is the newest `codePushAt` of all versions.
+ * version that went live goes at once: the immutable fallback never serves a superseded version. A
+ * ready version that never went live can be a release whose push succeeded and whose activation
+ * failed, so the backend may run its renderer, and the fallback serves its files until a later code
+ * push. `codePush` is the newest `codePushAt` of all versions.
  */
 function isExpired(version: Doc<"versions">, codePush: number | undefined, now: number) {
   switch (version.state) {
@@ -698,8 +675,8 @@ function isExpired(version: Doc<"versions">, codePush: number | undefined, now: 
     case "uploading":
       return version.createdAt < now - DAY_MS;
     case "ready":
-      if (version.codePushAt === undefined && version.liveAt !== undefined) return true;
-      return codePush !== undefined && codePush > (version.codePushAt ?? version.createdAt);
+      if (version.liveAt !== undefined) return true;
+      return codePush !== undefined && codePush > version.createdAt;
     default:
       return version.state satisfies never;
   }
@@ -723,25 +700,12 @@ function checkConfig(config: AssetConfig) {
   for (const [kind, count, max] of ruleCounts) {
     if (count > max) throw new Error(`The config has ${count} ${kind} rules; the limit is ${max}.`);
   }
-  if (
-    config.compatibility_date !== undefined &&
-    config.compatibility_date < NAVIGATION_COMPATIBILITY_DATE
-  ) {
-    throw new Error(`The config's compatibility_date is before ${NAVIGATION_COMPATIBILITY_DATE}.`);
+  if (config.compatibility_date === undefined || config.compatibility_date < COMPATIBILITY_DATE) {
+    throw new Error(`The config needs a compatibility_date of ${COMPATIBILITY_DATE} or later.`);
   }
   // Throws for an invalid base_path. It can add compatibility flags to its argument, so the caller
   // serializes the config first.
   normalizeConfiguration(config);
-}
-
-/**
- * The live version's entry at `path`; else, for an immutable path, the newest entry at `path` of a
- * ready version newer than live; else null.
- */
-async function lookupEntry(ctx: QueryCtx, live: Doc<"versions">, path: string) {
-  const own = await getEntry(ctx, live.versionId, path);
-  if (own?.storageId !== undefined) return own;
-  return await newestNewerImmutableEntry(ctx, live, path);
 }
 
 /**

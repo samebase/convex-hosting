@@ -42,11 +42,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         | { handled: false }
         | {
-            body: {
-              contentType: string;
-              storageId: string;
-              storageUrl: string;
-            } | null;
+            body: { storageId: string; storageUrl: string } | null;
             handled: true;
             headers: Array<{ name: string; value: string }>;
             status: number;

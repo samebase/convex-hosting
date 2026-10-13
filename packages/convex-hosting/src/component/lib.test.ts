@@ -11,7 +11,7 @@ import {
   testVersionId,
   uploadTestVersion,
   type TestFile,
-} from "./setup.test.js";
+} from "./setup.test.helpers.js";
 
 const HTML = "text/html; charset=utf-8";
 const JS = "text/javascript; charset=utf-8";
@@ -214,7 +214,7 @@ describe("upload", () => {
   test("the manifest is checked", async () => {
     const t = initConvexTest();
     const versionId = testVersionId("a");
-    const manifest = (entries: unknown[], config: object = {}) =>
+    const manifest = (entries: unknown[], config: object = { compatibility_date: "2025-04-01" }) =>
       store(t, JSON.stringify({ versionId, config, entries }));
     const entry = {
       path: "/a.txt",
@@ -229,12 +229,14 @@ describe("upload", () => {
         manifestStorageId: await manifest([entry, entry]),
       }),
     ).rejects.toThrow("duplicate paths");
-    await expect(
-      t.action(internal.lib.startVersion, {
-        versionId,
-        manifestStorageId: await manifest([entry], { compatibility_date: "2024-01-01" }),
-      }),
-    ).rejects.toThrow("compatibility_date");
+    for (const config of [{}, { compatibility_date: "2024-01-01" }]) {
+      await expect(
+        t.action(internal.lib.startVersion, {
+          versionId,
+          manifestStorageId: await manifest([entry], config),
+        }),
+      ).rejects.toThrow("needs a compatibility_date of 2025-04-01 or later");
+    }
     await expect(
       t.action(internal.lib.startVersion, {
         versionId: testVersionId("b"),
@@ -243,7 +245,7 @@ describe("upload", () => {
     ).rejects.toThrow("not v_bbbbbbbbbbbbbbbbbbbbbbbbbb");
   });
 
-  test("activate needs a ready version and marks the previous one superseded", async () => {
+  test("activate needs a ready version and returns the previous one", async () => {
     const t = initConvexTest();
     await startTestVersion(t, testVersionId("a"), files);
     await expect(
@@ -255,10 +257,9 @@ describe("upload", () => {
     expect(await deployTestVersion(t, testVersionId("c"), files)).toEqual({
       previousVersionId: testVersionId("b"),
     });
-    const versions = await t.run(async (ctx) => await ctx.db.query("versions").collect());
-    expect(versions.find((version) => version.versionId === testVersionId("b"))).toMatchObject({
-      liveAt: T0,
-      supersededAt: T0 + 1000,
+    expect(await t.query(api.lib.getLiveVersion, {})).toEqual({
+      versionId: testVersionId("c"),
+      liveAt: T0 + 1000,
     });
   });
 });
@@ -286,8 +287,11 @@ describe("lookups", () => {
       "/new.txt": { body: "new", contentType: "text/plain" },
     });
 
-    const found = await route(t, "/assets/new.js");
-    expect(found).toMatchObject({ handled: true, status: 200, body: { contentType: JS } });
+    expect(await route(t, "/assets/new.js")).toMatchObject({
+      handled: true,
+      status: 200,
+      headers: expect.arrayContaining([{ name: "content-type", value: JS }]),
+    });
     // A mutable path never falls back to another version.
     expect(await route(t, "/new.txt")).toEqual({ handled: false });
   });
@@ -382,25 +386,17 @@ describe("cleanup", () => {
     expect(objects).toHaveLength(1);
   });
 
-  test("keeps a superseded code-push version until a later code push and deletes it right after", async () => {
+  test("deletes a superseded code-push version at the next run", async () => {
     const t = initConvexTest();
     await uploadTestVersion(t, testVersionId("a"), files);
     await t.mutation(internal.lib.activate, { versionId: testVersionId("a"), afterCodePush: true });
     vi.setSystemTime(T0 + 1000);
-    // A plain upload: the backend still runs the renderer of version a.
+    // A plain upload. The backend still runs the renderer of version a, but the immutable fallback
+    // never serves a superseded version, so its files have no reader.
     await deployTestVersion(t, testVersionId("b"), files);
 
     await t.mutation(internal.lib.cleanup, {});
-    expect(await versionStates(t)).toEqual({
-      [testVersionId("a")]: "ready",
-      [testVersionId("b")]: "ready",
-    });
-
-    vi.setSystemTime(T0 + 2000);
-    await uploadTestVersion(t, testVersionId("c"), files);
-    await t.mutation(internal.lib.activate, { versionId: testVersionId("c"), afterCodePush: true });
-    await t.mutation(internal.lib.cleanup, {});
-    expect(await versionStates(t)).toEqual({ [testVersionId("c")]: "ready" });
+    expect(await versionStates(t)).toEqual({ [testVersionId("b")]: "ready" });
   });
 
   test("keeps a never-live version until a later code push", async () => {
@@ -416,7 +412,6 @@ describe("cleanup", () => {
 
     await t.mutation(internal.lib.cleanup, {});
     expect(await versionStates(t)).toEqual({
-      [testVersionId("a")]: "ready",
       [testVersionId("b")]: "ready",
       [testVersionId("c")]: "ready",
     });
@@ -426,29 +421,6 @@ describe("cleanup", () => {
     await t.mutation(internal.lib.activate, { versionId: testVersionId("d"), afterCodePush: true });
     await t.mutation(internal.lib.cleanup, {});
     expect(await versionStates(t)).toEqual({ [testVersionId("d")]: "ready" });
-  });
-
-  test("keeps a code-push version after a file-only rollback to it is superseded", async () => {
-    const t = initConvexTest();
-    await uploadTestVersion(t, testVersionId("a"), files);
-    await t.mutation(internal.lib.activate, { versionId: testVersionId("a"), afterCodePush: true });
-    vi.setSystemTime(T0 + DAY);
-    await deployTestVersion(t, testVersionId("b"), files);
-    vi.setSystemTime(T0 + 2 * DAY);
-    // A file-only rollback to a, then another plain upload: the backend still runs renderer a.
-    await t.mutation(internal.lib.activate, {
-      versionId: testVersionId("a"),
-      afterCodePush: false,
-    });
-    vi.setSystemTime(T0 + 3 * DAY);
-    await deployTestVersion(t, testVersionId("c"), files);
-
-    vi.setSystemTime(T0 + 30 * DAY);
-    await t.mutation(internal.lib.cleanup, {});
-    expect(await versionStates(t)).toEqual({
-      [testVersionId("a")]: "ready",
-      [testVersionId("c")]: "ready",
-    });
   });
 
   test("reads small version rows, because configs live in their own table", async () => {
@@ -465,7 +437,6 @@ describe("cleanup", () => {
           entryCount: 0,
           createdAt: T0,
           liveAt: T0,
-          supersededAt: T0,
         });
         await ctx.db.insert("versionConfigs", { versionId, config });
       }
@@ -476,7 +447,6 @@ describe("cleanup", () => {
     expect(pageBytes).toBeLessThan(64 * 1024);
     expect(200 * config.length).toBeGreaterThan(16 * 1024 * 1024);
 
-    vi.setSystemTime(T0 + 8 * DAY);
     let done = false;
     for (let call = 0; call < 20 && !done; call++) {
       ({ done } = await t.mutation(internal.lib.cleanup, {}));
@@ -500,12 +470,11 @@ describe("cleanup", () => {
           manifestSha256: "",
           entryCount: 0,
           createdAt: T0,
-          ...(expired ? { liveAt: T0, supersededAt: T0 } : {}),
+          ...(expired ? { liveAt: T0 } : {}),
         });
       }
     });
 
-    vi.setSystemTime(T0 + 8 * DAY);
     expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: false });
     expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: true });
     const states = await versionStates(t);
@@ -524,7 +493,6 @@ describe("cleanup", () => {
     vi.setSystemTime(T0 + 1000);
     await deployTestVersion(t, testVersionId("b"), files);
 
-    vi.setSystemTime(T0 + 9 * DAY);
     expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: false });
     expect(await versionStates(t)).toMatchObject({ [testVersionId("a")]: "deleting" });
     await expect(
@@ -553,7 +521,6 @@ describe("cleanup", () => {
           entryCount: 0,
           createdAt: T0,
           liveAt: T0,
-          supersededAt: T0,
         });
         await ctx.db.insert("versionConfigs", { versionId, config });
       }
@@ -561,7 +528,6 @@ describe("cleanup", () => {
     const remaining = async () =>
       (await t.run(async (ctx) => await ctx.db.query("versionConfigs").collect())).length;
 
-    vi.setSystemTime(T0 + 8 * DAY);
     const results = [];
     for (let call = 0; call < 3; call++) {
       results.push((await t.mutation(internal.lib.cleanup, {})).done);

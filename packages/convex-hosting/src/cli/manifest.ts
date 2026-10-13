@@ -15,13 +15,15 @@ import {
   maybeGetFile,
 } from "../workers-shared/utils/helpers.js";
 import type { AssetConfig } from "../workers-shared/utils/types.js";
+import {
+  COMPATIBILITY_DATE,
+  MAX_CONFIG_BYTES,
+  VERSION_ID_ALPHABET,
+  VERSION_ID_LENGTH,
+  VERSION_ID_PATTERN,
+} from "../contract.js";
 import type { SiteOptions } from "./args.js";
 import type { LocalFile } from "./collectFiles.js";
-
-/** The asset worker detects navigation requests (`Sec-Fetch-Mode: navigate`) from this date. */
-export const COMPATIBILITY_DATE = "2025-04-01";
-/** The component stores the config in one document field and rejects a larger one. */
-export const MAX_CONFIG_BYTES = 256 * 1024;
 
 const IMMUTABLE_PRESETS = new Map([
   ["vite", "/assets/**"],
@@ -29,9 +31,6 @@ const IMMUTABLE_PRESETS = new Map([
   ["astro", "/_astro/**"],
   ["sveltekit", "/_app/immutable/**"],
 ]);
-
-export const VERSION_ID_PATTERN = /^v_[a-z2-7]{26}$/;
-const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
 
 export type ManifestEntry = {
   path: string;
@@ -130,8 +129,11 @@ export function manifestDigest(config: AssetConfig, entries: ManifestEntry[]): s
 }
 
 export function newVersionId(): string {
-  // 256 is a multiple of 32, so every character is equally likely.
-  return `v_${Array.from(randomBytes(26), (byte) => BASE32[byte % 32]).join("")}`;
+  // 256 is a multiple of the 32 characters, so every character is equally likely.
+  return `v_${Array.from(
+    randomBytes(VERSION_ID_LENGTH),
+    (byte) => VERSION_ID_ALPHABET[byte % VERSION_ID_ALPHABET.length],
+  ).join("")}`;
 }
 
 export function versionFilePath(dist: string): string {

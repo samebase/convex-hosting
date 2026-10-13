@@ -12,9 +12,9 @@ import {
   newVersionId,
   resolveVersionId,
   sha256Hex,
-  VERSION_ID_PATTERN,
   versionFilePath,
 } from "./manifest.js";
+import { VERSION_ID_PATTERN } from "../contract.js";
 
 const defaults = {
   htmlHandling: "auto-trailing-slash",

@@ -1,10 +1,12 @@
 /// <reference types="vite/client" />
-import { test } from "vite-plus/test";
+// Component fixtures for lib.test.ts and http.test.ts.
 import schema from "./schema.js";
 import { convexTest } from "convex-test";
 import { internal } from "./_generated/api.js";
 import type { AssetConfig } from "../workers-shared/utils/types.js";
-export const modules = import.meta.glob("./**/*.*s");
+import { COMPATIBILITY_DATE } from "../contract.js";
+
+const modules = import.meta.glob("./**/*.*s");
 
 export function initConvexTest() {
   const t = convexTest(schema, modules);
@@ -45,7 +47,14 @@ export async function startTestVersion(
       immutable: file.immutable ?? false,
     })),
   );
-  const manifestStorageId = await store(t, JSON.stringify({ versionId, config, entries }));
+  const manifestStorageId = await store(
+    t,
+    JSON.stringify({
+      versionId,
+      config: { compatibility_date: COMPATIBILITY_DATE, ...config },
+      entries,
+    }),
+  );
   return await t.action(internal.lib.startVersion, { versionId, manifestStorageId });
 }
 
@@ -74,5 +83,3 @@ export async function deployTestVersion(
   await uploadTestVersion(t, versionId, files, config);
   return await t.mutation(internal.lib.activate, { versionId, afterCodePush: false });
 }
-
-test("setup", () => {});

@@ -5,8 +5,8 @@ import type { FunctionReference, GenericActionCtx, GenericDataModel } from "conv
 
 type Header = { name: string; value: string };
 
-/** What `route` returns for a body: the selected entry's object. */
-type RoutedBody = { storageId: string; storageUrl: string; contentType: string };
+/** What `route` returns for a body: the selected entry's object. The headers carry its type. */
+type RoutedBody = { storageId: string; storageUrl: string };
 
 /** `api.lib.route` in the component, or the component's `lib.route` in an app. */
 type RouteQuery<Body extends RoutedBody> = FunctionReference<

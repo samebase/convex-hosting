@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { normalizeBasePath } from "../workers-shared/utils/base-path.js";
 import { AssetConfigSchema, type AssetConfig } from "../workers-shared/utils/types.js";
-import { VERSION_ID_PATTERN } from "./manifest.js";
+import { VERSION_ID_PATTERN } from "../contract.js";
 
 /** Options shared by `upload` and `deploy`: what to upload, where, and how to serve it. */
 export interface SiteOptions {

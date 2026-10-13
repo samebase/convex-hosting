@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 import type { DeployOptions } from "./args.js";
 import { commandLine, deploy, siteUrlFromCloudUrl } from "./deploy.js";
 import { fakeCli, SITE_URL, writeDist } from "./fakeCli.test.helpers.js";
-import { entryETag, sha256Hex, VERSION_ID_PATTERN } from "./manifest.js";
+import { VERSION_ID_PATTERN } from "../contract.js";
+import { entryETag, sha256Hex } from "./manifest.js";
 import type { Target } from "./target.js";
 
 const production: Target = { kind: "production", deploymentName: "happy-animal-123" };

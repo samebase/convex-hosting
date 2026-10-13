@@ -2,7 +2,8 @@ import { rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { UploadOptions } from "./args.js";
 import { fakeCli, writeDist } from "./fakeCli.test.helpers.js";
-import { sha256Hex, VERSION_ID_PATTERN } from "./manifest.js";
+import { VERSION_ID_PATTERN } from "../contract.js";
+import { sha256Hex } from "./manifest.js";
 import type { Target } from "./target.js";
 import { upload } from "./upload.js";
 

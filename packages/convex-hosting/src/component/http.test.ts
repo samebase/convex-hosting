@@ -3,7 +3,12 @@
 import { describe, expect, test } from "vite-plus/test";
 import { api } from "./_generated/api.js";
 import { etagMatches } from "./serving.js";
-import { deployTestVersion, initConvexTest, testVersionId, type TestFile } from "./setup.test.js";
+import {
+  deployTestVersion,
+  initConvexTest,
+  testVersionId,
+  type TestFile,
+} from "./setup.test.helpers.js";
 
 const HTML = "text/html; charset=utf-8";
 const JS = "text/javascript; charset=utf-8";
