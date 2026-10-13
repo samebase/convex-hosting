@@ -79,9 +79,12 @@ deploy key and `--preview-name` together are an error, because the Convex CLI wo
 
 **First install.** The component's functions exist only after a push, and a new preview deployment
 exists only once `npx convex deploy` has created it, which happens before it runs the command. So
-the inner `upload` decides: when its first call answers with the Convex CLI's exact message
-`Component path "<name>" was not found.`, it writes the version file and a marker file in `<dir>`
-and exits without uploading, so the push that follows installs the component. `deploy` sees the
+the inner `upload` decides. Its first call is a probe, `npx convex run --component <name>
+--inline-query`, because that path of the Convex CLI looks the component up before it runs anything
+and prints the exact message `Component path "<name>" was not found.` when the deployment does not
+have it (a function run against a missing component answers only a generic server error, which
+must not count). On that exact message, `upload` writes the version file and a marker file in
+`<dir>` and exits without uploading, so the push that follows installs the component. `deploy` sees the
 marker after `npx convex deploy` returns and runs the upload then, followed by `finishDeploy`. Until
 that upload ends, the site answers 404 (see Serve). This happens once per deployment.
 
@@ -97,8 +100,8 @@ vite build && convex-hosting upload --dist dist
 `npx convex dev` pushes the file within seconds, and until it does the development site answers 404
 for the version its code still names. On a fresh clone, the version file does not exist (it is
 ignored by git), so `npx convex dev` cannot bundle `convex/http.ts`, and the component is not
-pushed, so `upload` cannot store files. `upload` resolves this itself: when its first call answers
-with the missing-component message, it writes the version file first, which lets `npx convex dev`
+pushed, so `upload` cannot store files. `upload` resolves this itself: when the probe answers with
+the missing-component message, it writes the version file first, which lets `npx convex dev`
 push, and retries that call every few seconds for two minutes before it gives up with the error.
 
 Two more things in this loop are transient and documented, not solved: when a server-rendered app's
