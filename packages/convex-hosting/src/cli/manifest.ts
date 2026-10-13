@@ -146,25 +146,31 @@ const storedVersion = z.object({
   digest: z.string(),
 });
 
+/** The version file of `dist`, or null when it is missing or damaged. */
+export function readVersionFile(dist: string): z.infer<typeof storedVersion> | null {
+  const stored = storedVersion.safeParse(parseJson(maybeGetFile(versionFilePath(dist))));
+  return stored.success ? stored.data : null;
+}
+
 /**
  * The version ID for this upload: `explicit` when given (`deploy` makes it before the build), else
  * the stored one when the stored digest equals `digest`, so a rerun continues the same version,
- * else a new one. The result is stored with the digest.
+ * else a new one. The result is stored with the digest, also for `deploy --skip-build`.
  */
 export function resolveVersionId(dist: string, digest: string, explicit: string | null): string {
-  const file = versionFilePath(dist);
   let versionId = explicit;
   if (versionId === null) {
-    const stored = storedVersion.safeParse(parseJson(maybeGetFile(file)));
-    versionId = stored.success && stored.data.digest === digest ? stored.data.versionId : null;
+    const stored = readVersionFile(dist);
+    versionId = stored?.digest === digest ? stored.versionId : null;
   }
   versionId ??= newVersionId();
+  const file = versionFilePath(dist);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify({ versionId, digest })}\n`);
   return versionId;
 }
 
-/** A missing or damaged version file only means that the upload starts a new version. */
+/** A damaged version file counts as a missing one. */
 function parseJson(text: string | undefined): unknown {
   try {
     return text === undefined ? null : JSON.parse(text);

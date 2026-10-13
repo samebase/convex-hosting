@@ -27,7 +27,8 @@ deploy options:
   --build-command <cmd>         Build command (default: npm run build). It gets the deployment URL
                                 from npx convex deploy, and CONVEX_HOSTING_VERSION_ID and
                                 CONVEX_HOSTING_BASE_PATH
-  --skip-build                  Upload the existing build output
+  --skip-build                  Upload the existing build output under the version ID that its
+                                build got, from <dist>/.convex-hosting/version.json
   --verify-path <path>          Page that must carry the version meta tag when the build has no
                                 /index.html, relative to the base path (default: /)
   --site-url <url>              Origin that verification fetches the site from (default: the

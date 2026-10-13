@@ -1,10 +1,10 @@
 // Rebuilds the app and uploads its client files whenever a source file
 // changes, for `npm run dev`. Only one build and upload runs at a time. A
 // change during a run starts one more run after it ends, so two builds never
-// write `dist` at once and an older upload never publishes over a newer one.
+// write `dist` at once and an older upload never activates over a newer one.
 
 import { spawn } from "node:child_process";
-import { watch } from "node:fs";
+import { mkdirSync, watch } from "node:fs";
 
 let running = false;
 let changedDuringRun = false;
@@ -38,6 +38,8 @@ function onChange() {
 watch("src", { recursive: true }, (_event, file) => {
   if (file !== "routeTree.gen.ts") onChange();
 });
+// The example has no files in public/ yet, and a watch needs the directory.
+mkdirSync("public", { recursive: true });
 watch("public", { recursive: true }, onChange);
 // Watch the directory, not the file: editors that save by replacing the file
 // would end a watcher on the file itself.

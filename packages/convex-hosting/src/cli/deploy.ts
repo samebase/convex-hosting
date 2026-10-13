@@ -5,7 +5,13 @@ import { parseDeployArgs, siteOptionArgs, type DeployOptions } from "./args.js";
 import { collectFiles } from "./collectFiles.js";
 import { nodeCli, runComponent, type Cli } from "./commands.js";
 import { findComponent, liveVersionResult } from "./componentName.js";
-import { entryETag, manifestEntries, newVersionId } from "./manifest.js";
+import {
+  entryETag,
+  manifestEntries,
+  newVersionId,
+  readVersionFile,
+  versionFilePath,
+} from "./manifest.js";
 import {
   describeTarget,
   readConvexEnv,
@@ -32,7 +38,7 @@ export async function deploy(target: Target, options: DeployOptions, cli: Cli): 
     );
   }
   console.log(`Deploying to the ${describeTarget(target)}.`);
-  const versionId = newVersionId();
+  const versionId = await releaseVersionId(options);
   const basePath = options.basePath ?? "/";
   // `npx convex deploy` adds the deployment URLs and passes this environment to `--cmd`.
   const env = {
@@ -77,6 +83,25 @@ export async function deploy(target: Target, options: DeployOptions, cli: Cli): 
   console.log(`Version ${versionId} is live.`);
   await verify(cli, target, component, versionId, options);
   console.log("Verified.");
+}
+
+/**
+ * The version ID that the build writes into its pages: a new one for a new build. With
+ * `--skip-build`, the ID of the build in `dist`, from the version file that the upload of its
+ * deploy wrote. Without that file, a static build gets a new ID, because verification reads its
+ * `/index.html` and not the ID; any other build stops before any change.
+ */
+async function releaseVersionId(options: DeployOptions): Promise<string> {
+  if (options.buildCommand !== null) return newVersionId();
+  const stored = readVersionFile(options.dist);
+  if (stored !== null) return stored.versionId;
+  if ((await collectFiles(options.dist)).some((file) => file.path === "/index.html")) {
+    return newVersionId();
+  }
+  throw new Error(
+    `--skip-build needs ${versionFilePath(options.dist)} for the version ID that the build wrote ` +
+      "into its pages, and the file is missing. Run deploy without --skip-build.",
+  );
 }
 
 function pushBackend(cli: Cli, target: Target, cmd: string | null, env: NodeJS.ProcessEnv): void {

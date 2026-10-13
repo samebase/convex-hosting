@@ -1,9 +1,9 @@
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { DeployOptions } from "./args.js";
 import { commandLine, deploy, siteUrlFromCloudUrl } from "./deploy.js";
 import { fakeCli, SITE_URL, writeDist } from "./fakeCli.test.helpers.js";
-import { entryETag, sha256Hex, VERSION_ID_PATTERN } from "./manifest.js";
+import { entryETag, sha256Hex, VERSION_ID_PATTERN, versionFilePath } from "./manifest.js";
 import type { Target } from "./target.js";
 
 const production: Target = { kind: "production", deploymentName: "happy-animal-123" };
@@ -152,6 +152,48 @@ describe("deploy, on a first install or from 0.3.x", () => {
     expect(fake.runs.filter((run) => run.fn === "lib:activate").map((run) => run.args)).toEqual([
       { versionId, afterCodePush: true },
     ]);
+    // For a later `deploy --skip-build` of this build.
+    expect(JSON.parse(readFileSync(versionFilePath(dist), "utf8")).versionId).toBe(versionId);
+  });
+});
+
+describe("deploy --skip-build", () => {
+  const BUILT_ID = "v_bbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+  test("reuses the version ID that the build wrote into its pages", async () => {
+    rmSync(dist, { recursive: true, force: true });
+    dist = writeDist({
+      "assets/app.js": "1",
+      ".convex-hosting/version.json": JSON.stringify({ versionId: BUILT_ID, digest: "built" }),
+    });
+    const fake = releasedFake();
+    fake.setSite(() => new Response(`<meta name="convex-hosting-version" content="${BUILT_ID}">`));
+
+    await deploy(production, options({ buildCommand: null }), fake.cli);
+
+    const [{ argv, env }] = fake.pushes;
+    expect(env.CONVEX_HOSTING_VERSION_ID).toBe(BUILT_ID);
+    expect(argv[2]).toContain(`--version-id ${BUILT_ID} --no-activate`);
+    expect(fake.runs.find((run) => run.fn === "lib:activate")?.args.versionId).toBe(BUILT_ID);
+  });
+
+  test("stops before any call without the version file, unless the build is static", async () => {
+    rmSync(dist, { recursive: true, force: true });
+    dist = writeDist({ "assets/app.js": "1" });
+    const fake = releasedFake();
+
+    await expect(deploy(production, options({ buildCommand: null }), fake.cli)).rejects.toThrow(
+      `--skip-build needs ${versionFilePath(dist)} for the version ID that the build wrote into ` +
+        "its pages, and the file is missing. Run deploy without --skip-build.",
+    );
+    expect(fake.calls).toEqual([]);
+
+    // A static build is verified by its /index.html, so a new ID is enough.
+    rmSync(dist, { recursive: true, force: true });
+    dist = writeDist({ "index.html": INDEX, "assets/app.js": "1" });
+    fake.setSite(() => new Response(INDEX, { headers: { ETag: INDEX_ETAG } }));
+    await deploy(production, options({ buildCommand: null }), fake.cli);
+    expect(String(fake.pushes[0].env.CONVEX_HOSTING_VERSION_ID)).toMatch(VERSION_ID_PATTERN);
   });
 });
 

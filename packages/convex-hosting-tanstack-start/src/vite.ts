@@ -7,6 +7,12 @@ export function convexSsr(): Plugin {
     name: "convex-hosting-tanstack-start",
     apply: "build",
     config: () => ({
+      // The server entry writes it into every page, where `convex-hosting deploy` verifies it.
+      define: {
+        "import.meta.env.CONVEX_HOSTING_VERSION_ID": JSON.stringify(
+          process.env.CONVEX_HOSTING_VERSION_ID ?? "",
+        ),
+      },
       ssr: {
         noExternal: true,
         resolve: { conditions: ["worker", "browser", "module", "import"] },
