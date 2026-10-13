@@ -57,9 +57,9 @@ name.
    Both run in the project directory; a build must not change directory. Convex gives the build the
    deployment's URL in `CONVEX_URL` and in one framework variable such as `VITE_CONVEX_URL`, as it
    documents for frontends. Inside the command, `upload`:
-   1. collects the files of `<dir>`, honoring `.assetsignore`, and computes each file's sha256,
-      size, and content type; reads `_headers` and `_redirects` with Cloudflare's parsers into the
-      version's config;
+   1. collects the files of `<dir>`, honoring `.assetsignore`, and computes each file's sha256 and
+      content type; reads `_headers` and `_redirects` with Cloudflare's parsers into the version's
+      config;
    2. stores the manifest (the config and the entries) as one file through an upload URL, because
       `npx convex run` passes arguments on the command line, which the operating system limits, and
       a manifest can be megabytes; (`npx convex run` stays the transport because it handles every
@@ -69,8 +69,8 @@ name.
       version in state `uploading` and its entries, in batches that fit Convex's transaction limits,
       and gives each entry whose sha256 a recorded entry already has that entry's stored file;
    4. loops: asks for a page of entries without a file, gets upload URLs for them, uploads the files
-      a few at a time, and records them with `recordFiles`, which checks each file's sha256 and size
-      against Convex's storage metadata; the loop ends when no entry is without a file;
+      a few at a time, and records them with `recordFiles`, which checks each file's sha256 against
+      Convex's storage metadata; the loop ends when no entry is without a file;
    5. calls `finishVersion`, which puts the version in state `ready` when no entry is without a
       file;
    6. writes `.convex-hosting/version.js` with the id, in the CLI's state folder at the project
@@ -203,11 +203,11 @@ longer prefixes, by Convex's router rules for the same method.
 
 Three tables.
 
-| Table      | Fields                                                                                          | Indexes                                                                                               |
-| ---------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `versions` | `versionId`, `state` (`uploading`, `ready`), `config` (JSON string)                             | `by_versionId`                                                                                        |
-| `entries`  | `versionId`, `path`, `sha256` (hex), `size`, `contentType`, `storageId` (absent until recorded) | `by_version_path`, `by_sha256`, `by_storageId`, and one that finds a version's entries without a file |
-| `deploy`   | one row at most: `versionId`, `lastCallAt`                                                      |                                                                                                       |
+| Table      | Fields                                                                                  | Indexes                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `versions` | `versionId`, `state` (`uploading`, `ready`), `config` (JSON string)                     | `by_versionId`                                                                                        |
+| `entries`  | `versionId`, `path`, `sha256` (hex), `contentType`, `storageId` (absent until recorded) | `by_version_path`, `by_sha256`, `by_storageId`, and one that finds a version's entries without a file |
+| `deploy`   | one row at most: `versionId`, `lastCallAt`                                              |                                                                                                       |
 
 Creation times come from `_creationTime`. `config` is the JSON of Cloudflare's `AssetConfig` for the
 version: `html_handling`, `not_found_handling`, `headers`, `redirects`. It is a string because
@@ -226,7 +226,7 @@ and refreshes `lastCallAt`, or fails; `heartbeat` exists to do only that.
 | `generateUploadUrls` | internal mutation | Returns `count` upload URLs.                                                                                                                                                                                                                                                                                                                |
 | `startVersion`       | internal action   | Takes the lock or refuses. Reads the manifest from storage and, through internal mutations in batches, creates the version and its entries, reusing recorded files by sha256. Idempotent for the same id and manifest.                                                                                                                      |
 | `missingEntries`     | internal query    | Returns one page of the version's entries without a file.                                                                                                                                                                                                                                                                                   |
-| `recordFiles`        | internal mutation | Attaches stored files to entries after checking sha256 and size.                                                                                                                                                                                                                                                                            |
+| `recordFiles`        | internal mutation | Attaches stored files to entries after checking the sha256.                                                                                                                                                                                                                                                                                 |
 | `finishVersion`      | internal mutation | Marks the version `ready` when it finds no entry without a file; otherwise says that one exists.                                                                                                                                                                                                                                            |
 | `heartbeat`          | internal mutation | Refreshes the lock's timestamp. The CLI calls it every 30 seconds from `startVersion` to the end of the deploy.                                                                                                                                                                                                                             |
 | `finishDeploy`       | internal mutation | Only while this version holds the lock. With `pushed`: deletes every other version, their entries, and the stored files no remaining entry uses, then `_storage` files no entry references; one batch per call, scheduling itself with `runAfter(0)` while work remains; releases the lock at the end. Without `pushed`: releases the lock. |
