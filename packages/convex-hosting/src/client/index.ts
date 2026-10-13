@@ -1,11 +1,9 @@
 import {
   httpActionGeneric,
-  queryGeneric,
   type GenericActionCtx,
   type GenericDataModel,
   type HttpRouter,
 } from "convex/server";
-import { v } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { notFound, serveRequest } from "../component/serving.js";
 
@@ -83,50 +81,4 @@ export async function serveStaticAsset(
 async function fetchBody({ storageUrl }: { storageUrl: string }) {
   const response = await fetch(storageUrl);
   return response.ok ? response.body : null;
-}
-
-/**
- * Expose the live version to clients, for `UpdateBanner` and `useDeploymentUpdates` from
- * `@samebase/convex-hosting/react`. Only needed if you use them.
- *
- * @example
- * ```typescript
- * // convex/hosting.ts
- * import { exposeDeploymentQuery } from "@samebase/convex-hosting";
- * import { components } from "./_generated/api";
- *
- * export const { getLiveVersion } = exposeDeploymentQuery(components.hosting);
- * ```
- */
-export function exposeDeploymentQuery(component: ComponentApi) {
-  return {
-    getLiveVersion: queryGeneric({
-      args: {},
-      returns: v.union(v.object({ versionId: v.string(), liveAt: v.number() }), v.null()),
-      handler: async (ctx) => await ctx.runQuery(component.lib.getLiveVersion, {}),
-    }),
-  };
-}
-
-/**
- * Derive the Convex cloud URL from a `.convex.site` hostname.
- * Useful when your frontend is served by this component and needs
- * to connect to its own Convex backend without an explicit env var.
- *
- * @example
- * ```typescript
- * import { getConvexUrl } from "@samebase/convex-hosting";
- *
- * const convexUrl = import.meta.env.VITE_CONVEX_URL ?? getConvexUrl();
- * const convex = new ConvexReactClient(convexUrl);
- * ```
- */
-export function getConvexUrl(): string {
-  if (typeof window === "undefined") {
-    throw new Error("getConvexUrl() can only be called in a browser context");
-  }
-  if (window.location.hostname.endsWith(".convex.site")) {
-    return `https://${window.location.hostname.replace(".convex.site", ".convex.cloud")}`;
-  }
-  throw new Error("Unable to derive Convex URL. Please set VITE_CONVEX_URL environment variable.");
 }

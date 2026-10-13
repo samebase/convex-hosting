@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { componentsGeneric, httpActionGeneric, httpRouter } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
-import { exposeDeploymentQuery, registerStaticRoutes, serveStaticAsset } from "./index.js";
+import { registerStaticRoutes, serveStaticAsset } from "./index.js";
 
 const components = componentsGeneric() as unknown as { hosting: ComponentApi };
 
@@ -122,16 +122,5 @@ describe("serveStaticAsset", () => {
     );
     expect(response?.status).toBe(200);
     expect(await response?.text()).toBe("console.log(1)");
-  });
-});
-
-describe("exposeDeploymentQuery", () => {
-  test("returns the live version", async () => {
-    const live = { versionId: "v_aaaaaaaaaaaaaaaaaaaaaaaaaa", liveAt: 1 };
-    const runQuery = vi.fn().mockResolvedValue(live);
-    const { getLiveVersion } = exposeDeploymentQuery(components.hosting);
-
-    expect(await (getLiveVersion as unknown as Invocable)._handler({ runQuery }, {})).toEqual(live);
-    expect(runQuery).toHaveBeenCalledWith(components.hosting.lib.getLiveVersion, {});
   });
 });

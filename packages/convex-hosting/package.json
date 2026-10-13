@@ -23,33 +23,19 @@
   "files": [
     "dist",
     "src",
+    "!src/**/*.test.*",
     "CHANGELOG.md",
     "INTEGRATION.md",
     "NOTICE"
   ],
   "type": "module",
-  "module": "./dist/client/index.js",
-  "types": "./dist/client/index.d.ts",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
       "types": "./dist/client/index.d.ts",
       "default": "./dist/client/index.js"
     },
-    "./react": {
-      "types": "./dist/react/index.d.ts",
-      "default": "./dist/react/index.js"
-    },
-    "./test": "./src/test.ts",
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
-    },
-    "./_generated/component": {
-      "types": "./dist/component/_generated/component.d.ts"
-    },
-    "./convex.config.js": {
-      "types": "./dist/component/convex.config.d.ts",
-      "default": "./dist/component/convex.config.js"
     },
     "./convex.config": {
       "types": "./dist/component/convex.config.d.ts",
@@ -70,18 +56,13 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
     "convex": "catalog:",
     "convex-test": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "convex": "^1.37.0",
-    "react": "^18.3.1 || ^19.0.0"
+    "convex": "^1.37.0"
   }
 }

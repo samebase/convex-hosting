@@ -183,24 +183,12 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.8
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.8
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.8)
       convex:
         specifier: 'catalog:'
         version: 1.46.0(react@19.2.3)
       convex-test:
         specifier: 'catalog:'
         version: 0.0.40(convex@1.46.0(react@19.2.3))
-      react:
-        specifier: 'catalog:'
-        version: 19.2.3
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.3(react@19.2.3)
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
