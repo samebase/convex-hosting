@@ -30,8 +30,10 @@ has landed, the CLI tells the component, and the component deletes every other v
 stored file nothing references. Every call of the deploy refreshes the lock, and during the push,
 when the CLI makes no other call, it refreshes the lock every 30 seconds. The lock expires 2 minutes
 after the last refresh, so a dead deploy frees itself in 2 minutes with nobody involved, while a
-live one, however slow its upload or push, keeps it. There is no cancel command: waiting 2 minutes
-is the cancel.
+live one, however slow its upload or push, keeps it. Every call of a deploy first checks that the
+lock is still its own: when it expired and another deploy took it, the call fails with "lost its
+lock", the deploy fails, and nothing is deleted. There is no cancel command: waiting 2 minutes is
+the cancel.
 
 ## Deploy
 
@@ -67,14 +69,14 @@ name.
       against Convex's storage metadata; the loop ends when no entry is without a file;
    5. calls `finishVersion`, which puts the version in state `ready` when no entry is without a
       file;
-   6. writes `convex/hostingVersion.generated.ts` with the id. The two dots keep Convex from
-      treating the file as a function module; it is bundled as an import of `http.ts`. The file is
-      committed, so a fresh clone builds and typechecks. Its committed value does not matter:
-      `deploy` and `upload` overwrite it before the push that uses it, and it acts only when
-      `npx convex dev` pushes a checkout nobody has uploaded from, where the site then answers 404
-      naming it. Then, still inside `npx convex deploy`, Convex bundles `convex/` with the new id
-      and pushes. The push is the switch. While `npx convex deploy` runs, the CLI calls `heartbeat`
-      every 30 seconds so the lock stays alive through the push.
+   6. writes `.convex-hosting/version.js` with the id, in the CLI's state folder at the project
+      root, like Wrangler's `.wrangler/`; the folder carries its own `.gitignore`, so nothing of it
+      reaches git and no tool writes into `convex/`. The file is a build artifact that `http.ts`
+      imports, as a server-rendered app's `http.ts` already imports its server build; one committed
+      declaration line in `convex/` gives TypeScript its shape on a fresh clone. Then, still inside
+      `npx convex deploy`, Convex bundles `convex/` with the new id and pushes. The push is the
+      switch. From `startVersion` to the end of the deploy, the CLI calls `heartbeat` every 30
+      seconds, through the upload and the push, so the lock means that the process is alive.
 3. When `npx convex deploy` returns success, the CLI calls `finishDeploy` for the id with
    `pushed: true`. The component deletes every other version, its entries, and the stored files no
    remaining entry uses, then every file in `_storage` that no entry references (this deploy's
@@ -89,8 +91,8 @@ the inner `upload` decides. Its first call is a probe,
 component up before it runs anything and prints the exact message
 `Component path "<name>" was not found.` when the deployment does not have it (a function run
 against a missing component answers only a generic server error, which must not count). On that
-exact message, `upload` writes the version file and a marker file in `<dir>` and exits without
-uploading, so the push that follows installs the component. `deploy` sees the marker after
+exact message, `upload` writes the version file and a marker file in `.convex-hosting/` and exits
+without uploading, so the push that follows installs the component. `deploy` sees the marker after
 `npx convex deploy` returns and runs the upload then, followed by `finishDeploy`. Until that upload
 ends, the site answers 404 (see Serve). This happens once per deployment.
 
@@ -104,11 +106,11 @@ vite build && convex-hosting upload --dist dist
 
 `upload` writes the version file, then calls `finishDeploy` with `pushed: true`; the running
 `npx convex dev` pushes the file within seconds, and until it does the development site answers 404
-for the version its code still names. A brand-new project has no version file until its first
-upload, so `npx convex dev` cannot bundle `convex/http.ts`, the component is not pushed, and
-`upload` cannot store files. When the probe answers with the missing-component message, `upload`
-writes the version file and stops with the message that `npx convex dev` now pushes the component
-and that `upload` must run again. Once per project.
+for the version its code still names. On a fresh clone, the version file does not exist, so
+`npx convex dev` cannot bundle `convex/http.ts` and the component is not pushed. When the probe
+answers with the missing-component message, `upload` writes the version file first, which lets
+`npx convex dev` push, retries the probe every few seconds for up to two minutes, and then uploads.
+One command, once per clone.
 
 Two more things in this loop are transient and documented, not solved: when a server-rendered app's
 build changes `dist/server`, which `http.ts` imports, `npx convex dev` pushes before `upload` has
@@ -143,7 +145,7 @@ Cloudflare a `POST` goes to the Worker.
 
 ```ts
 import { serveAsset } from "@samebase/convex-hosting";
-import { versionId } from "./hostingVersion.generated.js";
+import { versionId } from "../.convex-hosting/version.js";
 
 const asset = await serveAsset(ctx, components.hosting, request, versionId);
 if (asset) return asset;
@@ -203,19 +205,19 @@ rules, 2,000 static and 100 dynamic redirects) fit unless paths are very long.
 
 Functions. The CLI calls the internal ones with `npx convex run --component`; `serveAsset` calls the
 public one through the component reference (an app can call only a component's public functions, and
-clients cannot call them at all). Every internal call for the locked version refreshes `lastCallAt`,
-and `heartbeat` exists to do only that.
+clients cannot call them at all). Every internal call of a deploy checks that the lock is its own
+and refreshes `lastCallAt`, or fails; `heartbeat` exists to do only that.
 
-| Function             | Kind              | Does                                                                                                                                                                                                                                                                                                |
-| -------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `generateUploadUrls` | internal mutation | Returns `count` upload URLs.                                                                                                                                                                                                                                                                        |
-| `startVersion`       | internal action   | Takes the lock or refuses. Reads the manifest from storage and, through internal mutations in batches, creates the version and its entries, reusing recorded files by sha256. Idempotent for the same id and manifest.                                                                              |
-| `missingEntries`     | internal query    | Returns one page of the version's entries without a file.                                                                                                                                                                                                                                           |
-| `recordFiles`        | internal mutation | Attaches stored files to entries after checking sha256 and size.                                                                                                                                                                                                                                    |
-| `finishVersion`      | internal mutation | Marks the version `ready` when it finds no entry without a file; otherwise says that one exists.                                                                                                                                                                                                    |
-| `heartbeat`          | internal mutation | Refreshes the lock's timestamp. The CLI calls it every 30 seconds while `npx convex deploy` runs.                                                                                                                                                                                                   |
-| `finishDeploy`       | internal mutation | With `pushed`: deletes every other version, their entries, and the stored files no remaining entry uses, then `_storage` files no entry references; one batch per call, scheduling itself with `runAfter(0)` while work remains; releases the lock at the end. Without `pushed`: releases the lock. |
-| `route`              | public query      | Runs Cloudflare's `canFetch` and `handleRequest` for one request against one version; reports the version's state.                                                                                                                                                                                  |
+| Function             | Kind              | Does                                                                                                                                                                                                                                                                                                                                        |
+| -------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generateUploadUrls` | internal mutation | Returns `count` upload URLs.                                                                                                                                                                                                                                                                                                                |
+| `startVersion`       | internal action   | Takes the lock or refuses. Reads the manifest from storage and, through internal mutations in batches, creates the version and its entries, reusing recorded files by sha256. Idempotent for the same id and manifest.                                                                                                                      |
+| `missingEntries`     | internal query    | Returns one page of the version's entries without a file.                                                                                                                                                                                                                                                                                   |
+| `recordFiles`        | internal mutation | Attaches stored files to entries after checking sha256 and size.                                                                                                                                                                                                                                                                            |
+| `finishVersion`      | internal mutation | Marks the version `ready` when it finds no entry without a file; otherwise says that one exists.                                                                                                                                                                                                                                            |
+| `heartbeat`          | internal mutation | Refreshes the lock's timestamp. The CLI calls it every 30 seconds from `startVersion` to the end of the deploy.                                                                                                                                                                                                                             |
+| `finishDeploy`       | internal mutation | Only while this version holds the lock. With `pushed`: deletes every other version, their entries, and the stored files no remaining entry uses, then `_storage` files no entry references; one batch per call, scheduling itself with `runAfter(0)` while work remains; releases the lock at the end. Without `pushed`: releases the lock. |
+| `route`              | public query      | Runs Cloudflare's `canFetch` and `handleRequest` for one request against one version; reports the version's state.                                                                                                                                                                                                                          |
 
 The package sets no limits of its own. Convex's limits apply: 1 MiB per document, and the
 transaction limits (16,000 writes, 32,000 documents scanned, 16 MiB read and written, 8,192 array
@@ -254,3 +256,4 @@ elements, 4,096 index ranges, argument and result sizes) shape the batches.
 - `examples/spa`: a Vite app served with `--not-found-handling single-page-application`.
 - `examples/tanstack-ssr`: pages rendered in the app's HTTP action after `serveAsset`.
 - One `README.md` at the repository root, copied into the package at `prepack`.
+- An app has `.convex-hosting/` (ignored, written by the CLI) and one declaration line in `convex/`.
