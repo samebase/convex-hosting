@@ -170,8 +170,12 @@ on static paths, does not keep that answer after the upload ends. `null` means o
 matched, and the app continues.
 
 When `route` reports the version in state `ready`, `serveAsset` calls `markLive` once, before it
-answers; concurrent first requests all call it, and it is idempotent. That is the only write the
-serving path ever makes, once per deploy.
+answers. The mark is a compare-and-set: `route` also returns the time of the newest live version it
+observed in the same query, `markLive` compares it with the newest live version inside its own
+transaction, and marks only when they agree. So a request whose code was replaced between its lookup
+and its mark cannot make its version newest, concurrent first requests mark once, and a late push
+whose code really is deployed marks normally. That is the only write the serving path ever makes,
+once per deploy.
 
 The two callbacks that Cloudflare's code takes map to the version's entries: `exists(path)` reads
 one index entry and returns its ETag, the sha256 followed by a short hash of the content type, so
@@ -213,7 +217,7 @@ only a component's public functions, and clients cannot call them at all).
 | `recordFiles`        | internal mutation | Inserts complete entries after checking each stored file's sha256; an entry that exists with the same hash is skipped.                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `finishVersion`      | internal mutation | Marks the version `ready`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `route`              | public query      | Runs Cloudflare's `canFetch` and `handleRequest` for one request against one version; reports the version's state.                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `markLive`           | public mutation   | Marks a `ready` version `live` and schedules `collect`; a no-op for a version that is already live.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `markLive`           | public mutation   | Marks a `ready` version `live` and schedules `collect`, only when the newest live version is still the one the request's lookup observed; otherwise, and for a version already live, a no-op.                                                                                                                                                                                                                                                                                                                                          |
 | `collect`            | internal mutation | Deletes the versions that were live before the current live one and the versions that are not live and a day old, with their entries; then the `_storage` files that no entry references and are a day old. The sweep runs before the version deletion in each chain, so a file freed by a switch is deleted at a later switch; an upload that took a file from `knownFiles` fails only if two switches happen during that one upload, and a retry works; one batch per call, scheduling itself with `runAfter(0)` while work remains. |
 
 The package sets one limit of its own, 25 MiB per file, for the reason above. Convex's limits apply:
