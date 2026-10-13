@@ -279,7 +279,7 @@ describe("deploy", () => {
     expect(pushes).toHaveLength(1);
     expect(pushes[0].slice(0, 2)).toEqual(["deploy", "--cmd"]);
     expect(pushes[0][2]).toMatch(
-      /^\(vite build\) && '.+' '.+' 'upload' '--dist' '[^']+' '--version-id' '/,
+      /^vite build && '.+' '.+' 'upload' '--dist' '[^']+' '--version-id' '/,
     );
     expect(pushes[0][2]).toContain("'--dist' 'dist'");
     // Without a deploy key, `npx convex deploy` goes to production, so every run gets --prod.
