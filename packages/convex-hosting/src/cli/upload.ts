@@ -110,7 +110,15 @@ export async function upload(
       uploaded++;
       console.log(`  ${path}`);
     });
-    progress = await run("lib:finishVersion", { versionId }, versionProgress);
+    try {
+      progress = await run("lib:finishVersion", { versionId }, versionProgress);
+    } catch (error) {
+      // For example a startVersion that stopped before it wrote every entry.
+      throw new Error(
+        `lib:finishVersion failed for version ${versionId}. Run the command again.\n` +
+          (error instanceof Error ? error.message : String(error)),
+      );
+    }
     const pending = progress.pending
       .map((entry) => entry.path)
       .sort()

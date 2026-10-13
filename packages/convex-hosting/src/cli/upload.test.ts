@@ -208,6 +208,17 @@ describe("upload", () => {
     expect(fake.calls).not.toContain("lib:activate");
   });
 
+  test("a failed finishVersion tells the user to run the command again", async () => {
+    const fake = fakeCli();
+    fake.functions["lib:finishVersion"] = () => {
+      throw new Error("Version has 2 of 3 entries");
+    };
+
+    await expect(upload(production, options(), fake.cli)).rejects.toThrow(
+      /lib:finishVersion failed for version v_[a-z2-7]{26}\. Run the command again\.\nVersion has 2 of 3 entries/,
+    );
+  });
+
   test("a rejected file fails the upload with its path and the reason", async () => {
     const fake = fakeCli();
     fake.functions["lib:recordFile"] = () => ({ ok: false, reason: "sha256 mismatch" });
