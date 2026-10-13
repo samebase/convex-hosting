@@ -11,8 +11,8 @@ Commands:
 Site options (upload and deploy):
   --dist <dir>                  Build output directory (required)
   --component <name>            Component instance name (default: probe hosting, then staticHosting)
-  --preview-name <name>         Target the named preview deployment (needs a preview deploy key or
-                                a login; fails with a production or development deploy key)
+  --preview-name <name>         Target the named preview deployment (needs a project's preview
+                                deploy key or a login; fails with the deploy key of one deployment)
   --immutable <preset|glob>     Paths whose bytes never change: vite (/assets/**, default), next,
                                 astro, sveltekit, or a gitignore-style glob
   --html-handling <mode>        auto-trailing-slash, force-trailing-slash, drop-trailing-slash, none

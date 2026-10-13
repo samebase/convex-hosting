@@ -6,7 +6,10 @@ import { describeTarget, readConvexEnv, resolveTarget, selectorArgs } from "./ta
 
 const PROD_KEY = "prod:happy-animal-123|eyJzZWNyZXQiOiJ4In0=";
 const DEV_KEY = "dev:quiet-otter-456|eyJzZWNyZXQiOiJ4In0=";
+// The two preview key formats of the Convex CLI (isPreviewDeployKey in
+// convex/src/cli/lib/deployment.ts): a project's key and one preview deployment's key.
 const PREVIEW_KEY = "preview:team:project|eyJzZWNyZXQiOiJ4In0=";
+const PREVIEW_DEPLOYMENT_KEY = "preview:brave-fox-789|eyJzZWNyZXQiOiJ4In0=";
 
 describe("target resolution", () => {
   test("a production deploy key selects its deployment without flags", () => {
@@ -25,12 +28,20 @@ describe("target resolution", () => {
     });
   });
 
-  test("--preview-name selects a preview deployment with a preview key or a login", () => {
+  test("--preview-name selects a preview deployment with a project's preview key or a login", () => {
     for (const env of [{ CONVEX_DEPLOY_KEY: PREVIEW_KEY }, { CONVEX_DEPLOYMENT: "dev:x-1" }]) {
       const target = resolveTarget(env, "feature-x");
       expect(target).toEqual({ kind: "preview", previewName: "feature-x" });
       expect(selectorArgs(target)).toEqual(["--preview-name", "feature-x"]);
+      expect(describeTarget(target)).toBe('preview deployment "feature-x"');
     }
+  });
+
+  test("a preview deployment's own deploy key selects that deployment without flags", () => {
+    const target = resolveTarget({ CONVEX_DEPLOY_KEY: PREVIEW_DEPLOYMENT_KEY }, null);
+    expect(target).toEqual({ kind: "preview deployment", deploymentName: "brave-fox-789" });
+    expect(selectorArgs(target)).toEqual([]);
+    expect(describeTarget(target)).toBe("preview deployment brave-fox-789");
   });
 
   test("CONVEX_DEPLOYMENT selects the development deployment", () => {
@@ -44,7 +55,17 @@ describe("target resolution", () => {
   test.each([
     [{ CONVEX_DEPLOY_KEY: PROD_KEY }, "feature-x", "conflicts with the production deploy key"],
     [{ CONVEX_DEPLOY_KEY: DEV_KEY }, "feature-x", "conflicts with the development deploy key"],
-    [{ CONVEX_DEPLOY_KEY: PREVIEW_KEY }, null, "pass --preview-name"],
+    [
+      { CONVEX_DEPLOY_KEY: PREVIEW_KEY },
+      null,
+      "a project's preview deploy key: pass --preview-name",
+    ],
+    [
+      { CONVEX_DEPLOY_KEY: PREVIEW_DEPLOYMENT_KEY },
+      "feature-x",
+      "--preview-name feature-x conflicts with the deploy key of the preview deployment brave-fox-789",
+    ],
+    [{ CONVEX_DEPLOY_KEY: "preview:a:b:c|x" }, "feature-x", "is not a deploy key"],
     [{ CONVEX_DEPLOY_KEY: "project:team:project|x" }, null, 'is a "project" key'],
     [{ CONVEX_DEPLOY_KEY: "not-a-key" }, null, "is not a deploy key"],
     [{}, null, "No Convex deployment is configured"],

@@ -114,7 +114,7 @@ CONVEX_DEPLOY_KEY=<production deploy key> npx @samebase/convex-hosting deploy --
 ```
 
 `deploy` selects one target (the deployment of `CONVEX_DEPLOY_KEY`, or `--preview-name <name>` with
-a preview deploy key), makes a version ID, and runs
+a project's preview deploy key), makes a version ID, and runs
 `npx convex deploy --cmd "<build> && convex-hosting upload --no-activate --version-id <id> ..."`, so
 the files upload as a new version before the new functions go live. Then it makes the version live
 and checks that the site serves it.
@@ -280,11 +280,13 @@ deploy:
 ```
 
 Target: every `npx convex` call of one command uses the same deployment. That is the deployment of
-`CONVEX_DEPLOY_KEY`, the `--preview-name` deployment (with a preview deploy key or a login), or, for
-`upload` only, the development deployment in `CONVEX_DEPLOYMENT`. `--preview-name` next to a
-production or development deploy key fails before any write, because the Convex CLI would ignore it.
-`deploy` needs a deploy key or `--preview-name`: without a key, `npx convex deploy` pushes to
-production while `npx convex run` uses the development deployment.
+`CONVEX_DEPLOY_KEY`, the `--preview-name` deployment (with a project's preview deploy key,
+`preview:<team>:<project>|...`, or a login), or, for `upload` only, the development deployment in
+`CONVEX_DEPLOYMENT`. `--preview-name` next to the deploy key of one deployment (production,
+development, or a preview deployment's own key, `preview:<deployment>|...`) fails before any write,
+because the Convex CLI would ignore it. Both commands print the target first. `deploy` needs a
+deploy key or `--preview-name`: without a key, `npx convex deploy` pushes to production while
+`npx convex run` uses the development deployment.
 
 Upload: the CLI collects the build output with Cloudflare's rules, hashes each file, and uploads the
 manifest as one file. The component returns the files that it does not have; the CLI uploads them, 8

@@ -10,7 +10,10 @@ import { parseEnv } from "node:util";
 export type Target =
   | { kind: "production"; deploymentName: string }
   | { kind: "development"; deploymentName: string; source: "deploy key" | "CONVEX_DEPLOYMENT" }
-  | { kind: "preview"; previewName: string };
+  /** A named preview: with a project's preview deploy key or a login, and `--preview-name`. */
+  | { kind: "preview"; previewName: string }
+  /** The one preview deployment of a deployment's own preview deploy key. */
+  | { kind: "preview deployment"; deploymentName: string };
 
 export type ConvexEnv = Record<string, string | undefined>;
 
@@ -39,11 +42,31 @@ export function resolveTarget(env: ConvexEnv, previewName: string | null): Targe
     if (!deployKey.includes("|")) {
       throw new Error("CONVEX_DEPLOY_KEY is not a deploy key. Copy a new one from the dashboard.");
     }
-    if (type === "preview") {
+    // The Convex CLI (isPreviewDeployKey in convex/src/cli/lib/deployment.ts) tells the two preview
+    // keys apart by the prefix: `preview:<team>:<project>` for a project, where `--preview-name`
+    // selects or creates the named preview, and `preview:<deployment>` for one deployment, where
+    // the Convex CLI ignores `--preview-name`.
+    if (type === "preview" && rest.length === 2) {
       if (previewName === null) {
-        throw new Error("CONVEX_DEPLOY_KEY is a preview deploy key: pass --preview-name <name>.");
+        throw new Error(
+          "CONVEX_DEPLOY_KEY is a project's preview deploy key: pass --preview-name <name>.",
+        );
       }
       return { kind: "preview", previewName };
+    }
+    if (type === "preview" && rest.length === 1) {
+      const [deploymentName] = rest;
+      if (previewName !== null) {
+        throw new Error(
+          `--preview-name ${previewName} conflicts with the deploy key of the preview deployment ` +
+            `${deploymentName} in CONVEX_DEPLOY_KEY. Use a project's preview deploy key, or remove ` +
+            "--preview-name.",
+        );
+      }
+      return { kind: "preview deployment", deploymentName };
+    }
+    if (type === "preview") {
+      throw new Error("CONVEX_DEPLOY_KEY is not a deploy key. Copy a new one from the dashboard.");
     }
     if (type === "prod" || type === "dev") {
       const kind = type === "prod" ? "production" : "development";
@@ -74,8 +97,8 @@ export function resolveTarget(env: ConvexEnv, previewName: string | null): Targe
 
 /** The `npx convex run`, `deploy`, and `function-spec` flags that select the target. */
 export function selectorArgs(target: Target): string[] {
-  // A deploy key or CONVEX_DEPLOYMENT selects production and development deployments. The Convex
-  // CLI ignores `--prod` next to a deploy key and rejects `--deployment`, so no flag is passed.
+  // A deployment's deploy key or CONVEX_DEPLOYMENT selects the other deployments. The Convex CLI
+  // ignores `--prod` next to a deploy key and rejects `--deployment`, so no flag is passed.
   return target.kind === "preview" ? ["--preview-name", target.previewName] : [];
 }
 
@@ -87,6 +110,8 @@ export function describeTarget(target: Target): string {
       return `development deployment ${target.deploymentName}`;
     case "preview":
       return `preview deployment "${target.previewName}"`;
+    case "preview deployment":
+      return `preview deployment ${target.deploymentName}`;
     default:
       return target satisfies never;
   }

@@ -138,9 +138,10 @@ matching [immutable preset](#immutable-files).
 npx @samebase/convex-hosting deploy --dist dist
 ```
 
-1. It selects one target: the deployment of `CONVEX_DEPLOY_KEY`, or with `--preview-name <name>` and
-   a preview deploy key, that preview deployment. `--preview-name` next to a production or
-   development deploy key fails before anything changes.
+1. It selects one target and prints it: the deployment of `CONVEX_DEPLOY_KEY`, or with
+   `--preview-name <name>` and a project's preview deploy key, that preview deployment.
+   `--preview-name` next to the deploy key of one deployment (production, development, or one
+   preview deployment) fails before anything changes.
 2. It makes a version ID and runs
    `npx convex deploy --cmd "<build> && convex-hosting upload --no-activate --version-id <id> ..."`.
    The build gets the deployment URL from `npx convex deploy`, and `CONVEX_HOSTING_VERSION_ID` and

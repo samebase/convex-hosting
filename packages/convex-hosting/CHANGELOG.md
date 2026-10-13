@@ -31,8 +31,9 @@ Breaking changes:
   versions stay reachable, other paths do not. A version replaced more than seven days ago is
   deleted by an hourly job, not by a later upload.
 - `upload` and `deploy`: `--prod`, `--build`, `--no-spa`, and `--cdn` are gone. `deploy` needs
-  `CONVEX_DEPLOY_KEY` or `--preview-name`, and fails when `--preview-name` meets a production or
-  development deploy key.
+  `CONVEX_DEPLOY_KEY` or `--preview-name`. `--preview-name` needs a project's preview deploy key or
+  a login, and fails next to the deploy key of one deployment (production, development, or one
+  preview deployment).
 - `deploy` uploads the files inside `npx convex deploy --cmd`, before the push, makes the version
   live after it, and then verifies the site.
 

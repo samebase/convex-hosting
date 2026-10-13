@@ -1,5 +1,6 @@
-import { rmSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { chmodSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { checkUploadLimits, collectFiles, MAX_FILES } from "./collectFiles.js";
 import { writeDist } from "./fakeCli.test.helpers.js";
 
@@ -37,6 +38,34 @@ describe("collectFiles", () => {
       "/index.html",
     ]);
   });
+
+  // Windows needs a privilege or developer mode for symbolic links.
+  test.skipIf(process.platform === "win32")(
+    "never reads an ignored directory, and skips a link that does not resolve",
+    async () => {
+      dist = writeDist({ "index.html": "", ".assetsignore": "node_modules/\nlinked-*\n" });
+      const ignored = join(dist, "node_modules");
+      mkdirSync(ignored);
+      symlinkSync(join(dist, "missing"), join(ignored, "dangling"));
+      symlinkSync(join(dist, "missing"), join(dist, "linked-dangling"));
+      symlinkSync(join(dist, "missing"), join(dist, "dangling.js"));
+      symlinkSync(join(dist, "index.html"), join(dist, "page.html"));
+      // Reading the ignored directory now fails (for a user that is not root).
+      chmodSync(ignored, 0o000);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const files = await collectFiles(dist);
+
+        expect(files.map((file) => file.path)).toEqual(["/index.html", "/page.html"]);
+        expect(warn.mock.calls).toEqual([
+          ["Skipped /dangling.js: the symbolic link does not resolve."],
+        ]);
+      } finally {
+        warn.mockRestore();
+        chmodSync(ignored, 0o755);
+      }
+    },
+  );
 
   test("records each file's size", async () => {
     dist = writeDist({ "index.html": "<p>hello</p>" });

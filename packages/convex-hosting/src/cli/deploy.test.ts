@@ -328,6 +328,21 @@ describe("deploy target", () => {
     ).rejects.toThrow("deploy needs CONVEX_DEPLOY_KEY or --preview-name");
     expect(fake.calls).toEqual([]);
   });
+
+  test("a preview deployment's own deploy key gets no --preview-name, and deploy names it", async () => {
+    const fake = releasedFake();
+    fake.setSite(() => new Response(INDEX, { headers: { ETag: INDEX_ETAG } }));
+
+    await deploy(
+      { kind: "preview deployment", deploymentName: "brave-fox-789" },
+      options(),
+      fake.cli,
+    );
+
+    expect(console.log).toHaveBeenCalledWith("Deploying to the preview deployment brave-fox-789.");
+    expect(fake.pushes[0].argv.slice(0, 2)).toEqual(["deploy", "--cmd"]);
+    for (const run of fake.runs) expect(run.argv).not.toContain("--preview-name");
+  });
 });
 
 describe("deploy helpers", () => {

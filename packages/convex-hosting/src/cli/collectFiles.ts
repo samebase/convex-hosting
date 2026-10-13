@@ -13,21 +13,36 @@ export type LocalFile = { path: string; localPath: string; size: number };
  * The files to upload from `dist`, sorted by path. `.assetsignore` (gitignore syntax) applies, as
  * on Cloudflare: its own file and the root `_headers` and `_redirects` files are never uploaded.
  * Dot files and dot directories are skipped too, except `.well-known`. That also skips
- * `.convex-hosting/version.json`.
+ * `.convex-hosting/version.json`. An ignored entry is never read, so an ignored directory can hold
+ * anything. A symbolic link counts as its target; a link that does not resolve is skipped with a
+ * warning.
  */
 export async function collectFiles(dist: string): Promise<LocalFile[]> {
   const { assetsIgnoreFunction } = await createAssetsIgnoreFunction(dist);
+  // gitignore patterns that end with `/` match a directory only when its path ends with `/`.
+  const isIgnored = (path: string, isDirectory: boolean) =>
+    assetsIgnoreFunction(isDirectory ? `${path.slice(1)}/` : path.slice(1));
   const files: LocalFile[] = [];
   const visit = (directory: string) => {
-    for (const name of readdirSync(directory)) {
-      if (name.startsWith(".") && name !== ".well-known") continue;
-      const localPath = join(directory, name);
-      const stats = statSync(localPath);
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name.startsWith(".") && entry.name !== ".well-known") continue;
+      const localPath = join(directory, entry.name);
+      const path = normalizeFilePath(relative(dist, localPath));
+      if (isIgnored(path, entry.isDirectory())) continue;
+      let stats;
+      try {
+        stats = statSync(localPath);
+      } catch (error) {
+        if (!entry.isSymbolicLink()) throw error;
+        console.warn(`Skipped ${path}: the symbolic link does not resolve.`);
+        continue;
+      }
       if (stats.isDirectory()) {
+        // A link to a directory was checked as a file above.
+        if (!entry.isDirectory() && isIgnored(path, true)) continue;
         visit(localPath);
       } else if (stats.isFile()) {
-        const path = normalizeFilePath(relative(dist, localPath));
-        if (!assetsIgnoreFunction(path.slice(1))) files.push({ path, localPath, size: stats.size });
+        files.push({ path, localPath, size: stats.size });
       }
     }
   };
