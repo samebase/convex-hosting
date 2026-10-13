@@ -1,5 +1,5 @@
 import { test } from "vite-plus/test";
-import { parseRedirects } from "../configuration/parseRedirects";
+import { parseRedirects } from "../configuration/parseRedirects.js";
 
 test("parseRedirects should handle a single rule", ({ expect }) => {
 	const input = `/a /b 301`;

@@ -6,7 +6,7 @@ import {
 	CF_ASSETS_IGNORE_FILENAME,
 	HEADERS_FILENAME,
 	REDIRECTS_FILENAME,
-} from "./constants";
+} from "./constants.js";
 import type { PathOrFileDescriptor } from "node:fs";
 
 /** normalises sep for windows and prefix with `/` */

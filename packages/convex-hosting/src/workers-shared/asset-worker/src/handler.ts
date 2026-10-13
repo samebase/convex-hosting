@@ -10,22 +10,22 @@ import {
 	PermanentRedirectResponse,
 	SeeOtherResponse,
 	TemporaryRedirectResponse,
-} from "../../utils/responses";
-import { mockJaegerBinding } from "../../utils/tracing";
+} from "../../utils/responses.js";
+import { mockJaegerBinding } from "../../utils/tracing.js";
 import {
 	flagIsEnabled,
 	SEC_FETCH_MODE_NAVIGATE_HEADER_PREFERS_ASSET_SERVING,
-} from "./compatibility-flags";
-import { addBasePath, stripBasePath } from "./utils/base-path";
-import { attachCustomHeaders, getAssetHeaders } from "./utils/headers";
+} from "./compatibility-flags.js";
+import { addBasePath, stripBasePath } from "./utils/base-path.js";
+import { attachCustomHeaders, getAssetHeaders } from "./utils/headers.js";
 import {
 	generateRedirectsMatcher,
 	staticRedirectsMatcher,
-} from "./utils/rules-engine";
-import type { Analytics, ServedBy } from "./analytics";
-import type { NormalizedAssetConfig } from "./types";
-import type EntrypointType from "./worker";
-import type { Env } from "./worker";
+} from "./utils/rules-engine.js";
+import type { Analytics, ServedBy } from "./analytics.js";
+import type { NormalizedAssetConfig } from "./types.js";
+import type EntrypointType from "./worker.js";
+import type { Env } from "./worker.js";
 
 export const REDIRECTS_VERSION = 1;
 export const HEADERS_VERSION = 2;
