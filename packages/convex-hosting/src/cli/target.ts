@@ -15,7 +15,7 @@ export type Target =
   /** The one preview deployment of a deployment's own preview deploy key. */
   | { kind: "preview deployment"; deploymentName: string };
 
-export type ConvexEnv = Record<string, string | undefined>;
+type ConvexEnv = Record<string, string | undefined>;
 
 /**
  * The variables that the Convex CLI reads to select a deployment: the process environment first,

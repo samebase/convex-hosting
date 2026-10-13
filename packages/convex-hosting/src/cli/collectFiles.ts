@@ -53,7 +53,6 @@ export async function collectFiles(dist: string): Promise<LocalFile[]> {
 }
 
 export function checkUploadLimits(dist: string, files: Pick<LocalFile, "path" | "size">[]): void {
-  if (files.length === 0) throw new Error(`${dist} has no files to upload.`);
   if (files.length > MAX_FILES) {
     throw new Error(`${dist} has ${files.length} files. A version holds at most ${MAX_FILES}.`);
   }

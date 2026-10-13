@@ -1,10 +1,10 @@
-import { readFileSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { DeployOptions } from "./args.js";
 import { commandLine, deploy, siteUrlFromCloudUrl } from "./deploy.js";
 import { fakeCli, SITE_URL, writeDist } from "./fakeCli.test.helpers.js";
-import { entryETag, sha256Hex, VERSION_ID_PATTERN, versionFilePath } from "./manifest.js";
+import { entryETag, sha256Hex, VERSION_ID_PATTERN } from "./manifest.js";
 import type { Target } from "./target.js";
 
 const production: Target = { kind: "production", deploymentName: "happy-animal-123" };
@@ -16,15 +16,14 @@ let dist = "";
 function options(overrides: Partial<DeployOptions> = {}): DeployOptions {
   return {
     dist,
-    component: null,
+    component: "hosting",
     previewName: null,
     immutable: "vite",
-    htmlHandling: null,
-    notFoundHandling: null,
-    basePath: null,
+    htmlHandling: "auto-trailing-slash",
+    notFoundHandling: "none",
+    basePath: "/",
     buildCommand: "npm run build",
-    verifyPath: null,
-    siteUrl: null,
+    verifyPath: "/",
     ...overrides,
   };
 }
@@ -74,7 +73,8 @@ describe("deploy, when the component answers", () => {
     expect(argv).toHaveLength(3);
     expect(argv[2]).toMatch(/^npm run build && \S+ \S+index\.js upload /);
     expect(argv[2]).toContain(
-      `upload --dist ${dist} --immutable vite --component hosting --version-id ${versionId} --no-activate`,
+      `upload --dist ${dist} --component hosting --immutable vite --html-handling auto-trailing-slash ` +
+        `--not-found-handling none --base-path / --version-id ${versionId} --no-activate`,
     );
     expect(fake.runs.find((run) => run.fn === "lib:activate")?.args).toEqual({
       versionId,
@@ -103,14 +103,14 @@ describe("deploy, when the component answers", () => {
 
     await deploy(
       { kind: "preview", previewName: "feature-x" },
-      options({ buildCommand: null, component: "site" }),
+      options({ component: "site" }),
       fake.cli,
     );
 
     const [{ argv }] = fake.pushes;
     expect(argv.slice(0, 4)).toEqual(["deploy", "--preview-name", "feature-x", "--cmd"]);
-    expect(argv[4]).not.toContain("npm run build");
-    expect(argv[4]).toContain("--component site --preview-name feature-x --version-id");
+    expect(argv[4]).toContain("--component site ");
+    expect(argv[4]).toContain("--preview-name feature-x --version-id");
     for (const run of fake.runs) {
       expect(run.argv.slice(1, 3)).toEqual(["--component", "site"]);
       expect(run.argv.slice(-2)).toEqual(["--preview-name", "feature-x"]);
@@ -128,7 +128,7 @@ describe("deploy, when the component answers", () => {
   });
 });
 
-describe("deploy, on a first install or from 0.3.x", () => {
+describe("deploy, on a first install", () => {
   test("pushes the build first, then uploads, activates, and verifies", async () => {
     const fake = fakeCli();
     const getLiveVersion = fake.functions["lib:getLiveVersion"];
@@ -145,11 +145,9 @@ describe("deploy, on a first install or from 0.3.x", () => {
 
     await deploy(production, options(), fake.cli);
 
-    expect(fake.calls.slice(0, 7)).toEqual([
-      "lib:getLiveVersion",
+    expect(fake.calls.slice(0, 5)).toEqual([
       "lib:getLiveVersion",
       "deploy",
-      "lib:getLiveVersion",
       "lib:generateUploadUrl",
       "fetch POST https://upload.test/1",
       "lib:startVersion",
@@ -168,48 +166,6 @@ describe("deploy, on a first install or from 0.3.x", () => {
     expect(fake.runs.filter((run) => run.fn === "lib:activate").map((run) => run.args)).toEqual([
       { versionId, afterCodePush: true },
     ]);
-    // For a later `deploy --skip-build` of this build.
-    expect(JSON.parse(readFileSync(versionFilePath(dist), "utf8")).versionId).toBe(versionId);
-  });
-});
-
-describe("deploy --skip-build", () => {
-  const BUILT_ID = "v_bbbbbbbbbbbbbbbbbbbbbbbbbb";
-
-  test("reuses the version ID that the build wrote into its pages", async () => {
-    rmSync(dist, { recursive: true, force: true });
-    dist = writeDist({
-      "assets/app.js": "1",
-      ".convex-hosting/version.json": JSON.stringify({ versionId: BUILT_ID, digest: "built" }),
-    });
-    const fake = releasedFake();
-    fake.setSite(() => new Response(`<meta name="convex-hosting-version" content="${BUILT_ID}">`));
-
-    await deploy(production, options({ buildCommand: null }), fake.cli);
-
-    const [{ argv, env }] = fake.pushes;
-    expect(env.CONVEX_HOSTING_VERSION_ID).toBe(BUILT_ID);
-    expect(argv[2]).toContain(`--version-id ${BUILT_ID} --no-activate`);
-    expect(fake.runs.find((run) => run.fn === "lib:activate")?.args.versionId).toBe(BUILT_ID);
-  });
-
-  test("stops before any call without the version file, unless the build is static", async () => {
-    rmSync(dist, { recursive: true, force: true });
-    dist = writeDist({ "assets/app.js": "1" });
-    const fake = releasedFake();
-
-    await expect(deploy(production, options({ buildCommand: null }), fake.cli)).rejects.toThrow(
-      `--skip-build needs ${versionFilePath(dist)} for the version ID that the build wrote into ` +
-        "its pages, and the file is missing. Run deploy without --skip-build.",
-    );
-    expect(fake.calls).toEqual([]);
-
-    // A static build is verified by its /index.html, so a new ID is enough.
-    rmSync(dist, { recursive: true, force: true });
-    dist = writeDist({ "index.html": INDEX, "assets/app.js": "1" });
-    fake.setSite(() => new Response(INDEX, { headers: { ETag: INDEX_ETAG } }));
-    await deploy(production, options({ buildCommand: null }), fake.cli);
-    expect(String(fake.pushes[0].env.CONVEX_HOSTING_VERSION_ID)).toMatch(VERSION_ID_PATTERN);
   });
 });
 
@@ -291,20 +247,6 @@ describe("deploy verification", () => {
     expect(fake.calls[fake.calls.length - 1]).toBe(`fetch GET ${SITE_URL}/`);
   });
 
-  test("--site-url replaces the derived .convex.site origin", async () => {
-    const fake = releasedFake();
-    fake.setSite(() => new Response(INDEX, { headers: { ETag: INDEX_ETAG } }));
-
-    await deploy(
-      production,
-      options({ siteUrl: "https://app.example.com", basePath: "/app/" }),
-      fake.cli,
-    );
-
-    expect(fake.calls).not.toContain("function-spec");
-    expect(fake.calls).toContain("fetch GET https://app.example.com/app/index.html");
-  });
-
   test("getLiveVersion must name the new version", async () => {
     const fake = releasedFake();
     fake.setSite(() => new Response(INDEX, { headers: { ETag: INDEX_ETAG } }));
@@ -352,7 +294,7 @@ describe("deploy helpers", () => {
       "https://happy-animal-123.eu-west-1.convex.site",
     );
     expect(() => siteUrlFromCloudUrl("https://api.example.com")).toThrow(
-      "not a .convex.cloud URL, so its site URL is unknown. Pass the site's origin with --site-url.",
+      "not a .convex.cloud URL, so its site URL is unknown.",
     );
   });
 

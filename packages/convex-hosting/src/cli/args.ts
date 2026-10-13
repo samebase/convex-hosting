@@ -6,15 +6,14 @@ import { VERSION_ID_PATTERN } from "./manifest.js";
 /** Options shared by `upload` and `deploy`: what to upload, where, and how to serve it. */
 export interface SiteOptions {
   dist: string;
-  component: string | null;
+  component: string;
   previewName: string | null;
   /** A preset name (`vite`, `next`, `astro`, `sveltekit`) or a gitignore-style glob. */
   immutable: string;
-  /** `null` keeps the serving entry point's default. */
-  htmlHandling: NonNullable<AssetConfig["html_handling"]> | null;
-  notFoundHandling: NonNullable<AssetConfig["not_found_handling"]> | null;
+  htmlHandling: NonNullable<AssetConfig["html_handling"]>;
+  notFoundHandling: NonNullable<AssetConfig["not_found_handling"]>;
   /** Normalized by the asset worker's rules: `/` or `/prefix/`. */
-  basePath: string | null;
+  basePath: string;
 }
 
 export interface UploadOptions extends SiteOptions {
@@ -23,11 +22,8 @@ export interface UploadOptions extends SiteOptions {
 }
 
 export interface DeployOptions extends SiteOptions {
-  /** `null` with `--skip-build`. */
-  buildCommand: string | null;
-  verifyPath: string | null;
-  /** The origin that verification fetches. `null` derives it from the deployment URL. */
-  siteUrl: string | null;
+  buildCommand: string;
+  verifyPath: string;
 }
 
 const siteOptionConfig = {
@@ -44,34 +40,32 @@ type SiteValues = { [Key in keyof typeof siteOptionConfig]?: string };
 
 function parseSiteOptions(values: SiteValues): SiteOptions {
   if (values.dist === undefined) throw new Error("--dist <dir> is required.");
-  const basePath =
-    values["base-path"] === undefined ? null : normalizeBasePath(values["base-path"]);
-  if (basePath !== null && !basePath.valid) throw new Error(`--base-path: ${basePath.error}`);
+  const basePath = normalizeBasePath(values["base-path"] ?? "/");
+  if (!basePath.valid) throw new Error(`--base-path: ${basePath.error}`);
   return {
     dist: values.dist,
-    component: values.component ?? null,
+    component: values.component ?? "hosting",
     previewName: values["preview-name"] ?? null,
     immutable: values.immutable ?? "vite",
     htmlHandling: parseChoice(
       "--html-handling",
       AssetConfigSchema.shape.html_handling.unwrap().options,
-      values["html-handling"],
+      values["html-handling"] ?? "auto-trailing-slash",
     ),
     notFoundHandling: parseChoice(
       "--not-found-handling",
       AssetConfigSchema.shape.not_found_handling.unwrap().options,
-      values["not-found-handling"],
+      values["not-found-handling"] ?? "none",
     ),
-    basePath: basePath === null ? null : basePath.value,
+    basePath: basePath.value,
   };
 }
 
 function parseChoice<const Choice extends string>(
   flag: string,
   choices: readonly Choice[],
-  value: string | undefined,
-): Choice | null {
-  if (value === undefined) return null;
+  value: string,
+): Choice {
   const choice = choices.find((candidate) => candidate === value);
   if (choice === undefined) throw new Error(`${flag} must be one of: ${choices.join(", ")}.`);
   return choice;
@@ -99,41 +93,16 @@ export function parseDeployArgs(args: string[]): DeployOptions {
     options: {
       ...siteOptionConfig,
       "build-command": { type: "string" },
-      "skip-build": { type: "boolean" },
       "verify-path": { type: "string" },
-      "site-url": { type: "string" },
     },
   });
-  if (values["skip-build"] && values["build-command"] !== undefined) {
-    throw new Error("--skip-build and --build-command cannot be combined.");
-  }
-  const verifyPath = values["verify-path"] ?? null;
-  if (verifyPath !== null && !verifyPath.startsWith("/")) {
-    throw new Error("--verify-path must start with /.");
-  }
+  const verifyPath = values["verify-path"] ?? "/";
+  if (!verifyPath.startsWith("/")) throw new Error("--verify-path must start with /.");
   return {
     ...parseSiteOptions(values),
-    buildCommand: values["skip-build"] ? null : (values["build-command"] ?? "npm run build"),
+    buildCommand: values["build-command"] ?? "npm run build",
     verifyPath,
-    siteUrl: values["site-url"] === undefined ? null : parseSiteUrl(values["site-url"]),
   };
-}
-
-/** An http or https origin. The base path is a separate option, so a path here is a mistake. */
-function parseSiteUrl(value: string): string {
-  const url = URL.parse(value);
-  if (
-    url === null ||
-    (url.protocol !== "https:" && url.protocol !== "http:") ||
-    url.pathname !== "/" ||
-    url.search !== "" ||
-    url.hash !== ""
-  ) {
-    throw new Error(
-      "--site-url must be an origin such as https://app.example.com. Give a path prefix with --base-path.",
-    );
-  }
-  return url.origin;
 }
 
 /** The `upload` flags that give an `upload` subprocess the same site options. */
@@ -141,12 +110,15 @@ export function siteOptionArgs(options: SiteOptions): string[] {
   return [
     "--dist",
     options.dist,
+    "--component",
+    options.component,
     "--immutable",
     options.immutable,
-    ...(options.htmlHandling === null ? [] : ["--html-handling", options.htmlHandling]),
-    ...(options.notFoundHandling === null
-      ? []
-      : ["--not-found-handling", options.notFoundHandling]),
-    ...(options.basePath === null ? [] : ["--base-path", options.basePath]),
+    "--html-handling",
+    options.htmlHandling,
+    "--not-found-handling",
+    options.notFoundHandling,
+    "--base-path",
+    options.basePath,
   ];
 }

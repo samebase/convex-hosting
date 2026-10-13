@@ -2,15 +2,15 @@ import { describe, expect, test } from "vite-plus/test";
 import { parseDeployArgs, parseUploadArgs, siteOptionArgs } from "./args.js";
 
 describe("upload arguments", () => {
-  test("defaults leave the serving modes to the entry point", () => {
+  test("resolves every default", () => {
     expect(parseUploadArgs(["--dist", "dist"])).toEqual({
       dist: "dist",
-      component: null,
+      component: "hosting",
       previewName: null,
       immutable: "vite",
-      htmlHandling: null,
-      notFoundHandling: null,
-      basePath: null,
+      htmlHandling: "auto-trailing-slash",
+      notFoundHandling: "none",
+      basePath: "/",
       versionId: null,
       activate: true,
     });
@@ -69,38 +69,11 @@ describe("upload arguments", () => {
 });
 
 describe("deploy arguments", () => {
-  test("builds with npm run build by default", () => {
+  test("builds with npm run build and verifies / by default", () => {
     expect(parseDeployArgs(["--dist", "dist"])).toMatchObject({
       buildCommand: "npm run build",
-      verifyPath: null,
-      siteUrl: null,
+      verifyPath: "/",
     });
-  });
-
-  test("the site URL is an http or https origin", () => {
-    expect(
-      parseDeployArgs(["--dist", "dist", "--site-url", "https://app.example.com/"]).siteUrl,
-    ).toBe("https://app.example.com");
-    for (const siteUrl of [
-      "app.example.com",
-      "ftp://app.example.com",
-      "https://app.example.com/app/",
-      "https://app.example.com/?x=1",
-    ]) {
-      expect(() => parseDeployArgs(["--dist", "dist", "--site-url", siteUrl])).toThrow(
-        "--site-url must be an origin",
-      );
-    }
-    expect(() => parseUploadArgs(["--dist", "dist", "--site-url", "https://x.test"])).toThrow(
-      "Unknown option '--site-url'",
-    );
-  });
-
-  test("--skip-build drops the build", () => {
-    expect(parseDeployArgs(["--dist", "dist", "--skip-build"]).buildCommand).toBeNull();
-    expect(() =>
-      parseDeployArgs(["--dist", "dist", "--skip-build", "--build-command", "vite build"]),
-    ).toThrow("cannot be combined");
   });
 
   test("the verify path is absolute", () => {
@@ -128,8 +101,12 @@ describe("deploy arguments", () => {
     expect(siteOptionArgs(options)).toEqual([
       "--dist",
       "web dist",
+      "--component",
+      "hosting",
       "--immutable",
       "next",
+      "--html-handling",
+      "auto-trailing-slash",
       "--not-found-handling",
       "404-page",
       "--base-path",
@@ -137,6 +114,7 @@ describe("deploy arguments", () => {
     ]);
     expect(parseUploadArgs(siteOptionArgs(options))).toMatchObject({
       dist: options.dist,
+      component: options.component,
       immutable: options.immutable,
       htmlHandling: options.htmlHandling,
       notFoundHandling: options.notFoundHandling,

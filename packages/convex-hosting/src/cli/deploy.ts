@@ -5,14 +5,7 @@ import { addBasePath } from "../workers-shared/asset-worker/src/utils/base-path.
 import { parseDeployArgs, siteOptionArgs, type DeployOptions } from "./args.js";
 import { collectFiles } from "./collectFiles.js";
 import { nodeCli, runComponent, type Cli } from "./commands.js";
-import { findComponent, liveVersionResult } from "./componentName.js";
-import {
-  entryETag,
-  manifestEntries,
-  newVersionId,
-  readVersionFile,
-  versionFilePath,
-} from "./manifest.js";
+import { entryETag, manifestEntries, newVersionId } from "./manifest.js";
 import {
   describeTarget,
   readConvexEnv,
@@ -25,11 +18,12 @@ import { activateResult, upload } from "./upload.js";
 const CLI_PATH = fileURLToPath(new URL("./index.js", import.meta.url));
 const VERSION_META = /<meta\s+name=["']convex-hosting-version["']\s+content=["']([^"']*)["']/i;
 const functionSpecResult = z.object({ url: z.string() });
+const liveVersionResult = z.object({ versionId: z.string(), liveAt: z.number() }).nullable();
 
 /**
  * Releases the backend and the site to one target. When the component already answers, the files
  * upload inside `npx convex deploy --cmd`, before the push, and the version goes live after it.
- * Otherwise (first install, or an upgrade from 0.3.x) the push installs the component first.
+ * Otherwise (a first install) the push installs the component first.
  */
 export async function deploy(
   target: Target,
@@ -46,77 +40,47 @@ export async function deploy(
     );
   }
   console.log(`Deploying to the ${describeTarget(target)}.`);
-  const versionId = await releaseVersionId(options);
-  const basePath = options.basePath ?? "/";
+  const versionId = newVersionId();
+  const run = <T>(functionName: string, args: Record<string, unknown>, result: z.ZodType<T>) =>
+    runComponent(cli, target, options.component, functionName, args, result);
   // `npx convex deploy` adds the deployment URLs and passes this environment to `--cmd`.
   const env = {
     ...process.env,
     CONVEX_HOSTING_VERSION_ID: versionId,
-    CONVEX_HOSTING_BASE_PATH: basePath,
+    CONVEX_HOSTING_BASE_PATH: options.basePath,
   };
 
-  let component = await findComponent(cli, target, options.component);
-  if (component !== null) {
+  // A backend without the component, or with a component that has no `lib:getLiveVersion`, fails
+  // this call: a first install.
+  const installed = await run("lib:getLiveVersion", {}, liveVersionResult).then(
+    () => true,
+    () => false,
+  );
+  if (installed) {
     const uploadCommand = commandLine([
       process.execPath,
       CLI_PATH,
       "upload",
       ...siteOptionArgs(options),
-      "--component",
-      component,
       ...selectorArgs(target),
       "--version-id",
       versionId,
       "--no-activate",
     ]);
-    pushBackend(
-      cli,
-      target,
-      options.buildCommand === null ? uploadCommand : `${options.buildCommand} && ${uploadCommand}`,
-      env,
-    );
+    pushBackend(cli, target, `${options.buildCommand} && ${uploadCommand}`, env);
   } else {
     console.log("The component does not answer lib:getLiveVersion. Pushing the backend first.");
     pushBackend(cli, target, options.buildCommand, env);
-    component = (await upload(target, { ...options, versionId, activate: false }, cli)).component;
+    await upload(target, { ...options, versionId, activate: false }, cli);
   }
-  await runComponent(
-    cli,
-    target,
-    component,
-    "lib:activate",
-    { versionId, afterCodePush: true },
-    activateResult,
-  );
+  await run("lib:activate", { versionId, afterCodePush: true }, activateResult);
   console.log(`Version ${versionId} is live.`);
-  await verify(cli, target, component, versionId, options);
+  await verify(cli, target, versionId, options);
   console.log("Verified.");
 }
 
-/**
- * The version ID that the build writes into its pages: a new one for a new build. With
- * `--skip-build`, the ID of the build in `dist`, from the version file that the upload of its
- * deploy wrote. Without that file, a static build gets a new ID, because verification reads its
- * `/index.html` and not the ID; any other build stops before any change.
- */
-async function releaseVersionId(options: DeployOptions): Promise<string> {
-  if (options.buildCommand !== null) return newVersionId();
-  const stored = readVersionFile(options.dist);
-  if (stored !== null) return stored.versionId;
-  if ((await collectFiles(options.dist)).some((file) => file.path === "/index.html")) {
-    return newVersionId();
-  }
-  throw new Error(
-    `--skip-build needs ${versionFilePath(options.dist)} for the version ID that the build wrote ` +
-      "into its pages, and the file is missing. Run deploy without --skip-build.",
-  );
-}
-
-function pushBackend(cli: Cli, target: Target, cmd: string | null, env: NodeJS.ProcessEnv): void {
-  const status = cli.convexInherit(
-    ["deploy", ...selectorArgs(target), ...(cmd === null ? [] : ["--cmd", cmd])],
-    env,
-  );
+function pushBackend(cli: Cli, target: Target, cmd: string, env: NodeJS.ProcessEnv): void {
+  const status = cli.convexInherit(["deploy", ...selectorArgs(target), "--cmd", cmd], env);
   if (status !== 0) {
     throw new Error(`npx convex deploy failed with exit status ${status}. Nothing was activated.`);
   }
@@ -125,27 +89,23 @@ function pushBackend(cli: Cli, target: Target, cmd: string | null, env: NodeJS.P
 /**
  * Checks that the deployment serves the new version: a static app (with `/index.html`) answers with
  * the new `/index.html`, a server-rendered page carries the new version meta tag, and
- * `lib:getLiveVersion` names the new version. Pages are fetched from `--site-url`, else from the
- * `.convex.site` origin of the deployment.
+ * `lib:getLiveVersion` names the new version. Pages are fetched from the `.convex.site` origin of
+ * the deployment, which also serves a deployment that has a custom domain.
  */
 async function verify(
   cli: Cli,
   target: Target,
-  component: string,
   versionId: string,
   options: DeployOptions,
 ): Promise<void> {
-  const basePath = options.basePath ?? "/";
-  const siteUrl =
-    options.siteUrl ??
-    siteUrlFromCloudUrl(
-      functionSpecResult.parse(
-        JSON.parse(await cli.convex(["function-spec", ...selectorArgs(target)])),
-      ).url,
-    );
+  const siteUrl = siteUrlFromCloudUrl(
+    functionSpecResult.parse(
+      JSON.parse(await cli.convex(["function-spec", ...selectorArgs(target)])),
+    ).url,
+  );
   const index = (await collectFiles(options.dist)).find((file) => file.path === "/index.html");
   if (index !== undefined) {
-    const url = new URL(addBasePath("/index.html", basePath), siteUrl);
+    const url = new URL(addBasePath("/index.html", options.basePath), siteUrl);
     const expected = entryETag(manifestEntries([index], () => false)[0]);
     const response = await cli.fetch(url);
     const found = response.headers.get("etag");
@@ -158,7 +118,7 @@ async function verify(
       );
     }
   } else {
-    const url = new URL(addBasePath(options.verifyPath ?? "/", basePath), siteUrl);
+    const url = new URL(addBasePath(options.verifyPath, options.basePath), siteUrl);
     const response = await cli.fetch(url);
     const body = await response.text();
     const found = VERSION_META.exec(body)?.[1] ?? null;
@@ -175,7 +135,7 @@ async function verify(
   const live = await runComponent(
     cli,
     target,
-    component,
+    options.component,
     "lib:getLiveVersion",
     {},
     liveVersionResult,
@@ -193,8 +153,7 @@ export function siteUrlFromCloudUrl(cloudUrl: string): string {
   const url = new URL(cloudUrl);
   if (!url.hostname.endsWith(".convex.cloud")) {
     throw new Error(
-      `Cannot verify: ${cloudUrl} is not a .convex.cloud URL, so its site URL is unknown. ` +
-        "Pass the site's origin with --site-url.",
+      `Cannot verify: ${cloudUrl} is not a .convex.cloud URL, so its site URL is unknown.`,
     );
   }
   url.hostname = `${url.hostname.slice(0, -".convex.cloud".length)}.convex.site`;

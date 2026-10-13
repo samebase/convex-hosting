@@ -10,7 +10,7 @@ import { sha256Hex } from "./manifest.js";
 type Args = { [key: string]: unknown };
 type Entry = { path: string; sha256: string; size: number; storageId: string | null };
 
-export const CLOUD_URL = "https://happy-animal-123.convex.cloud";
+const CLOUD_URL = "https://happy-animal-123.convex.cloud";
 export const SITE_URL = "https://happy-animal-123.convex.site";
 
 export function writeDist(files: { [path: string]: string }): string {

@@ -4,7 +4,7 @@ import type { UploadOptions } from "./args.js";
 import { fakeCli, writeDist } from "./fakeCli.test.helpers.js";
 import { sha256Hex, VERSION_ID_PATTERN } from "./manifest.js";
 import type { Target } from "./target.js";
-import { STALLED_ROUNDS, upload } from "./upload.js";
+import { upload } from "./upload.js";
 
 const preview: Target = { kind: "preview", previewName: "feature-x" };
 const production: Target = { kind: "production", deploymentName: "happy-animal-123" };
@@ -14,12 +14,12 @@ let dist = "";
 function options(overrides: Partial<UploadOptions> = {}): UploadOptions {
   return {
     dist,
-    component: null,
+    component: "hosting",
     previewName: null,
     immutable: "vite",
-    htmlHandling: null,
-    notFoundHandling: null,
-    basePath: null,
+    htmlHandling: "auto-trailing-slash",
+    notFoundHandling: "none",
+    basePath: "/",
     versionId: null,
     activate: true,
     ...overrides,
@@ -42,16 +42,20 @@ afterEach(() => {
   rmSync(dist, { recursive: true, force: true });
 });
 
+/** The version ID of every `startVersion` call, in order. */
+function startedVersions(fake: ReturnType<typeof fakeCli>) {
+  return fake.runs.filter((run) => run.fn === "lib:startVersion").map((run) => run.args.versionId);
+}
+
 describe("upload", () => {
   test("uploads the manifest, then each pending file, then activates", async () => {
     const fake = fakeCli();
 
-    const result = await upload(preview, options(), fake.cli);
+    await upload(preview, options(), fake.cli);
 
-    expect(result.component).toBe("hosting");
-    expect(result.versionId).toMatch(VERSION_ID_PATTERN);
-    expect(fake.calls.slice(0, 4)).toEqual([
-      "lib:getLiveVersion",
+    const [versionId] = startedVersions(fake);
+    expect(versionId).toMatch(VERSION_ID_PATTERN);
+    expect(fake.calls.slice(0, 3)).toEqual([
       "lib:generateUploadUrl",
       "fetch POST https://upload.test/1",
       "lib:startVersion",
@@ -74,9 +78,12 @@ describe("upload", () => {
     const manifestBlob = fake.blobs.get("storage1");
     expect(manifestBlob?.contentType).toBe("application/json");
     expect(JSON.parse(new TextDecoder().decode(manifestBlob?.bytes))).toEqual({
-      versionId: result.versionId,
+      versionId,
       config: {
         compatibility_date: "2025-04-01",
+        html_handling: "auto-trailing-slash",
+        not_found_handling: "none",
+        base_path: "/",
         redirects: {
           version: 1,
           staticRules: { "/old": { status: 301, to: "/new", lineNumber: 1 } },
@@ -108,23 +115,19 @@ describe("upload", () => {
       ],
     });
     expect(fake.runs.find((run) => run.fn === "lib:startVersion")?.args).toEqual({
-      versionId: result.versionId,
+      versionId,
       manifestStorageId: "storage1",
     });
-    expect(fake.runs[fake.runs.length - 1]?.args).toEqual({
-      versionId: result.versionId,
-      afterCodePush: false,
-    });
+    expect(fake.runs[fake.runs.length - 1]?.args).toEqual({ versionId, afterCodePush: false });
     const html = [...fake.blobs.values()].find((blob) => blob.contentType.startsWith("text/html"));
     expect(new TextDecoder().decode(html?.bytes)).toBe("<p>hi</p>");
   });
 
-  test("an explicit component skips the probe; --no-activate leaves the live version", async () => {
+  test("--component names the instance; --no-activate leaves the live version", async () => {
     const fake = fakeCli();
 
     await upload(production, options({ component: "site", activate: false }), fake.cli);
 
-    expect(fake.calls).not.toContain("lib:getLiveVersion");
     expect(fake.calls).not.toContain("lib:activate");
     expect(fake.calls[fake.calls.length - 1]).toBe("lib:finishVersion");
     expect(fake.runs[0].argv).toEqual([
@@ -138,6 +141,22 @@ describe("upload", () => {
     ]);
   });
 
+  test("an empty build is a version without files", async () => {
+    rmSync(dist, { recursive: true, force: true });
+    dist = writeDist({});
+    const fake = fakeCli();
+
+    await upload(production, options(), fake.cli);
+
+    expect(fake.calls).toEqual([
+      "lib:generateUploadUrl",
+      "fetch POST https://upload.test/1",
+      "lib:startVersion",
+      "lib:finishVersion",
+      "lib:activate",
+    ]);
+  });
+
   test("a rerun continues the same version and uploads only what is missing", async () => {
     const fake = fakeCli();
     const recordFile = fake.functions["lib:recordFile"];
@@ -147,27 +166,26 @@ describe("upload", () => {
     };
     await expect(upload(production, options(), fake.cli)).rejects.toThrow("connection reset");
     fake.functions["lib:recordFile"] = recordFile;
-    fake.calls.length = 0;
     fake.runs.length = 0;
 
-    const second = await upload(production, options(), fake.cli);
+    await upload(production, options(), fake.cli);
 
     const recorded = fake.runs.filter((run) => run.fn === "lib:recordFile");
     expect(recorded.map((run) => run.args.path)).toEqual(["/index.html"]);
-    expect(recorded[0].args.versionId).toBe(second.versionId);
+    expect(recorded[0].args.versionId).toBe(startedVersions(fake)[0]);
     expect(fake.versions.size).toBe(1);
   });
 
   test("a rerun of a finished version skips to activation", async () => {
     const fake = fakeCli();
-    const first = await upload(production, options({ activate: false }), fake.cli);
+    await upload(production, options({ activate: false }), fake.cli);
     fake.calls.length = 0;
 
-    const second = await upload(production, options(), fake.cli);
+    await upload(production, options(), fake.cli);
 
-    expect(second.versionId).toBe(first.versionId);
+    const [first, second] = startedVersions(fake);
+    expect(second).toBe(first);
     expect(fake.calls).toEqual([
-      "lib:getLiveVersion",
       "lib:generateUploadUrl",
       "fetch POST https://upload.test/5",
       "lib:startVersion",
@@ -175,37 +193,24 @@ describe("upload", () => {
     ]);
   });
 
-  test("uploads again what finishVersion still reports as pending", async () => {
+  test("fails with the paths that finishVersion still reports, and a rerun uploads them", async () => {
     const fake = fakeCli();
     const recordFile = fake.functions["lib:recordFile"];
-    let lost = false;
-    fake.functions["lib:recordFile"] = (args) => {
-      if (args.path === "/index.html" && !lost) {
-        lost = true;
-        return { ok: true };
-      }
-      return recordFile(args);
-    };
-
-    await upload(production, options(), fake.cli);
-
-    const recorded = fake.runs.filter((run) => run.fn === "lib:recordFile");
-    expect(
-      recorded.map((run) => run.args.path).filter((path) => path === "/index.html"),
-    ).toHaveLength(2);
-    expect(fake.calls.filter((call) => call === "lib:finishVersion")).toHaveLength(2);
-    expect(fake.calls[fake.calls.length - 1]).toBe("lib:activate");
-  });
-
-  test("fails with the paths after three rounds with the same pending files", async () => {
-    const fake = fakeCli();
-    fake.functions["lib:recordFile"] = () => ({ ok: true });
+    // A success without a record: finishVersion still reports the file.
+    fake.functions["lib:recordFile"] = (args) =>
+      args.path === "/index.html" ? { ok: true } : recordFile(args);
 
     await expect(upload(production, options(), fake.cli)).rejects.toThrow(
-      "is not ready after 3 rounds with the same pending files: /assets/app.css, /assets/app.js, /index.html.",
+      /Version v_[a-z2-7]{26} still has no file for \/index\.html\. Run the command again\./,
     );
-    expect(fake.calls.filter((call) => call === "lib:finishVersion")).toHaveLength(STALLED_ROUNDS);
+    expect(fake.calls.filter((call) => call === "lib:finishVersion")).toHaveLength(1);
     expect(fake.calls).not.toContain("lib:activate");
+
+    fake.functions["lib:recordFile"] = recordFile;
+    fake.calls.length = 0;
+    await upload(production, options(), fake.cli);
+    expect(fake.calls.filter((call) => call === "lib:recordFile")).toHaveLength(1);
+    expect(fake.calls[fake.calls.length - 1]).toBe("lib:activate");
   });
 
   test("a failed finishVersion tells the user to run the command again", async () => {
@@ -227,31 +232,5 @@ describe("upload", () => {
       /The component rejected \/[\w/.]+: sha256 mismatch/,
     );
     expect(fake.calls).not.toContain("lib:finishVersion");
-  });
-
-  test("falls back to the legacy instance name and warns", async () => {
-    const fake = fakeCli();
-    const convex = fake.cli.convex;
-    fake.cli.convex = async (argv) => {
-      if (argv[2] === "hosting") throw new Error("Component not found: hosting");
-      return convex(argv);
-    };
-
-    const result = await upload(production, options(), fake.cli);
-
-    expect(result.component).toBe("staticHosting");
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"staticHosting"'));
-  });
-
-  test("fails before any write when no instance answers", async () => {
-    const fake = fakeCli();
-    fake.functions["lib:getLiveVersion"] = () => {
-      throw new Error("Could not find function");
-    };
-
-    await expect(upload(production, options(), fake.cli)).rejects.toThrow(
-      'The component "hosting" or "staticHosting" does not answer lib:getLiveVersion',
-    );
-    expect(fake.calls).toEqual(["lib:getLiveVersion", "lib:getLiveVersion"]);
   });
 });

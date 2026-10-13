@@ -16,7 +16,11 @@ import {
   versionFilePath,
 } from "./manifest.js";
 
-const defaults = { htmlHandling: null, notFoundHandling: null, basePath: null };
+const defaults = {
+  htmlHandling: "auto-trailing-slash",
+  notFoundHandling: "none",
+  basePath: "/",
+} as const;
 
 let dist = "";
 
@@ -61,9 +65,14 @@ describe("content types", () => {
 });
 
 describe("config", () => {
-  test("has only the compatibility date without rule files or flags", () => {
+  test("has the compatibility date and the serving modes without rule files", () => {
     dist = writeDist({ "index.html": "" });
-    expect(buildConfig(dist, defaults)).toEqual({ compatibility_date: "2025-04-01" });
+    expect(buildConfig(dist, defaults)).toEqual({
+      compatibility_date: "2025-04-01",
+      html_handling: "auto-trailing-slash",
+      not_found_handling: "none",
+      base_path: "/",
+    });
   });
 
   test("carries the flags and the parsed _headers and _redirects", () => {

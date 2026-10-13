@@ -76,9 +76,9 @@ describe("collectFiles", () => {
 });
 
 describe("upload limits", () => {
-  test("a version holds 1 to 4,000 files", () => {
+  test("a version holds 0 to 4,000 files", () => {
     const file = (index: number) => ({ path: `/${index}.js`, size: 1 });
-    expect(() => checkUploadLimits("dist", [])).toThrow("dist has no files to upload");
+    expect(() => checkUploadLimits("dist", [])).not.toThrow();
     expect(() =>
       checkUploadLimits(
         "dist",

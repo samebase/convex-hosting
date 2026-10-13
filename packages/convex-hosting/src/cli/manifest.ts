@@ -23,7 +23,7 @@ export const COMPATIBILITY_DATE = "2025-04-01";
 /** The component stores the config in one document field and rejects a larger one. */
 export const MAX_CONFIG_BYTES = 256 * 1024;
 
-export const IMMUTABLE_PRESETS = new Map([
+const IMMUTABLE_PRESETS = new Map([
   ["vite", "/assets/**"],
   ["next", "/_next/static/**"],
   ["astro", "/_astro/**"],
@@ -45,10 +45,7 @@ export function sha256Hex(bytes: string | Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/**
- * The version's serving config: the parsed root `_headers` and `_redirects` files, and the flags
- * that were given. An absent flag stays absent, so the serving entry point applies its default.
- */
+/** The version's serving config: the site options and the parsed root `_headers` and `_redirects`. */
 export function buildConfig(
   dist: string,
   options: Pick<SiteOptions, "htmlHandling" | "notFoundHandling" | "basePath">,
@@ -59,9 +56,9 @@ export function buildConfig(
   const redirects = maybeGetFile(redirectsFile);
   const config: AssetConfig = {
     compatibility_date: COMPATIBILITY_DATE,
-    ...(options.htmlHandling === null ? {} : { html_handling: options.htmlHandling }),
-    ...(options.notFoundHandling === null ? {} : { not_found_handling: options.notFoundHandling }),
-    ...(options.basePath === null ? {} : { base_path: options.basePath }),
+    html_handling: options.htmlHandling,
+    not_found_handling: options.notFoundHandling,
+    base_path: options.basePath,
     ...constructHeaders({
       headers: headers === undefined ? undefined : parseHeaders(headers),
       headersFile,
@@ -71,7 +68,7 @@ export function buildConfig(
       redirects:
         redirects === undefined
           ? undefined
-          : parseRedirects(redirects, { htmlHandling: options.htmlHandling ?? undefined }),
+          : parseRedirects(redirects, { htmlHandling: options.htmlHandling }),
       redirectsFile,
       logger: console,
     }),
@@ -147,7 +144,7 @@ const storedVersion = z.object({
 });
 
 /** The version file of `dist`, or null when it is missing or damaged. */
-export function readVersionFile(dist: string): z.infer<typeof storedVersion> | null {
+function readVersionFile(dist: string): z.infer<typeof storedVersion> | null {
   const stored = storedVersion.safeParse(parseJson(maybeGetFile(versionFilePath(dist))));
   return stored.success ? stored.data : null;
 }
@@ -155,7 +152,7 @@ export function readVersionFile(dist: string): z.infer<typeof storedVersion> | n
 /**
  * The version ID for this upload: `explicit` when given (`deploy` makes it before the build), else
  * the stored one when the stored digest equals `digest`, so a rerun continues the same version,
- * else a new one. The result is stored with the digest, also for `deploy --skip-build`.
+ * else a new one. The result is stored with the digest.
  */
 export function resolveVersionId(dist: string, digest: string, explicit: string | null): string {
   let versionId = explicit;
