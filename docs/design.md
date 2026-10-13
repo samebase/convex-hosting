@@ -53,10 +53,11 @@ deployment (`CONVEX_SELF_HOSTED_URL`) takes no selector. The CLI parses no crede
    Both run in the project directory; a build must not change directory. Convex gives the build the
    deployment's URL in `CONVEX_URL` and in one framework variable such as `VITE_CONVEX_URL`, as it
    documents for frontends. Inside the command, `upload`:
-   1. collects the files of `<dir>`, honoring `.assetsignore`, and computes each file's sha256 and
-      content type; refuses a file above 25 MiB, Cloudflare's limit per asset (the HTTP action that
-      serves a file could not answer more than Convex's 100 MiB response limit anyway); reads
-      `_headers` and `_redirects` with Cloudflare's parsers into the version's config;
+   1. collects the files of `<dir>`, honoring `.assetsignore` and following file symlinks as
+      Wrangler does, and computes each file's sha256 and content type; refuses a file above 25 MiB,
+      Cloudflare's limit per asset (the HTTP action that serves a file could not answer more than
+      Convex's 100 MiB response limit anyway); reads `_headers` and `_redirects` with Cloudflare's
+      parsers into the version's config;
    2. stores the config as one file through an upload URL, because `npx convex run` passes arguments
       on the command line, which the operating system limits, and a `_redirects` file can be large;
       (`npx convex run` stays the transport because it handles every way a deployment is selected:
@@ -164,11 +165,11 @@ answers 404, because a deletion pass removed the file, the answer is 404 with
 `Cache-Control: no-store`; any other fetch failure answers 502 with no caching. An app cannot read a
 component's storage, so each asset hit costs that one fetch.
 
-When the version does not exist or is still `uploading`, `serveAsset` returns a 404 response that
-names the version, with `Cache-Control: no-store`, so a half-installed site answers 404 rather than
-rendering pages without their files, and the deployment's Cloudflare front, which caches 404 answers
-on static paths, does not keep that answer after the upload ends. `null` means one thing: no asset
-matched, and the app continues.
+When the version does not exist, is still `uploading`, or is `deleting`, `serveAsset` returns a 404
+response that names the version, with `Cache-Control: no-store`, so a half-installed site answers
+404 rather than rendering pages without their files, and the deployment's Cloudflare front, which
+caches 404 answers on static paths, does not keep that answer after the upload ends. `null` means
+one thing: no asset matched, and the app continues.
 
 When `route` reports the version in state `ready`, `serveAsset` calls `markLive` once, before it
 answers. The mark is a compare-and-set: `route` also returns the time of the newest live version it
@@ -192,13 +193,15 @@ longer prefixes, by Convex's router rules for the same method.
 
 Two tables.
 
-| Table      | Fields                                                                                                        | Indexes                                        |
-| ---------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `versions` | `versionId`, `state` (`uploading`, `ready`, or `live` with the time it became live), `config` (JSON string)   | `by_versionId`                                 |
-| `entries`  | `versionId`, `path`, `sha256` (hex), `contentType` (absent when the file name has no known type), `storageId` | `by_version_path`, `by_sha256`, `by_storageId` |
+| Table      | Fields                                                                                                                  | Indexes                                        |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `versions` | `versionId`, `state` (`uploading`, `ready`, `live` with the time it became live, or `deleting`), `config` (JSON string) | `by_versionId`                                 |
+| `entries`  | `versionId`, `path`, `sha256` (hex), `contentType` (absent when the file name has no known type), `storageId`           | `by_version_path`, `by_sha256`, `by_storageId` |
 
 The time a version became live lives inside the `live` state, so a version cannot carry a live time
-without being live. Creation times come from `_creationTime`. `config` is the JSON of Cloudflare's
+without being live; a mark sets it strictly later than the newest live time, so two marks in one
+millisecond still order. `deleting` is set before a version's entries go, so a version half deleted
+cannot become live. Creation times come from `_creationTime`. `config` is the JSON of Cloudflare's
 `AssetConfig` for the version: `html_handling`, `not_found_handling`, `headers`, `redirects`. It is
 a string because `redirects.staticRules` has one field per rule and Convex limits an object to 1,024
 fields. A document is limited to 1 MiB, so the CLI refuses a config above 900 KiB, leaving room for
@@ -218,12 +221,27 @@ only a component's public functions, and clients cannot call them at all).
 | `recordFiles`        | internal mutation | Inserts complete entries after checking each stored file's sha256; an entry that exists with the same hash is skipped.                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `finishVersion`      | internal mutation | Marks the version `ready`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `route`              | public query      | Runs Cloudflare's `canFetch` and `handleRequest` for one request against one version; reports the version's state.                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `markLive`           | public mutation   | Marks a `ready` version `live` and schedules `collect`, only when the newest live version is still the one the request's lookup observed; otherwise, and for a version already live, a no-op.                                                                                                                                                                                                                                                                                                                                          |
+| `markLive`           | public mutation   | Marks a `ready` version `live`, strictly later than the newest live time, and schedules `collect`, only when the newest live version is still the one the request's lookup observed; otherwise, and for a version already live, a no-op; a version in `deleting` is refused.                                                                                                                                                                                                                                                           |
 | `collect`            | internal mutation | Deletes the versions that were live before the current live one and the versions that are not live and a day old, with their entries; then the `_storage` files that no entry references and are a day old. The sweep runs before the version deletion in each chain, so a file freed by a switch is deleted at a later switch; an upload that took a file from `knownFiles` fails only if two switches happen during that one upload, and a retry works; one batch per call, scheduling itself with `runAfter(0)` while work remains. |
 
 The package sets one limit of its own, 25 MiB per file, for the reason above. Convex's limits apply:
 1 MiB per document, and the transaction limits (16,000 writes, 32,000 documents scanned, 16 MiB read
 and written, 8,192 array elements, 4,096 index ranges, argument and result sizes) shape the batches.
+
+## Stated, not solved
+
+- A request already running on old code when a push lands, whose first lookup happens after the new
+  code's first request marked its version, passes the compare-and-set and supersedes the new
+  version. The window is the microseconds between an action's start and its first query, and it
+  needs a push and a first request to complete inside it. Stated, not mechanized.
+- An upload that took a stored file from `knownFiles` loses it only if two switches happen during
+  that one upload; it fails with a message that says so, and a retry works.
+- The site route is `GET`; a `POST` or `OPTIONS` to an asset path reaches the app, where
+  Cloudflare's assets-only mode would answer 405. The app is the Worker.
+- No `run_worker_first`, no `base_path`, no selectable compatibility date: an app that needs its
+  route to win over an asset registers an exact route or a longer prefix.
+- No upload retry: a transient storage failure fails the deploy, and the next deploy reuses every
+  file the failed one recorded.
 
 ## Not here, and why
 
