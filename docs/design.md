@@ -116,9 +116,9 @@ deleted version's unshared files, a file stored but never recorded, and the conf
 in progress that took a stored file from `knownFiles` loses it only if two switches happen during
 that one upload; it then fails with a message that says so, and a retry works. A push that the
 command reports as failed may still have landed; the site then serves the new version, which marks
-itself live at its first request, and the next deploy is a normal one. No resume logic. The first
-deploy of a deployment is run once, alone: before the component exists nothing can order two of
-them.
+itself live at its first request, and the next deploy is a normal one. No resume logic. Two first
+deploys at once behave like any other overlap: both push and upload, the last push wins, and the
+other version is garbage after a day.
 
 **Browsers.** A page opened before a deploy keeps asking for its hashed files, which now answer 404,
 exactly as on Cloudflare. An app that wants to reload on a new version adds one query that returns

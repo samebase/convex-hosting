@@ -88,7 +88,7 @@ deployment (see [Development](#development)). A deploy key in `CONVEX_DEPLOY_KEY
 and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment.
 
 The first deploy to a deployment pushes the component, then uploads the files. Until that upload
-ends, the site answers 404. Run the first deploy of a deployment once, alone.
+ends, the site answers 404.
 
 Two deploys that overlap both complete, and the last push wins.
 
