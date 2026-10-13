@@ -146,9 +146,10 @@ npx @samebase/convex-hosting deploy --dist dist
    The build gets the deployment URL from `npx convex deploy`, and `CONVEX_HOSTING_VERSION_ID` and
    `CONVEX_HOSTING_BASE_PATH`. The files upload as a new version before the push replaces the
    functions, and the current version stays live.
-3. It makes the new version live, then checks the site: the ETag of `/index.html`, or for a build
-   without `/index.html` the `<meta name="convex-hosting-version" content="<id>">` tag of the
-   `--verify-path` page (the TanStack Start adapter writes it), and `lib:getLiveVersion`.
+3. It makes the new version live, then checks the site: a 200 with the new ETag for `/index.html`,
+   or for a build without `/index.html` a 200 with the
+   `<meta name="convex-hosting-version" content="<id>">` tag for the `--verify-path` page (the
+   TanStack Start adapter writes it), and `lib:getLiveVersion`.
 
 The check fetches the `.convex.site` URL of the deployment. For a site on a custom domain, pass the
 site's origin with `--site-url https://app.example.com`; it is required when the deployment URL is

@@ -298,8 +298,8 @@ any change.
 Limits: at most 4,000 files per version, 25 MiB per file, 1,024 bytes per path, and 256 KiB of
 header and redirect rules. A `Range` request gets the whole file with status 200.
 
-Verification (`deploy`): for a build with `/index.html`, the ETag of `<base path>index.html` must be
-the new file's; otherwise the `--verify-path` page must carry
+Verification (`deploy`): for a build with `/index.html`, `<base path>index.html` must answer 200
+with the new file's ETag; otherwise the `--verify-path` page must answer 200 and carry
 `<meta name="convex-hosting-version" content="<id>">`, which the TanStack Start adapter writes from
 `CONVEX_HOSTING_VERSION_ID`. Then `lib:getLiveVersion` must name the new version. The pages come
 from the `.convex.site` URL of the deployment, or from `--site-url` for a custom domain.

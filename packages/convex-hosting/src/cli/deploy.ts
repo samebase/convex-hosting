@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { addBasePath } from "../workers-shared/asset-worker/src/utils/base-path.js";
@@ -30,7 +31,14 @@ const functionSpecResult = z.object({ url: z.string() });
  * upload inside `npx convex deploy --cmd`, before the push, and the version goes live after it.
  * Otherwise (first install, or an upgrade from 0.3.x) the push installs the component first.
  */
-export async function deploy(target: Target, options: DeployOptions, cli: Cli): Promise<void> {
+export async function deploy(
+  target: Target,
+  deployOptions: DeployOptions,
+  cli: Cli,
+): Promise<void> {
+  // The build command can change the working directory, and the upload runs after it in the same
+  // `--cmd` shell, so every step gets an absolute `--dist`.
+  const options = { ...deployOptions, dist: resolve(deployOptions.dist) };
   if (target.kind === "development" && target.source === "CONVEX_DEPLOYMENT") {
     throw new Error(
       "deploy needs CONVEX_DEPLOY_KEY or --preview-name. With only CONVEX_DEPLOYMENT, " +
@@ -145,20 +153,22 @@ async function verify(
     if (response.status !== 200 || (found !== expected && found !== `W/${expected}`)) {
       throw new Error(
         `Verification failed: GET ${url} answered ${response.status} with ETag ${found ?? "(none)"}. ` +
-          `Expected 200 with ETag ${expected}, the new /index.html.`,
+          `Expected 200 with ETag ${expected}, the new /index.html. ` +
+          `Body: ${JSON.stringify((await response.text()).slice(0, 200))}`,
       );
     }
   } else {
     const url = new URL(addBasePath(options.verifyPath ?? "/", basePath), siteUrl);
     const response = await cli.fetch(url);
-    const found = VERSION_META.exec(await response.text())?.[1] ?? null;
-    if (found !== versionId) {
+    const body = await response.text();
+    const found = VERSION_META.exec(body)?.[1] ?? null;
+    // The adapter writes the tag into error pages too, so the status counts.
+    if (response.status !== 200 || found !== versionId) {
       throw new Error(
         `Verification failed: GET ${url} answered ${response.status} ` +
-          (found === null
-            ? "without a convex-hosting-version meta tag. "
-            : `with version ${found}. `) +
-          `Expected <meta name="convex-hosting-version" content="${versionId}">.`,
+          (found === null ? "without a convex-hosting-version meta tag" : `with version ${found}`) +
+          `. Expected 200 with <meta name="convex-hosting-version" content="${versionId}">. ` +
+          `Body: ${JSON.stringify(body.slice(0, 200))}`,
       );
     }
   }

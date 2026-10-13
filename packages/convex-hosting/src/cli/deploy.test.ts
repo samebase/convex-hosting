@@ -1,4 +1,5 @@
 import { readFileSync, rmSync } from "node:fs";
+import { relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { DeployOptions } from "./args.js";
 import { commandLine, deploy, siteUrlFromCloudUrl } from "./deploy.js";
@@ -79,6 +80,21 @@ describe("deploy, when the component answers", () => {
       versionId,
       afterCodePush: true,
     });
+  });
+
+  test("gives the upload an absolute --dist, so a build that changes directory cannot move it", async () => {
+    const fake = releasedFake();
+    fake.setSite(() => new Response(INDEX, { headers: { ETag: INDEX_ETAG } }));
+
+    await deploy(
+      production,
+      options({ dist: relative(process.cwd(), dist), buildCommand: "cd web && npm run build" }),
+      fake.cli,
+    );
+
+    const [{ argv }] = fake.pushes;
+    expect(argv[2]).toMatch(/^cd web && npm run build && /);
+    expect(argv[2]).toContain(`upload --dist ${dist} `);
   });
 
   test("passes the preview name to the push, the upload, and every run", async () => {
@@ -204,9 +220,14 @@ describe("deploy verification", () => {
 
     await expect(deploy(production, options({ basePath: "/app/" }), fake.cli)).rejects.toThrow(
       `Verification failed: GET ${SITE_URL}/app/index.html answered 200 with ETag "old-etag". ` +
-        `Expected 200 with ETag ${INDEX_ETAG}, the new /index.html.`,
+        `Expected 200 with ETag ${INDEX_ETAG}, the new /index.html. Body: "old"`,
     );
     expect(fake.pushes[0].env.CONVEX_HOSTING_BASE_PATH).toBe("/app/");
+
+    fake.setSite(() => new Response("Error", { status: 500, headers: { ETag: INDEX_ETAG } }));
+    await expect(deploy(production, options(), fake.cli)).rejects.toThrow(
+      `answered 500 with ETag ${INDEX_ETAG}. Expected 200`,
+    );
   });
 
   test("a server-rendered page needs the new version meta tag", async () => {
@@ -237,13 +258,37 @@ describe("deploy verification", () => {
     );
 
     await expect(deploy(production, options(), fake.cli)).rejects.toThrow(
-      /answered 200 with version v_old\. Expected <meta name="convex-hosting-version" content="v_[a-z2-7]{26}">/,
+      /answered 200 with version v_old\. Expected 200 with <meta name="convex-hosting-version" content="v_[a-z2-7]{26}">\. Body: "<meta /,
     );
 
     fake.setSite(() => new Response("<p>no tag</p>"));
     await expect(deploy(production, options(), fake.cli)).rejects.toThrow(
       "without a convex-hosting-version meta tag",
     );
+  });
+
+  test("an error page with the new version tag fails", async () => {
+    rmSync(dist, { recursive: true, force: true });
+    dist = writeDist({ "assets/app.js": "1" });
+    const fake = releasedFake();
+    const errorPage = () => {
+      const versionId = String(fake.pushes[0].env.CONVEX_HOSTING_VERSION_ID);
+      return `<head><meta name="convex-hosting-version" content="${versionId}"></head>${"x".repeat(300)}`;
+    };
+    fake.setSite(() => new Response(errorPage(), { status: 500 }));
+
+    const error = await deploy(production, options(), fake.cli).catch((caught: unknown) => caught);
+
+    const versionId = String(fake.pushes[0].env.CONVEX_HOSTING_VERSION_ID);
+    expect(error).toEqual(
+      new Error(
+        `Verification failed: GET ${SITE_URL}/ answered 500 with version ${versionId}. ` +
+          `Expected 200 with <meta name="convex-hosting-version" content="${versionId}">. ` +
+          `Body: ${JSON.stringify(errorPage().slice(0, 200))}`,
+      ),
+    );
+    // getLiveVersion does not run after a failed page check.
+    expect(fake.calls[fake.calls.length - 1]).toBe(`fetch GET ${SITE_URL}/`);
   });
 
   test("--site-url replaces the derived .convex.site origin", async () => {

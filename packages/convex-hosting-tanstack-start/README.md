@@ -70,8 +70,9 @@ npx @samebase/convex-hosting deploy --dist dist/client --build-command "npm run 
 1. `deploy` makes a version ID and gives it to the build as `CONVEX_HOSTING_VERSION_ID`.
 2. In `npx convex deploy --cmd`, the build runs, and then `dist/client` uploads as the new version,
    not live yet. Then the push replaces the functions and the renderer.
-3. `deploy` makes the new version live and fetches `/` (or `--verify-path`): the page must carry
-   `<meta name="convex-hosting-version" content="<id>">` with the new ID.
+3. `deploy` makes the new version live and fetches `/` (or `--verify-path`): the page must answer
+   200 and carry `<meta name="convex-hosting-version" content="<id>">` with the new ID. An error
+   page with the tag fails.
 
 On a first install, and on an upgrade from 0.3.x, the push runs first and the upload follows; the
 site answers 404 until the upload ends. Hashed files under `/assets/` stay reachable from the
