@@ -41,7 +41,7 @@ const FIRST_INSTALL_MARKER = join(STATE_DIR, "first-install");
 const PROBE_RETRY_MS = 3_000;
 const PROBE_TIMEOUT_MS = 2 * 60 * 1000;
 
-/** `deploy` refreshes the lock this often while `npx convex deploy` runs. */
+/** The CLI refreshes the lock this often while it uploads and while `npx convex deploy` runs. */
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 /** Files that `upload` sends to storage at once. */
@@ -163,28 +163,10 @@ async function deploy(cli: Cli, options: Options, build: string) {
     .map(quote)
     .join(" ");
 
-  // The lock stays alive through the build and the push, when no other call refreshes it. Before
-  // `startVersion` takes the lock, and on a first install before the component exists, a heartbeat
-  // does nothing or fails; it is best effort, so its errors are ignored.
-  let heartbeat: Promise<void> | undefined;
-  const timer = setInterval(() => {
-    heartbeat ??= runComponent(cli, target, "lib:heartbeat", { versionId }, z.null()).then(
-      () => (heartbeat = undefined),
-      () => (heartbeat = undefined),
-    );
-  }, HEARTBEAT_INTERVAL_MS);
-  let exitCode: number;
-  try {
-    exitCode = await cli.convexInherited([
-      "deploy",
-      "--cmd",
-      `${build} && ${innerUpload}`,
-      ...previewFlags,
-    ]);
-  } finally {
-    clearInterval(timer);
-    await heartbeat;
-  }
+  // The lock stays alive through the build and the push, when no other call refreshes it.
+  const exitCode = await withHeartbeat(cli, target, versionId, () =>
+    cli.convexInherited(["deploy", "--cmd", `${build} && ${innerUpload}`, ...previewFlags]),
+  );
 
   const firstInstall = existsSync(marker);
   rmSync(marker, { force: true });
@@ -252,50 +234,80 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
   const manifestId = await store(cli, manifestUrl, JSON.stringify(manifest), "application/json");
   await run("lib:startVersion", { versionId, manifestId }, z.null());
 
+  // A page of uploads can take longer than the lock lives without a call.
   const contentTypes = new Map(manifest.entries.map((entry) => [entry.path, entry.contentType]));
-  for (;;) {
-    const missing = await run(
-      "lib:missingEntries",
-      { versionId },
-      z.array(z.object({ path: z.string(), sha256: z.string() })),
-    );
-    if (missing.length === 0) break;
-    // Entries with the same bytes share one stored file.
-    const pathsBySha256 = new Map<string, string[]>();
-    for (const { path, sha256 } of missing) {
-      pathsBySha256.set(sha256, [...(pathsBySha256.get(sha256) ?? []), path]);
-    }
-    const groups = [...pathsBySha256.values()];
-    const urls = await generateUploadUrls(groups.length);
-    const records: { path: string; storageId: string }[] = [];
-    let next = 0;
-    const worker = async () => {
-      while (next < groups.length) {
-        const index = next++;
-        const paths = groups[index];
-        const file = files.get(paths[0]);
-        if (file === undefined) throw new Error(`${paths[0]} is not in ${dist} any more.`);
-        const storageId = await store(
-          cli,
-          urls[index],
-          readFileSync(file),
-          contentTypes.get(paths[0]),
-        );
-        records.push(...paths.map((path) => ({ path, storageId })));
+  await withHeartbeat(cli, target, versionId, async () => {
+    for (;;) {
+      const missing = await run(
+        "lib:missingEntries",
+        { versionId },
+        z.array(z.object({ path: z.string(), sha256: z.string() })),
+      );
+      if (missing.length === 0) break;
+      // Entries with the same bytes share one stored file.
+      const pathsBySha256 = new Map<string, string[]>();
+      for (const { path, sha256 } of missing) {
+        pathsBySha256.set(sha256, [...(pathsBySha256.get(sha256) ?? []), path]);
       }
-    };
-    await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
-    for (const chunk of chunkByLength(records)) {
-      await run("lib:recordFiles", { versionId, files: chunk }, z.null());
+      const groups = [...pathsBySha256.values()];
+      const urls = await generateUploadUrls(groups.length);
+      const records: { path: string; storageId: string }[] = [];
+      let next = 0;
+      const worker = async () => {
+        while (next < groups.length) {
+          const index = next++;
+          const paths = groups[index];
+          const file = files.get(paths[0]);
+          if (file === undefined) throw new Error(`${paths[0]} is not in ${dist} any more.`);
+          const storageId = await store(
+            cli,
+            urls[index],
+            readFileSync(file),
+            contentTypes.get(paths[0]),
+          );
+          records.push(...paths.map((path) => ({ path, storageId })));
+        }
+      };
+      await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
+      for (const chunk of chunkByLength(records)) {
+        await run("lib:recordFiles", { versionId, files: chunk }, z.null());
+      }
     }
-  }
-  if (!(await run("lib:finishVersion", { versionId }, z.boolean()))) {
-    throw new Error(`Version ${versionId} still has files that are not uploaded.`);
-  }
+    if (!(await run("lib:finishVersion", { versionId }, z.boolean()))) {
+      throw new Error(`Version ${versionId} still has files that are not uploaded.`);
+    }
+  });
   writeVersionFile(cli, versionId);
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
   if (mode === "user") {
     await run("lib:finishDeploy", { versionId, pushed: true }, z.null());
+  }
+}
+
+/**
+ * Runs `work` and calls `heartbeat` every 30 seconds meanwhile, so the lock means that the process
+ * is alive. A heartbeat is best effort and its errors are ignored: before `startVersion` takes the
+ * lock, and on a first install before the component exists, it fails, and a deploy that lost its
+ * lock fails at its next call.
+ */
+async function withHeartbeat<T>(
+  cli: Cli,
+  target: Target,
+  versionId: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  let heartbeat: Promise<void> | undefined;
+  const timer = setInterval(() => {
+    heartbeat ??= runComponent(cli, target, "lib:heartbeat", { versionId }, z.null()).then(
+      () => (heartbeat = undefined),
+      () => (heartbeat = undefined),
+    );
+  }, HEARTBEAT_INTERVAL_MS);
+  try {
+    return await work();
+  } finally {
+    clearInterval(timer);
+    await heartbeat;
   }
 }
 

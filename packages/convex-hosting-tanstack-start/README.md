@@ -23,12 +23,36 @@ Create `src/server.ts`:
 export { default } from "@samebase/convex-hosting-tanstack-start/server";
 ```
 
-Build the app, then import `../dist/server/server.js` in `convex/http.ts`. Serve uploaded files with
-`serveStaticAsset` first, and render every other path with the server entry's `fetch(request)`
-inside the app's `httpAction`. The
+In `convex/http.ts`, serve the uploaded files with `serveAsset` first, then render every other path
+with the server entry of the build:
+
+```ts
+import { httpRouter } from "convex/server";
+import { serveAsset } from "@samebase/convex-hosting";
+import { components } from "./_generated/api.js";
+import { httpAction } from "./_generated/server.js";
+import { versionId } from "../.convex-hosting/version.js";
+
+const http = httpRouter();
+
+http.route({
+  pathPrefix: "/",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const asset = await serveAsset(ctx, components.hosting, request, versionId);
+    if (asset) return asset;
+    const { default: server } = await import("../dist/server/server.js");
+    return await server.fetch(request);
+  }),
+});
+
+export default http;
+```
+
+The
 [TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
-shows the complete route and declares the generated entry's type in `convex/server-build.d.ts`, so
-typechecking also works before the first build.
+declares the server entry's type in `convex/server-build.d.ts`, so typechecking also works before
+the first build.
 
 For reactive queries, use the
 [official Convex TanStack integration](https://docs.convex.dev/client/tanstack/tanstack-start/).

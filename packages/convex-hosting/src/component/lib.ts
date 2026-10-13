@@ -98,12 +98,21 @@ async function getVersionOrThrow(ctx: QueryCtx, versionId: string) {
   return version;
 }
 
-/** Every internal call for the version that holds the lock refreshes `lastCallAt`. */
-async function refreshLock(ctx: MutationCtx, versionId: string) {
+/**
+ * Every internal call of a deploy after `createVersion` checks that its version still holds the
+ * lock and refreshes `lastCallAt`. A deploy whose lock expired and was taken by another deploy, or
+ * released, fails.
+ */
+async function holdLock(ctx: MutationCtx, versionId: string) {
   const lock = await ctx.db.query("deploy").first();
-  if (lock !== null && lock.versionId === versionId) {
-    await ctx.db.patch("deploy", lock._id, { lastCallAt: Date.now() });
+  if (lock === null || lock.versionId !== versionId) {
+    throw new ConvexError(
+      `The deploy of version ${versionId} lost its lock` +
+        (lock === null ? "." : `: a deploy of version ${lock.versionId} holds it.`),
+    );
   }
+  await ctx.db.patch("deploy", lock._id, { lastCallAt: Date.now() });
+  return lock;
 }
 
 async function isUnreferenced(ctx: QueryCtx, storageId: Id<"_storage">) {
@@ -180,7 +189,7 @@ export const createEntries = internalMutation({
   args: { versionId: v.string(), entries: v.array(v.object(entryFields)) },
   returns: v.null(),
   handler: async (ctx, { versionId, entries }) => {
-    await refreshLock(ctx, versionId);
+    await holdLock(ctx, versionId);
     const version = await getVersionOrThrow(ctx, versionId);
     for (const entry of entries) {
       const existing = await getEntry(ctx, versionId, entry.path);
@@ -240,7 +249,7 @@ export const recordFiles = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { versionId, files }) => {
-    await refreshLock(ctx, versionId);
+    await holdLock(ctx, versionId);
     for (const { path, storageId } of files) {
       const entry = await getEntry(ctx, versionId, path);
       if (entry === null) throw new ConvexError(`Version ${versionId} has no file ${path}.`);
@@ -264,7 +273,7 @@ export const finishVersion = internalMutation({
   args: { versionId: v.string() },
   returns: v.boolean(),
   handler: async (ctx, { versionId }) => {
-    await refreshLock(ctx, versionId);
+    await holdLock(ctx, versionId);
     const version = await getVersionOrThrow(ctx, versionId);
     if (version.state === "ready") return true;
     const missing = await ctx.db
@@ -279,21 +288,22 @@ export const finishVersion = internalMutation({
   },
 });
 
-/** Refreshes the lock while `npx convex deploy` runs, when the CLI makes no other call. */
+/** Refreshes the lock. The CLI calls it every 30 seconds while it uploads and while it pushes. */
 export const heartbeat = internalMutation({
   args: { versionId: v.string() },
   returns: v.null(),
   handler: async (ctx, { versionId }) => {
-    await refreshLock(ctx, versionId);
+    await holdLock(ctx, versionId);
     return null;
   },
 });
 
 /**
- * Ends the deploy of `versionId`. With `pushed`, deletes the other versions with their entries and
- * the stored files no remaining entry uses, then every `_storage` file that no entry references,
- * one batch per call, and releases the lock after the last batch. Without `pushed`, releases the
- * lock and keeps the version, so a retry reuses its files.
+ * Ends the deploy of `versionId`, only while it holds the lock. With `pushed`, deletes the other
+ * versions with their entries and the stored files no remaining entry uses, then every `_storage`
+ * file that no entry references, one batch per call, and releases the lock after the last batch.
+ * Without `pushed`, releases the lock and keeps the version, so a retry reuses its files; when the
+ * lock is no longer its own, there is nothing to release.
  */
 export const finishDeploy = internalMutation({
   args: {
@@ -304,20 +314,12 @@ export const finishDeploy = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { versionId, pushed, storageCursor }) => {
-    const lock = await ctx.db.query("deploy").first();
-    if (lock !== null && lock.versionId !== versionId) {
-      // Another deploy took the lock after this one's expired. Its version is in flight.
-      if (!pushed) return null;
-      throw new ConvexError(
-        `A deploy of version ${lock.versionId} holds the lock, so the deploy of version ` +
-          `${versionId} does not delete other versions.`,
-      );
-    }
     if (!pushed) {
-      if (lock !== null) await ctx.db.delete("deploy", lock._id);
+      const lock = await ctx.db.query("deploy").first();
+      if (lock !== null && lock.versionId === versionId) await ctx.db.delete("deploy", lock._id);
       return null;
     }
-    if (lock !== null) await ctx.db.patch("deploy", lock._id, { lastCallAt: Date.now() });
+    const lock = await holdLock(ctx, versionId);
 
     if (storageCursor === undefined) {
       let other: Doc<"versions"> | null = null;
@@ -363,7 +365,7 @@ export const finishDeploy = internalMutation({
       });
       return null;
     }
-    if (lock !== null) await ctx.db.delete("deploy", lock._id);
+    await ctx.db.delete("deploy", lock._id);
     return null;
   },
 });

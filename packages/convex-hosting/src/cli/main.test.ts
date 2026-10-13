@@ -215,6 +215,26 @@ describe("upload", () => {
     );
   });
 
+  test("calls heartbeat every 30 seconds while a long page of files uploads", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const cwd = app(site);
+    const { cli, calls, callArgs } = fake(cwd);
+    const storeFile = cli.fetch;
+    let slow = true;
+    cli.fetch = async (url, init) => {
+      // The first file of the page takes 65 seconds; the manifest is stored before `startVersion`.
+      if (calls().includes("lib:startVersion") && slow) {
+        slow = false;
+        await vi.advanceTimersByTimeAsync(65_000);
+      }
+      return await storeFile(url, init);
+    };
+    expect(await main(["upload", "--dist", "dist"], cli)).toBe(0);
+    const versionId = writtenVersionId(cwd);
+    expect(callArgs("lib:heartbeat")).toEqual([{ versionId }, { versionId }]);
+    expect(calls().indexOf("lib:heartbeat")).toBeGreaterThan(calls().indexOf("lib:startVersion"));
+  });
+
   test("any other failure of the probe is an error", async () => {
     const cwd = app(site);
     const { cli, logs } = fake(cwd);

@@ -163,25 +163,46 @@ describe("lock", () => {
     expect((await tables(t)).lock).toEqual(["v2"]);
   });
 
-  test("heartbeat refreshes only its own version's lock", async () => {
+  test("heartbeat refreshes the lock", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await t.mutation(internal.lib.createVersion, { versionId: "v1", config: "{}" });
-    const lastCallAt = () =>
-      t.run(async (ctx) => (await ctx.db.query("deploy").first())?.lastCallAt);
-    const taken = await lastCallAt();
-
     vi.advanceTimersByTime(90 * 1000);
-    await t.mutation(internal.lib.heartbeat, { versionId: "v2" });
-    expect(await lastCallAt()).toBe(taken);
     await t.mutation(internal.lib.heartbeat, { versionId: "v1" });
-    expect(await lastCallAt()).toBe(Date.now());
 
     // 90 seconds after the heartbeat, the lock is still young.
     vi.advanceTimersByTime(90 * 1000);
     await expect(
       t.mutation(internal.lib.createVersion, { versionId: "v2", config: "{}" }),
     ).rejects.toThrow("A deploy of version v1 is in progress");
+  });
+
+  test("a deploy that lost its lock fails; finishDeploy without pushed has nothing to release", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await expect(t.mutation(internal.lib.heartbeat, { versionId: "v1" })).rejects.toThrow(
+      "The deploy of version v1 lost its lock.",
+    );
+
+    await t.mutation(internal.lib.createVersion, { versionId: "v1", config: "{}" });
+    vi.advanceTimersByTime(2 * 60 * 1000 + 1);
+    await t.mutation(internal.lib.createVersion, { versionId: "v2", config: "{}" });
+    const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["a"])));
+    const lost = "The deploy of version v1 lost its lock: a deploy of version v2 holds it.";
+    await expect(
+      t.mutation(internal.lib.recordFiles, {
+        versionId: "v1",
+        files: [{ path: "/a.txt", storageId }],
+      }),
+    ).rejects.toThrow(lost);
+    await expect(t.mutation(internal.lib.finishVersion, { versionId: "v1" })).rejects.toThrow(lost);
+    await expect(t.mutation(internal.lib.heartbeat, { versionId: "v1" })).rejects.toThrow(lost);
+    await expect(
+      t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: true }),
+    ).rejects.toThrow(lost);
+
+    await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: false });
+    expect((await tables(t)).lock).toEqual(["v2"]);
   });
 });
 
@@ -221,16 +242,6 @@ describe("finishDeploy", () => {
     expect(after.versions).toEqual([["v1", "ready"]]);
     expect(after.lock).toEqual([]);
     expect(after.files).toBe(4);
-  });
-
-  test("does not delete while another version holds the lock", async () => {
-    const t = convexTest(schema, modules);
-    await t.mutation(internal.lib.createVersion, { versionId: "v2", config: "{}" });
-    await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: false });
-    expect((await tables(t)).lock).toEqual(["v2"]);
-    await expect(
-      t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: true }),
-    ).rejects.toThrow("A deploy of version v2 holds the lock");
   });
 });
 
