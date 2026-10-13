@@ -109,11 +109,13 @@ vite build && convex-hosting upload --dist dist
 
 `upload` writes the version file, then calls `finishDeploy` with `pushed: true`; the running
 `npx convex dev` pushes the file within seconds, and until it does the development site answers 404
-for the version its code still names. On a fresh clone, the version file does not exist, so
-`npx convex dev` cannot bundle `convex/http.ts` and the component is not pushed. When the probe
-answers with the missing-component message, `upload` writes the version file first, which lets
-`npx convex dev` push, retries the probe every few seconds for up to two minutes, and then uploads.
-One command, once per clone.
+for the version its code still names. On a fresh clone, the version file does not exist, so the
+developer runs `upload` before `npx convex dev`: when the probe answers with the missing-component
+message, `upload` writes the version file first and retries the probe every few seconds for up to
+two minutes, while `npx convex dev`, started meanwhile, pushes the component; then it uploads. Once
+per clone. If `npx convex dev` was already running and reported the missing module, it must be
+restarted after the file exists: Convex's watcher does not look again at a module that failed to
+resolve.
 
 Two more things in this loop are transient and documented, not solved: when a server-rendered app's
 build changes `dist/server`, which `http.ts` imports, `npx convex dev` pushes before `upload` has
