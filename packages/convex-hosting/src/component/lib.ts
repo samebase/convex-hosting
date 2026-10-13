@@ -30,15 +30,12 @@ const COMPATIBILITY_DATE = "2025-04-01";
 const GARBAGE_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Entries that one `collect` call deletes. Each entry reads one index range (`by_storageId`) of at
- * most one document, and deletes the entry and at most one stored file. With the scan of
- * `versions` and the range of the version's entries, 1,000 entries are 1,002 index ranges of 4,096,
- * 2,000 documents read of 32,000 besides the versions, and at most 2,002 writes of 16,000 with the
- * version and the next call. Entries below 4 KiB read at most 8 MiB with their lookups, which leaves
- * 8 MiB of the 16 MiB read limit for the version documents that the call reads to find the newest
- * live one: the live versions and the versions of the last day that never became live. That is
- * eight versions at the largest config the CLI allows (900 KiB), and hundreds at a config of a few
- * KiB.
+ * Entries that one `collect` call deletes, without their stored files. With the scan of `versions`
+ * and the range of the version's entries, 1,000 entries are 2 index ranges of 4,096, 1,000
+ * documents read of 32,000 besides the versions, and at most 1,002 writes of 16,000 with the
+ * version and the next call. Entries below 4 KiB read at most 4 MiB, which leaves 12 MiB of the
+ * 16 MiB read limit for the version documents that the call reads to find the newest live one: the
+ * live versions and the versions of the last day that never became live.
  */
 const DELETE_BATCH = 1000;
 
@@ -80,14 +77,6 @@ async function getVersionOrThrow(ctx: QueryCtx, versionId: string) {
   const version = await getVersion(ctx, versionId);
   if (version === null) throw new ConvexError(`Version ${versionId} does not exist.`);
   return version;
-}
-
-async function isUnreferenced(ctx: QueryCtx, storageId: Id<"_storage">) {
-  const entry = await ctx.db
-    .query("entries")
-    .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
-    .first();
-  return entry === null;
 }
 
 export const generateUploadUrls = internalMutation({
@@ -193,7 +182,12 @@ export const recordFiles = internalMutation({
         continue;
       }
       const stored = await ctx.db.system.get("_storage", entry.storageId);
-      if (stored === null || base64ToHex(stored.sha256) !== entry.sha256) {
+      if (stored === null) {
+        throw new ConvexError(
+          `The stored file of ${entry.path} is gone, deleted by the age rule; run the deploy again.`,
+        );
+      }
+      if (base64ToHex(stored.sha256) !== entry.sha256) {
         throw new ConvexError(`The file stored for ${entry.path} does not match its sha256.`);
       }
       await ctx.db.insert("entries", {
@@ -247,9 +241,14 @@ export const markLive = mutation({
 /**
  * Deletes, one batch per call, scheduling itself with `runAfter(0)` while work remains: the live
  * versions older than the newest live one, whose code is gone because the newest one has served
- * since; the versions that are not live and older than `GARBAGE_AGE_MS`; their entries and the
- * stored files that no remaining entry uses; then the `_storage` files that no entry references and
- * that are older than `GARBAGE_AGE_MS`.
+ * since, and the versions that are not live and older than `GARBAGE_AGE_MS`, with their entries;
+ * then the `_storage` files that no entry references and that are older than `GARBAGE_AGE_MS`.
+ *
+ * Stored files go only by that last rule, never with a version: an upload in progress may have
+ * taken a stored file from `knownFiles` seconds ago and not recorded its entry yet. The age is the
+ * file's own, so a file older than a day that only a version deleted in this pass used can still
+ * go before such an upload records it; `recordFiles` then says that the file is gone, and the
+ * deploy runs again.
  */
 export const collect = internalMutation({
   args: {
@@ -274,12 +273,7 @@ export const collect = internalMutation({
           .query("entries")
           .withIndex("by_version_path", (q) => q.eq("versionId", garbage.versionId))
           .take(DELETE_BATCH);
-        for (const entry of entries) {
-          await ctx.db.delete("entries", entry._id);
-          if (await isUnreferenced(ctx, entry.storageId)) {
-            await ctx.storage.delete(entry.storageId);
-          }
-        }
+        for (const entry of entries) await ctx.db.delete("entries", entry._id);
         if (entries.length < DELETE_BATCH) await ctx.db.delete("versions", garbage._id);
         await ctx.scheduler.runAfter(0, internal.lib.collect, {});
         return null;
@@ -295,7 +289,11 @@ export const collect = internalMutation({
       )
       .take(SWEEP_BATCH);
     for (const file of files) {
-      if (await isUnreferenced(ctx, file._id)) await ctx.storage.delete(file._id);
+      const entry = await ctx.db
+        .query("entries")
+        .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
+        .first();
+      if (entry === null) await ctx.storage.delete(file._id);
     }
     if (files.length === SWEEP_BATCH) {
       await ctx.scheduler.runAfter(0, internal.lib.collect, {

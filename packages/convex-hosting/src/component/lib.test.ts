@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import type { Id } from "./_generated/dataModel.js";
 import type { Config } from "./lib.js";
 import { api, internal } from "./_generated/api.js";
 import schema from "./schema.js";
@@ -136,6 +137,11 @@ describe("upload", () => {
         entries: [{ ...wrong, sha256: await sha256Hex("a") }],
       }),
     ).rejects.toThrow("The file stored for /a.txt does not match its sha256.");
+    const gone = await storedEntry(t, "/gone.txt", "gone");
+    await t.run((ctx) => ctx.storage.delete(gone.storageId));
+    await expect(
+      t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [gone] }),
+    ).rejects.toThrow("The stored file of /gone.txt is gone");
 
     const right = await storedEntry(t, "/a.txt", "a");
     await t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [right] });
@@ -193,7 +199,7 @@ describe("markLive", () => {
 });
 
 describe("collect", () => {
-  test("a new live version deletes the version live before it and the files only it used", async () => {
+  test("a new live version deletes the version live before it and its entries, not its files", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
@@ -210,18 +216,32 @@ describe("collect", () => {
     });
     await t.mutation(api.lib.markLive, { versionId: "v2" });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    // index.html, the new script, and the two config files, which are younger than a day.
+    // Every stored file survives: the shared index.html, and the files that no entry references
+    // any more, which are younger than a day.
     expect(await tables(t)).toEqual({
       versions: [["v2", "live"]],
       entries: ["v2/index.html", "v2/assets/app-b2.js"],
-      files: 4,
+      files: 6,
     });
+  });
 
-    // A day later, the next pass deletes the files that no entry references.
+  test("deletes a stored file when no entry references it and it is a day old", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    await t.mutation(api.lib.markLive, { versionId: "v1" });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const old = await t.run((ctx) => ctx.storage.store(new Blob(["old"])));
     vi.advanceTimersByTime(DAY + 1);
+    const young = await t.run((ctx) => ctx.storage.store(new Blob(["young"])));
     await t.mutation(internal.lib.collect, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    expect((await tables(t)).files).toBe(2);
+    const exists = (storageId: Id<"_storage">) =>
+      t.run(async (ctx) => (await ctx.db.system.get("_storage", storageId)) !== null);
+    expect(await exists(old)).toBe(false);
+    expect(await exists(young)).toBe(true);
+    // The three files of the live v1 and the young file; the day-old config file of v1 is gone.
+    expect((await tables(t)).files).toBe(4);
   });
 
   test("deletes the versions that never became live once they are a day old", async () => {
