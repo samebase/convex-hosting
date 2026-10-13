@@ -73,8 +73,9 @@ JSON arguments, as today's CLI does. All functions live in
    `html_handling: "none"` and `not_found_handling: "none"`. When the request is not a navigation
    (`Sec-Fetch-Mode` header is not `navigate`), force `not_found_handling: "none"`, so a missing
    script never gets the SPA page, also through a rewrite.
-3. Build `new Request(url, { method, headers })`. Env `{ JAEGER: mockJaegerBinding() }`, an
-   `Analytics` instance from the vendored `analytics.ts` with no dataset.
+3. Build `new Request(url, { method, headers })` without `If-None-Match` and `If-Modified-Since`, so
+   the handler never answers 304. Env `{ JAEGER: mockJaegerBinding() }`, an `Analytics` instance
+   from the vendored `analytics.ts` with no dataset.
 4. `exists(path)`: a per-request map keyed by path. Lookup: the version's entry at `path` with a
    `storageId`; else, when some entry at `path` is immutable, the newest entry at `path` with a
    `storageId` from another `ready` version (`by_ready_immutable_path`, skipping entries of a
@@ -88,8 +89,10 @@ JSON arguments, as today's CLI does. All functions live in
    (the stream is never read; the caller fetches the body).
 7. Post-process the response headers: status 400 or above: delete `Cache-Control`,
    `CDN-Cache-Control`, `Cloudflare-CDN-Cache-Control`, and `Surrogate-Control`, then set
-   `Cache-Control: no-store`. Status 200 or 304 whose selected entry is immutable: set
-   `Cache-Control: public, max-age=31536000, immutable`.
+   `Cache-Control: no-store`. Status 200 whose selected entry is immutable: set
+   `Cache-Control: public, max-age=31536000, immutable`. Then a status 200 whose ETag matches the
+   request's `If-None-Match` (one ETag, a list, or `*`) becomes a 304 with all headers except
+   `Content-Length` and no body. A 404 page stays a 404.
 8. Return the status, all headers, and `body` = the selected entry (`storageId`, `storageUrl` from
    `ctx.storage.getUrl`, `contentType`) when the status is 200 and the method is GET, else null.
 

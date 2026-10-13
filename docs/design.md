@@ -51,8 +51,8 @@ for the apps Samebase makes. It does not need feature parity with them.
    across versions is a later optimization, when upload measurements justify a reference relation.
 3. **Serving is Cloudflare's handler** with two callbacks: `exists(path)` looks up an entry of one
    version, `getByETag(hash)` returns the bytes of the entry that `exists` selected. The handler
-   provides `html_handling`, `not_found_handling`, `_headers`, `_redirects`, ETag and 304, HEAD, and
-   base paths, with its own tests.
+   provides `html_handling`, `not_found_handling`, `_headers`, `_redirects`, ETags, HEAD, and base
+   paths, with its own tests.
 4. **Immutable paths resolve across versions.** Convex cannot switch code and files in one
    operation. For paths that the upload classified as immutable, `exists` also reads the manifests
    of other `ready` versions. A new renderer finds its hashed files before the pointer flips, and a
@@ -102,9 +102,12 @@ version in one transaction, and the app's HTTP action does nothing but build the
 4. It post-processes the headers: a status of 400 or above loses `Cache-Control`,
    `CDN-Cache-Control`, `Cloudflare-CDN-Cache-Control`, and `Surrogate-Control` and gets
    `Cache-Control: no-store` (the front caches 404s for static extensions, and a `_headers` rule
-   must not make an error cacheable). A 200 or 304 for an immutable entry gets
+   must not make an error cacheable). A 200 for an immutable entry gets
    `public, max-age=31536000, immutable`. Everything else keeps the handler's headers:
-   `public, max-age=0, must-revalidate` with an ETag, or the app's `_headers` rules.
+   `public, max-age=0, must-revalidate` with an ETag, or the app's `_headers` rules. Then a 200
+   whose ETag matches the request's `If-None-Match` becomes a 304 with the same headers and no body.
+   The handler gets the request without `If-None-Match` and `If-Modified-Since`, so a 404 page never
+   becomes a 304.
 5. It returns `handled: false` when `canFetch` was false, else the status, the headers, and the
    selected entry (storage ID, storage URL, content type) for a 200 GET.
 
@@ -237,8 +240,9 @@ rollback of the files. SSR rollback is a release of the older commit.
 - `Range` requests get the whole body with status 200, as on Cloudflare Pages.
 - `_headers`: 100 rules. `_redirects`: 2,000 static and 100 dynamic rules. The vendored parsers
   enforce them.
-- `If-None-Match` with `*` or a list that contains the ETag gets 304. The asset worker compares the
-  whole header with one ETag, so `route` checks the list after the handler.
+- `If-None-Match` with the ETag, a list that contains it, or `*` gets a 304 with the headers of the
+  200, `_headers` rules included. Only a 200 becomes a 304: a 404 page stays a 404 with `no-store`.
+  `route` decides this itself; the asset worker compares the whole header with one ETag.
 - Every file request runs a Convex HTTP action plus two queries and a storage read, and is billed as
   such, unlike a static request on Cloudflare. Edge cache hits for immutable paths reduce it.
 - One backend version per deployment: an old tab talks to the new backend. Convex documents this

@@ -477,10 +477,16 @@ export const route = query({
         body: null,
       };
     }
-    const request = new Request(url, {
-      method,
-      headers: headers.map(({ name, value }): [string, string] => [name, value]),
-    });
+    // The handler compares the whole If-None-Match header with one ETag, and it also answers 304
+    // for the 404 page of `not_found_handling: "404-page"`. It gets no conditional headers, and the
+    // 304 is decided after the header rules below.
+    const requestHeaders = new Headers(
+      headers.map(({ name, value }): [string, string] => [name, value]),
+    );
+    const ifNoneMatch = requestHeaders.get("If-None-Match");
+    requestHeaders.delete("If-None-Match");
+    requestHeaders.delete("If-Modified-Since");
+    const request = new Request(url, { method, headers: requestHeaders });
     const configRow = await ctx.db
       .query("versionConfigs")
       .withIndex("by_versionId", (q) => q.eq("versionId", version.versionId))
@@ -548,31 +554,24 @@ export const route = query({
         response.headers.delete(name);
       }
       response.headers.set("Cache-Control", "no-store");
-    } else if ((response.status === 200 || response.status === 304) && served.entry?.immutable) {
+    } else if (response.status === 200 && served.entry?.immutable) {
       response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
     }
 
     const etag = response.headers.get("ETag");
-    if (
-      response.status === 200 &&
-      etag !== null &&
-      etagMatches(request.headers.get("If-None-Match"), etag)
-    ) {
-      // The handler compares the whole header with one ETag, so `*` and a list got a 200.
-      const cacheControl = response.headers.get("Cache-Control");
+    if (response.status === 200 && etag !== null && etagMatches(ifNoneMatch, etag)) {
+      // A 304 keeps the headers of the 200, `_headers` rules included, without a body.
+      response.headers.delete("Content-Length");
       return {
         handled: true as const,
         status: 304,
-        headers: [
-          ...(cacheControl === null ? [] : [{ name: "cache-control", value: cacheControl }]),
-          { name: "etag", value: etag },
-        ],
+        headers: Array.from(response.headers, ([name, value]) => ({ name, value })),
         body: null,
       };
     }
 
     let body = null;
-    // A 200, or the 404 page of `not_found_handling: "404-page"`. HEAD and 304 have no body.
+    // A 200, or the 404 page of `not_found_handling: "404-page"`. HEAD has no body.
     if (response.body !== null && served.entry?.storageId !== undefined) {
       const storageUrl = await ctx.storage.getUrl(served.entry.storageId);
       if (storageUrl === null) throw new Error(`The object for ${served.entry.path} is missing.`);

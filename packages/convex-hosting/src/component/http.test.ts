@@ -50,8 +50,13 @@ describe("the component's route", () => {
     expect(await revalidated.text()).toBe("");
   });
 
-  test("answers 304 for a list that contains the ETag and for *", async () => {
-    const t = await deployed();
+  test("answers 304 for a list that contains the ETag and for *, with the _headers rules", async () => {
+    const t = await deployed({
+      headers: {
+        version: 2,
+        rules: { "/*": { set: { Vary: "Accept-Encoding", "Access-Control-Allow-Origin": "*" } } },
+      },
+    });
     const response = await t.fetch("/assets/app-1.js", { headers: script });
     const etag = response.headers.get("ETag") ?? "";
     for (const ifNoneMatch of [`"other", W/${etag}`, "*"]) {
@@ -59,9 +64,11 @@ describe("the component's route", () => {
         headers: { ...script, "If-None-Match": ifNoneMatch },
       });
       expect(revalidated.status).toBe(304);
-      expect([...revalidated.headers.keys()]).toEqual(["cache-control", "etag"]);
       expect(revalidated.headers.get("Cache-Control")).toBe(IMMUTABLE);
       expect(revalidated.headers.get("ETag")).toBe(etag);
+      expect(revalidated.headers.get("Content-Type")).toBe(JS);
+      expect(revalidated.headers.get("Vary")).toBe("Accept-Encoding");
+      expect(revalidated.headers.get("Access-Control-Allow-Origin")).toBe("*");
       expect(await revalidated.text()).toBe("");
     }
     const changed = await t.fetch("/assets/app-1.js", {
@@ -173,5 +180,13 @@ describe("the component's route", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(await response.text()).toBe("<h1>Lost</h1>");
+
+    // The 404 page's own ETag never turns the error into a cacheable 304.
+    const repeated = await t.fetch("/nowhere", {
+      headers: { ...navigate, "If-None-Match": response.headers.get("ETag") ?? "" },
+    });
+    expect(repeated.status).toBe(404);
+    expect(repeated.headers.get("Cache-Control")).toBe("no-store");
+    expect(await repeated.text()).toBe("<h1>Lost</h1>");
   });
 });
