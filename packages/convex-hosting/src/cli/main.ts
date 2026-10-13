@@ -15,7 +15,7 @@ import {
   type Cli,
   type Target,
 } from "./convex.js";
-import { readDist, type HandlingOptions } from "./files.js";
+import { readDist, type DistEntry, type HandlingOptions } from "./files.js";
 
 const USAGE = `Usage:
   convex-hosting deploy --build "<command>" --dist <dir> [options]
@@ -57,8 +57,15 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 const UPLOAD_CONCURRENCY = 4;
 
 /**
+ * Files per page of uploads. A page's upload URLs are made together, and its entries are recorded
+ * before the next page starts, so a retry after a crash reuses them.
+ */
+const UPLOAD_PAGE = 100;
+
+/**
  * `npx convex run` passes the arguments on the command line, which Windows limits to 32,767
- * characters; `recordFiles` calls stay well below that.
+ * characters; `knownFiles` and `recordFiles` calls stay well below that. The component counts
+ * what a call of this length reads and writes.
  */
 const MAX_ARGUMENT_LENGTH = 8_000;
 
@@ -231,7 +238,7 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
     flags: mode === "user" ? [] : deploymentFlags(cli, options.previewName),
   };
   const dist = resolve(cli.cwd, options.dist);
-  const { manifest, files } = await readDist(dist, options, cli.log);
+  const { config, entries } = await readDist(dist, options, cli.log);
   const generateUploadUrls = (count: number) =>
     runComponent(
       cli,
@@ -261,63 +268,70 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
     }
   }
 
-  cli.log(`Uploading version ${versionId}: ${manifest.entries.length} files.`);
-  const [manifestUrl] = await generateUploadUrls(1);
-  const manifestId = await store(cli, manifestUrl, JSON.stringify(manifest), "application/json");
-  await runComponent(cli, target, internal.lib.startVersion, { versionId, manifestId }, z.null());
+  cli.log(`Uploading version ${versionId}: ${entries.length} files.`);
+  const [configUrl] = await generateUploadUrls(1);
+  const configId = await store(cli, configUrl, JSON.stringify(config), "application/json");
+  await runComponent(cli, target, internal.lib.createVersion, { versionId, configId }, z.null());
 
-  // A page of uploads can take longer than the lock lives without a call.
-  const contentTypes = new Map(manifest.entries.map((entry) => [entry.path, entry.contentType]));
-  await withHeartbeat(cli, target, versionId, async () => {
-    for (;;) {
-      const missing = await runComponent(
+  // Entries with the same bytes share one stored file.
+  const groups = new Map<string, DistEntry[]>();
+  for (const entry of entries) {
+    groups.set(entry.sha256, [...(groups.get(entry.sha256) ?? []), entry]);
+  }
+  /** Sends the complete entries of stored files, in batches that fit a command line. */
+  const record = async (stored: { sha256: string; storageId: Id<"_storage"> }[]) => {
+    const complete = stored.flatMap(({ sha256, storageId }) =>
+      (groups.get(sha256) ?? []).map(({ path, contentType }) => ({
+        path,
+        sha256,
+        contentType,
+        storageId,
+      })),
+    );
+    for (const chunk of chunkByLength(complete)) {
+      await runComponent(
         cli,
         target,
-        internal.lib.missingEntries,
-        { versionId },
-        z.array(z.object({ path: z.string(), sha256: z.string() })),
+        internal.lib.recordFiles,
+        { versionId, entries: chunk },
+        z.null(),
       );
-      if (missing.length === 0) break;
-      // Entries with the same bytes share one stored file.
-      const pathsBySha256 = new Map<string, string[]>();
-      for (const { path, sha256 } of missing) {
-        pathsBySha256.set(sha256, [...(pathsBySha256.get(sha256) ?? []), path]);
-      }
-      const groups = [...pathsBySha256.values()];
-      const urls = await generateUploadUrls(groups.length);
-      const records: { path: string; storageId: Id<"_storage"> }[] = [];
+    }
+  };
+
+  // A page of uploads can take longer than the lock lives without a call.
+  await withHeartbeat(cli, target, versionId, async () => {
+    // Files that an entry of any version has keep their stored file.
+    const known = new Set<string>();
+    for (const sha256s of chunkByLength([...groups.keys()])) {
+      const files = await runComponent(
+        cli,
+        target,
+        internal.lib.knownFiles,
+        { sha256s },
+        z.array(z.object({ sha256: z.string(), storageId: storageIdSchema })),
+      );
+      for (const { sha256 } of files) known.add(sha256);
+      await record(files);
+    }
+    const unknown = [...groups.values()].filter((group) => !known.has(group[0].sha256));
+    for (let start = 0; start < unknown.length; start += UPLOAD_PAGE) {
+      const page = unknown.slice(start, start + UPLOAD_PAGE);
+      const urls = await generateUploadUrls(page.length);
+      const uploaded: { sha256: string; storageId: Id<"_storage"> }[] = [];
       let next = 0;
       const worker = async () => {
-        while (next < groups.length) {
+        while (next < page.length) {
           const index = next++;
-          const paths = groups[index];
-          const file = files.get(paths[0]);
-          if (file === undefined) throw new Error(`${paths[0]} is not in ${dist} any more.`);
-          const storageId = await store(
-            cli,
-            urls[index],
-            readFileSync(file),
-            contentTypes.get(paths[0]),
-          );
-          records.push(...paths.map((path) => ({ path, storageId })));
+          const [{ sha256, contentType, file }] = page[index];
+          const storageId = await store(cli, urls[index], readFileSync(file), contentType);
+          uploaded.push({ sha256, storageId });
         }
       };
       await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
-      for (const chunk of chunkByLength(records)) {
-        await runComponent(
-          cli,
-          target,
-          internal.lib.recordFiles,
-          { versionId, files: chunk },
-          z.null(),
-        );
-      }
+      await record(uploaded);
     }
-    if (
-      !(await runComponent(cli, target, internal.lib.finishVersion, { versionId }, z.boolean()))
-    ) {
-      throw new Error(`Version ${versionId} still has files that are not uploaded.`);
-    }
+    await runComponent(cli, target, internal.lib.finishVersion, { versionId }, z.null());
   });
   writeVersionFile(cli, versionId);
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
@@ -334,7 +348,7 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
 
 /**
  * Runs `work` and calls `heartbeat` every 30 seconds meanwhile, so the lock means that the process
- * is alive. A heartbeat is best effort and its errors are ignored: before `startVersion` takes the
+ * is alive. A heartbeat is best effort and its errors are ignored: before `createVersion` takes the
  * lock, and on a first install before the component exists, it fails, and a deploy that lost its
  * lock fails at its next call.
  */
@@ -392,10 +406,10 @@ async function store(
 }
 
 /**
- * The storage id that an upload URL answers with, the documented source of an `Id<"_storage">`.
- * At runtime an id is a string, and its table exists only in its type, so the narrowest honest
- * check here is that it is a string; the `v.id("_storage")` validators of `startVersion` and
- * `recordFiles` check the table on the server.
+ * A storage id that an upload URL answers with, the documented source of an `Id<"_storage">`, or
+ * that `knownFiles` returns. At runtime an id is a string, and its table exists only in its type,
+ * so the narrowest honest check here is that it is a string; the `v.id("_storage")` validators of
+ * `createVersion` and `recordFiles` check the table on the server.
  */
 const storageIdSchema = z.custom<Id<"_storage">>((value) => typeof value === "string");
 

@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import type { Manifest } from "./lib.js";
+import type { Config } from "./lib.js";
 import { api, internal } from "./_generated/api.js";
 import schema from "./schema.js";
 
@@ -14,32 +14,46 @@ async function sha256Hex(body: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function manifestOf(files: Files, config: Manifest["config"]): Promise<Manifest> {
-  const entries = await Promise.all(
-    Object.entries(files).map(async ([path, { body, contentType }]) => ({
-      path,
-      sha256: await sha256Hex(body),
-      contentType,
-    })),
-  );
-  return { config, entries };
+/** Stores the config and calls `createVersion`. */
+async function createVersion(
+  t: ReturnType<typeof convexTest>,
+  versionId: string,
+  config: Config = {},
+) {
+  const configId = await t.run((ctx) => ctx.storage.store(new Blob([JSON.stringify(config)])));
+  await t.action(internal.lib.createVersion, { versionId, configId });
 }
 
-/** Runs the calls of one upload: `startVersion`, the stored files, `finishVersion`. */
+/** Stores `body` and returns the complete entry for `path`. */
+async function storedEntry(t: ReturnType<typeof convexTest>, path: string, body: string) {
+  const storageId = await t.run((ctx) => ctx.storage.store(new Blob([body])));
+  return { path, sha256: await sha256Hex(body), storageId };
+}
+
+/**
+ * Runs the calls of one upload: `createVersion`, `knownFiles`, the files it does not know,
+ * `recordFiles`, `finishVersion`.
+ */
 async function uploadVersion(
   t: ReturnType<typeof convexTest>,
   versionId: string,
   files: Files,
-  config: Manifest["config"] = {},
+  config: Config = {},
 ) {
-  const manifest = await manifestOf(files, config);
-  const manifestId = await t.run((ctx) => ctx.storage.store(new Blob([JSON.stringify(manifest)])));
-  await t.action(internal.lib.startVersion, { versionId, manifestId });
-  for (const { path } of await t.query(internal.lib.missingEntries, { versionId })) {
-    const storageId = await t.run((ctx) => ctx.storage.store(new Blob([files[path].body])));
-    await t.mutation(internal.lib.recordFiles, { versionId, files: [{ path, storageId }] });
+  await createVersion(t, versionId, config);
+  const sha256s = await Promise.all(Object.values(files).map(({ body }) => sha256Hex(body)));
+  const known = await t.query(internal.lib.knownFiles, { sha256s });
+  const storageIds = new Map(known.map(({ sha256, storageId }) => [sha256, storageId]));
+  const entries = [];
+  for (const [path, { body, contentType }] of Object.entries(files)) {
+    const sha256 = await sha256Hex(body);
+    const storageId =
+      storageIds.get(sha256) ?? (await t.run((ctx) => ctx.storage.store(new Blob([body]))));
+    storageIds.set(sha256, storageId);
+    entries.push({ path, sha256, contentType, storageId });
   }
-  expect(await t.mutation(internal.lib.finishVersion, { versionId })).toBe(true);
+  await t.mutation(internal.lib.recordFiles, { versionId, entries });
+  await t.mutation(internal.lib.finishVersion, { versionId });
 }
 
 async function tables(t: ReturnType<typeof convexTest>) {
@@ -85,70 +99,68 @@ describe("upload", () => {
     expect(await t.mutation(internal.lib.generateUploadUrls, { count: 3 })).toHaveLength(3);
   });
 
-  test("startVersion creates an uploading version and reuses recorded files by sha256", async () => {
+  test("createVersion creates an uploading version, idempotent for the same id and config", async () => {
+    const t = convexTest(schema, modules);
+    await createVersion(t, "v1", { not_found_handling: "404-page" });
+    await createVersion(t, "v1", { not_found_handling: "404-page" });
+    expect((await tables(t)).versions).toEqual([["v1", "uploading"]]);
+    await expect(createVersion(t, "v1", {})).rejects.toThrow(
+      "Version v1 exists with a different config.",
+    );
+  });
+
+  test("knownFiles returns the stored files that entries of any version have", async () => {
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
     await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: false });
-
-    const manifest = await manifestOf(
-      { ...site, "/new.txt": { body: "new", contentType: "text/plain" } },
-      {},
+    const index = await t.run(
+      async (ctx) =>
+        (
+          await ctx.db
+            .query("entries")
+            .withIndex("by_version_path", (q) => q.eq("versionId", "v1").eq("path", "/index.html"))
+            .unique()
+        )?.storageId,
     );
-    const manifestId = await t.run((ctx) =>
-      ctx.storage.store(new Blob([JSON.stringify(manifest)])),
-    );
-    await t.action(internal.lib.startVersion, { versionId: "v2", manifestId });
-    // Idempotent for the same id and manifest.
-    await t.action(internal.lib.startVersion, { versionId: "v2", manifestId });
-
-    expect((await tables(t)).versions).toEqual([
-      ["v1", "ready"],
-      ["v2", "uploading"],
-    ]);
-    expect(await t.query(internal.lib.missingEntries, { versionId: "v2" })).toEqual([
-      { path: "/new.txt", sha256: await sha256Hex("new") },
-    ]);
+    const sha256 = await sha256Hex("<h1>Home</h1>");
+    expect(
+      await t.query(internal.lib.knownFiles, { sha256s: [await sha256Hex("new"), sha256] }),
+    ).toEqual([{ sha256, storageId: index }]);
   });
 
-  test("recordFiles checks the stored file's sha256", async () => {
+  test("recordFiles checks the stored file's sha256 and skips an entry it already has", async () => {
     const t = convexTest(schema, modules);
-    const manifest = await manifestOf({ "/a.txt": { body: "a" } }, {});
-    const manifestId = await t.run((ctx) =>
-      ctx.storage.store(new Blob([JSON.stringify(manifest)])),
-    );
-    await t.action(internal.lib.startVersion, { versionId: "v1", manifestId });
-
-    const wrong = await t.run((ctx) => ctx.storage.store(new Blob(["b"])));
+    await createVersion(t, "v1");
+    const wrong = await storedEntry(t, "/a.txt", "b");
     await expect(
       t.mutation(internal.lib.recordFiles, {
         versionId: "v1",
-        files: [{ path: "/a.txt", storageId: wrong }],
+        entries: [{ ...wrong, sha256: await sha256Hex("a") }],
       }),
-    ).rejects.toThrow("does not match its sha256");
-    expect(await t.mutation(internal.lib.finishVersion, { versionId: "v1" })).toBe(false);
+    ).rejects.toThrow("The file stored for /a.txt does not match its sha256.");
 
-    const right = await t.run((ctx) => ctx.storage.store(new Blob(["a"])));
-    await t.mutation(internal.lib.recordFiles, {
-      versionId: "v1",
-      files: [{ path: "/a.txt", storageId: right }],
-    });
-    expect(await t.query(internal.lib.missingEntries, { versionId: "v1" })).toEqual([]);
-    expect(await t.mutation(internal.lib.finishVersion, { versionId: "v1" })).toBe(true);
+    const right = await storedEntry(t, "/a.txt", "a");
+    await t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [right] });
+    // A retried batch passes.
+    await t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [right] });
+    expect((await tables(t)).entries).toEqual(["v1/a.txt"]);
+    await expect(
+      t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [wrong] }),
+    ).rejects.toThrow("Version v1 has other contents at /a.txt.");
+
+    await t.mutation(internal.lib.finishVersion, { versionId: "v1" });
     expect((await tables(t)).versions).toEqual([["v1", "ready"]]);
+    await expect(
+      t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [right] }),
+    ).rejects.toThrow("Version v1 is ready, not uploading.");
   });
 });
 
 describe("lock", () => {
-  test("a second startVersion is refused while a young lock exists", async () => {
+  test("a second createVersion is refused while a young lock exists", async () => {
     const t = convexTest(schema, modules);
-    await t.mutation(internal.lib.createVersion, { versionId: "v1", config: "{}" });
-    const manifest = await manifestOf({}, {});
-    const manifestId = await t.run((ctx) =>
-      ctx.storage.store(new Blob([JSON.stringify(manifest)])),
-    );
-    await expect(
-      t.action(internal.lib.startVersion, { versionId: "v2", manifestId }),
-    ).rejects.toThrow(
+    await createVersion(t, "v1");
+    await expect(createVersion(t, "v2")).rejects.toThrow(
       /A deploy of version v1 is in progress: it refreshed the lock \d+ seconds ago/,
     );
   });
@@ -156,24 +168,22 @@ describe("lock", () => {
   test("a lock older than 2 minutes is taken over", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
-    await t.mutation(internal.lib.createVersion, { versionId: "v1", config: "{}" });
+    await createVersion(t, "v1");
     vi.advanceTimersByTime(2 * 60 * 1000 + 1);
-    await t.mutation(internal.lib.createVersion, { versionId: "v2", config: "{}" });
+    await createVersion(t, "v2");
     expect((await tables(t)).lock).toEqual(["v2"]);
   });
 
   test("heartbeat refreshes the lock", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
-    await t.mutation(internal.lib.createVersion, { versionId: "v1", config: "{}" });
+    await createVersion(t, "v1");
     vi.advanceTimersByTime(90 * 1000);
     await t.mutation(internal.lib.heartbeat, { versionId: "v1" });
 
     // 90 seconds after the heartbeat, the lock is still young.
     vi.advanceTimersByTime(90 * 1000);
-    await expect(
-      t.mutation(internal.lib.createVersion, { versionId: "v2", config: "{}" }),
-    ).rejects.toThrow("A deploy of version v1 is in progress");
+    await expect(createVersion(t, "v2")).rejects.toThrow("A deploy of version v1 is in progress");
   });
 
   test("a deploy that lost its lock fails; finishDeploy without pushed has nothing to release", async () => {
@@ -183,16 +193,13 @@ describe("lock", () => {
       "The deploy of version v1 lost its lock.",
     );
 
-    await t.mutation(internal.lib.createVersion, { versionId: "v1", config: "{}" });
+    await createVersion(t, "v1");
     vi.advanceTimersByTime(2 * 60 * 1000 + 1);
-    await t.mutation(internal.lib.createVersion, { versionId: "v2", config: "{}" });
-    const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["a"])));
+    await createVersion(t, "v2");
+    const entry = await storedEntry(t, "/a.txt", "a");
     const lost = "The deploy of version v1 lost its lock: a deploy of version v2 holds it.";
     await expect(
-      t.mutation(internal.lib.recordFiles, {
-        versionId: "v1",
-        files: [{ path: "/a.txt", storageId }],
-      }),
+      t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [entry] }),
     ).rejects.toThrow(lost);
     await expect(t.mutation(internal.lib.finishVersion, { versionId: "v1" })).rejects.toThrow(lost);
     await expect(t.mutation(internal.lib.heartbeat, { versionId: "v1" })).rejects.toThrow(lost);
@@ -212,7 +219,7 @@ describe("finishDeploy", () => {
     await uploadVersion(t, "v1", site);
     await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: true });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    // The manifest is gone; the three files stay.
+    // The config file is gone; the three files stay.
     expect((await tables(t)).files).toBe(3);
 
     // v2 keeps index.html and replaces the script.
@@ -323,7 +330,7 @@ describe("route", () => {
 
   test("a version that is uploading or does not exist reports its state", async () => {
     const t = convexTest(schema, modules);
-    await t.mutation(internal.lib.createVersion, { versionId: "v1", config: "{}" });
+    await createVersion(t, "v1");
     expect(await route(t, "v1", "/")).toEqual({ state: "uploading", asset: null });
     expect(await route(t, "v2", "/")).toEqual({ state: null, asset: null });
   });

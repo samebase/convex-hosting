@@ -25,15 +25,11 @@ export default defineSchema({
     sha256: v.string(),
     /** Absent when the `mime` package has no type for the file name. */
     contentType: v.optional(v.string()),
-    /** Absent until `recordFiles` attaches the stored file. */
-    storageId: v.optional(v.id("_storage")),
+    storageId: v.id("_storage"),
   })
     .index("by_version_path", ["versionId", "path"])
-    // `storageId` sorts after the sha256, so a descending read finds a recorded entry first.
-    .index("by_sha256", ["sha256", "storageId"])
-    .index("by_storageId", ["storageId"])
-    // With `storageId` equal to `undefined`: the version's entries without a file.
-    .index("by_version_storageId", ["versionId", "storageId"]),
+    .index("by_sha256", ["sha256"])
+    .index("by_storageId", ["storageId"]),
 
   /** The deploy lock: one row at most, for the version whose deploy is in flight. */
   deploy: defineTable({

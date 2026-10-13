@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import type { Manifest } from "../component/lib.js";
+import type { Config } from "../component/lib.js";
 import {
   constructHeaders,
   constructRedirects,
@@ -22,23 +22,28 @@ import {
  */
 const MAX_CONFIG_BYTES = 900 * 1024;
 
-export type HandlingOptions = Required<
-  Pick<Manifest["config"], "html_handling" | "not_found_handling">
->;
+export type HandlingOptions = Required<Pick<Config, "html_handling" | "not_found_handling">>;
+
+/** One file of the build: its URL path, its sha256 in hex, its content type, and its file on disk. */
+export type DistEntry = {
+  path: string;
+  sha256: string;
+  contentType: string | undefined;
+  file: string;
+};
 
 /**
  * Reads the build in `dist` the way Wrangler reads an assets directory: every file that
  * `.assetsignore` does not ignore, and the config from `_headers` and `_redirects`, parsed by
- * Cloudflare's own parsers. Returns the manifest and each path's file on disk.
+ * Cloudflare's own parsers.
  */
 export async function readDist(
   dist: string,
   handling: HandlingOptions,
   log: (message: string) => void,
-): Promise<{ manifest: Manifest; files: Map<string, string> }> {
+): Promise<{ config: Config; entries: DistEntry[] }> {
   const { assetsIgnoreFunction } = await createAssetsIgnoreFunction(dist);
-  const entries: Manifest["entries"] = [];
-  const files = new Map<string, string>();
+  const entries: DistEntry[] = [];
 
   const walk = (directory: string) => {
     for (const dirent of readdirSync(directory, { withFileTypes: true })) {
@@ -50,13 +55,12 @@ export async function readDist(
         if (!assetsIgnoreFunction(`${ignorePath}/`)) walk(file);
       } else if (dirent.isFile() && !assetsIgnoreFunction(ignorePath)) {
         const bytes = readFileSync(file);
-        const path = normalizeFilePath(relative(dist, file));
         entries.push({
-          path,
+          path: normalizeFilePath(relative(dist, file)),
           sha256: createHash("sha256").update(bytes).digest("hex"),
           contentType: getContentType(file) ?? undefined,
+          file,
         });
-        files.set(path, file);
       }
     }
   };
@@ -73,7 +77,7 @@ export async function readDist(
   const redirects = maybeGetFile(redirectsFile);
   const headersFile = join(dist, HEADERS_FILENAME);
   const headers = maybeGetFile(headersFile);
-  const config: Manifest["config"] = {
+  const config: Config = {
     html_handling: handling.html_handling,
     not_found_handling: handling.not_found_handling,
     ...(redirects === undefined
@@ -100,5 +104,5 @@ export async function readDist(
         "It must stay at or below 900 KiB, because Convex limits a document to 1 MiB.",
     );
   }
-  return { manifest: { config, entries }, files };
+  return { config, entries };
 }

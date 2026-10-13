@@ -18,20 +18,19 @@ async function setup() {
   const sha256 = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join(
     "",
   );
-  const manifest = {
-    config: {},
-    entries: [{ path: entry.path, sha256, contentType: "text/html" }],
+  const createVersion = async (versionId: string) => {
+    const configId = await t.run((ctx) => ctx.storage.store(new Blob(["{}"])));
+    await t.action(internal.lib.createVersion, { versionId, configId });
   };
-  const manifestId = await t.run((ctx) => ctx.storage.store(new Blob([JSON.stringify(manifest)])));
-  await t.action(internal.lib.startVersion, { versionId: "v1", manifestId });
+  await createVersion("v1");
   const storageId = await t.run((ctx) => ctx.storage.store(new Blob([entry.body])));
   await t.mutation(internal.lib.recordFiles, {
     versionId: "v1",
-    files: [{ path: entry.path, storageId }],
+    entries: [{ path: entry.path, sha256, contentType: "text/html", storageId }],
   });
   await t.mutation(internal.lib.finishVersion, { versionId: "v1" });
   await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: false });
-  await t.mutation(internal.lib.createVersion, { versionId: "v2", config: "{}" });
+  await createVersion("v2");
   // `t.run` returns Convex values, so the response comes back as its parts.
   return (path: string, versionId = "v1") =>
     t.run(async (ctx) => {

@@ -30,6 +30,8 @@ function fake(
   options: {
     env?: Record<string, string>;
     installed?: () => boolean;
+    /** The stored file id of each sha256 that `knownFiles` knows. */
+    known?: Record<string, string>;
     push?: (cli: Cli, args: string[]) => Promise<number>;
   } = {},
 ) {
@@ -37,8 +39,6 @@ function fake(
   const pushes: string[][] = [];
   const stored = new Map<string, string>();
   const logs: string[] = [];
-  let entries: { path: string; sha256: string }[] = [];
-  const recorded = new Set<string>();
   const ok = (value: unknown) => ({
     exitCode: 0,
     stdout: value === null ? "" : JSON.stringify(value, null, 2),
@@ -58,16 +58,13 @@ function fake(
       switch (args[3]) {
         case "lib:generateUploadUrls":
           return ok(Array.from({ length: fnArgs.count }, (_, i) => `https://upload/${i}`));
-        case "lib:startVersion":
-          entries = JSON.parse(stored.get(fnArgs.manifestId) ?? "").entries;
-          return ok(null);
-        case "lib:missingEntries":
-          return ok(entries.filter(({ path }) => !recorded.has(path)));
-        case "lib:recordFiles":
-          for (const { path } of fnArgs.files) recorded.add(path);
-          return ok(null);
-        case "lib:finishVersion":
-          return ok(true);
+        case "lib:knownFiles":
+          return ok(
+            fnArgs.sha256s.flatMap((sha256: string) => {
+              const storageId = options.known?.[sha256];
+              return storageId === undefined ? [] : [{ sha256, storageId }];
+            }),
+          );
         default:
           return ok(null);
       }
@@ -138,19 +135,18 @@ describe("upload", () => {
     expect(calls()).toEqual([
       "probe",
       "lib:generateUploadUrls",
-      "lib:startVersion",
-      "lib:missingEntries",
+      "lib:createVersion",
+      "lib:knownFiles",
       "lib:generateUploadUrls",
       "lib:recordFiles",
-      "lib:missingEntries",
       "lib:finishVersion",
       "lib:finishDeploy",
     ]);
     // A user-run upload goes where `npx convex run` goes by default.
     expect(runs.every((args) => !args.includes("--prod"))).toBe(true);
 
-    const manifest = JSON.parse(stored.get("storage-0") ?? "");
-    expect(manifest.config).toEqual({
+    expect(callArgs("lib:createVersion")[0].configId).toBe("storage-0");
+    expect(JSON.parse(stored.get("storage-0") ?? "")).toEqual({
       html_handling: "auto-trailing-slash",
       not_found_handling: "single-page-application",
       redirects: {
@@ -163,18 +159,24 @@ describe("upload", () => {
         rules: { "/assets/*": { set: { "cache-control": "public, max-age=31536000, immutable" } } },
       },
     });
-    expect(manifest.entries.map((entry: { path: string }) => entry.path).sort()).toEqual([
+    const [{ entries }] = callArgs("lib:recordFiles");
+    expect(entries.map((entry: { path: string }) => entry.path).sort()).toEqual([
       "/assets/app.js",
       "/copy.html",
       "/index.html",
     ]);
-    expect(manifest.entries).toContainEqual({
+    const home = entries.find((entry: { path: string }) => entry.path === "/index.html");
+    expect(home).toEqual({
       path: "/index.html",
       sha256: createHash("sha256").update("<h1>Home</h1>").digest("hex"),
       contentType: "text/html; charset=utf-8",
+      storageId: expect.stringMatching(/^storage-/),
     });
     // Two entries with the same bytes share one stored file.
     expect(callArgs("lib:generateUploadUrls")[1]).toEqual({ count: 2 });
+    expect(entries.find((entry: { path: string }) => entry.path === "/copy.html").storageId).toBe(
+      home.storageId,
+    );
 
     const versionId = writtenVersionId(cwd);
     expect(callArgs("lib:finishDeploy")).toEqual([{ versionId, pushed: true }]);
@@ -214,6 +216,27 @@ describe("upload", () => {
     );
   });
 
+  test("does not upload the files that knownFiles knows, and records them with their stored file", async () => {
+    const cwd = app(site);
+    const home = createHash("sha256").update("<h1>Home</h1>").digest("hex");
+    const { cli, calls, callArgs } = fake(cwd, { known: { [home]: "known-home" } });
+    expect(await main(["upload", "--dist", "dist"], cli)).toBe(0);
+    expect(calls().filter((name) => name === "lib:recordFiles")).toHaveLength(2);
+    const [known, uploaded] = callArgs("lib:recordFiles");
+    expect(known.entries.map((entry: { path: string }) => entry.path).sort()).toEqual([
+      "/copy.html",
+      "/index.html",
+    ]);
+    expect(
+      known.entries.every((entry: { storageId: string }) => entry.storageId === "known-home"),
+    ).toBe(true);
+    // Only the script is uploaded.
+    expect(callArgs("lib:generateUploadUrls")[1]).toEqual({ count: 1 });
+    expect(uploaded.entries.map((entry: { path: string }) => entry.path)).toEqual([
+      "/assets/app.js",
+    ]);
+  });
+
   test("calls heartbeat every 30 seconds while a long page of files uploads", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const cwd = app(site);
@@ -221,8 +244,8 @@ describe("upload", () => {
     const storeFile = cli.fetch;
     let slow = true;
     cli.fetch = async (url, init) => {
-      // The first file of the page takes 65 seconds; the manifest is stored before `startVersion`.
-      if (calls().includes("lib:startVersion") && slow) {
+      // The first file of the page takes 65 seconds; the config is stored before `createVersion`.
+      if (calls().includes("lib:createVersion") && slow) {
         slow = false;
         await vi.advanceTimersByTimeAsync(65_000);
       }
@@ -231,7 +254,7 @@ describe("upload", () => {
     expect(await main(["upload", "--dist", "dist"], cli)).toBe(0);
     const versionId = writtenVersionId(cwd);
     expect(callArgs("lib:heartbeat")).toEqual([{ versionId }, { versionId }]);
-    expect(calls().indexOf("lib:heartbeat")).toBeGreaterThan(calls().indexOf("lib:startVersion"));
+    expect(calls().indexOf("lib:heartbeat")).toBeGreaterThan(calls().indexOf("lib:createVersion"));
   });
 
   test("any other failure of the probe is an error", async () => {
@@ -284,7 +307,7 @@ describe("deploy", () => {
     // Without a deploy key, `npx convex deploy` goes to production, so every run gets --prod.
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
     const versionId = writtenVersionId(cwd);
-    expect(callArgs("lib:startVersion")[0].versionId).toBe(versionId);
+    expect(callArgs("lib:createVersion")[0].versionId).toBe(versionId);
     expect(callArgs("lib:finishDeploy")).toEqual([{ versionId, pushed: true }]);
   });
 

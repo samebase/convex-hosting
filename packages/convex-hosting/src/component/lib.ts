@@ -26,17 +26,6 @@ const COMPATIBILITY_DATE = "2025-04-01";
 const LOCK_EXPIRY_MS = 2 * 60 * 1000;
 
 /**
- * Entries per `createEntries` call. Each entry reads two index ranges (`by_version_path`,
- * `by_sha256`) of at most two documents and writes one document: 500 entries are 1,000 index
- * ranges of 4,096, at most 1,000 documents read of 32,000, and 500 writes of 16,000. With paths
- * below 4 KiB, the arguments and the documents read and written stay below 3 MiB of 16 MiB.
- */
-const CREATE_BATCH = 500;
-
-/** Entries per `missingEntries` page. The CLI uploads and records one page at a time. */
-const MISSING_PAGE = 100;
-
-/**
  * Entries that one `finishDeploy` call deletes. Each entry reads one index range (`by_storageId`)
  * of at most one document, and deletes the entry and at most one stored file: 1,000 entries are
  * 1,001 index ranges, at most 2,000 documents read, and 2,000 writes. One version document (at most
@@ -51,30 +40,18 @@ const DELETE_BATCH = 1000;
  */
 const SWEEP_BATCH = 1000;
 
-/** The file that `upload` stores and `startVersion` reads: the version's config and entries. */
-const manifestSchema = z.object({
-  config: AssetConfigSchema.pick({
-    html_handling: true,
-    not_found_handling: true,
-    headers: true,
-    redirects: true,
-  }),
-  entries: z.array(
-    z.object({
-      path: z.string().startsWith("/"),
-      sha256: z.string().regex(/^[0-9a-f]{64}$/),
-      contentType: z.string().optional(),
-    }),
-  ),
+/**
+ * The file that `upload` stores and `createVersion` reads: Cloudflare's `AssetConfig` for the
+ * version, without the fields that are package code.
+ */
+const configSchema = AssetConfigSchema.pick({
+  html_handling: true,
+  not_found_handling: true,
+  headers: true,
+  redirects: true,
 });
 
-export type Manifest = z.input<typeof manifestSchema>;
-
-const entryFields = {
-  path: v.string(),
-  sha256: v.string(),
-  contentType: v.optional(v.string()),
-};
+export type Config = z.input<typeof configSchema>;
 
 async function getVersion(ctx: QueryCtx, versionId: string) {
   return await ctx.db
@@ -128,31 +105,27 @@ export const generateUploadUrls = internalMutation({
     await Promise.all(Array.from({ length: count }, () => ctx.storage.generateUploadUrl())),
 });
 
-export const startVersion = internalAction({
-  args: { versionId: v.string(), manifestId: v.id("_storage") },
+/**
+ * Starts a version: reads its config from storage, then takes the lock or refuses, and creates the
+ * version in state `uploading`. Idempotent for the same id and config.
+ */
+export const createVersion = internalAction({
+  args: { versionId: v.string(), configId: v.id("_storage") },
   returns: v.null(),
-  handler: async (ctx, { versionId, manifestId }) => {
-    const blob = await ctx.storage.get(manifestId);
-    if (blob === null) throw new ConvexError(`The manifest ${manifestId} is not in storage.`);
-    const manifest = manifestSchema.parse(JSON.parse(await blob.text()));
-    await ctx.runMutation(internal.lib.createVersion, {
+  handler: async (ctx, { versionId, configId }) => {
+    const blob = await ctx.storage.get(configId);
+    if (blob === null) throw new ConvexError(`The config ${configId} is not in storage.`);
+    const config = configSchema.parse(JSON.parse(await blob.text()));
+    await ctx.runMutation(internal.lib.insertVersion, {
       versionId,
-      config: JSON.stringify(manifest.config),
+      config: JSON.stringify(config),
     });
-    for (let start = 0; start < manifest.entries.length; start += CREATE_BATCH) {
-      await ctx.runMutation(internal.lib.createEntries, {
-        versionId,
-        entries: manifest.entries
-          .slice(start, start + CREATE_BATCH)
-          .map(({ path, sha256, contentType }) => ({ path, sha256, contentType })),
-      });
-    }
     return null;
   },
 });
 
-/** The first step of `startVersion`: takes the lock and creates the version. */
-export const createVersion = internalMutation({
+/** The writes of `createVersion`: takes the lock or refuses, and creates the version. */
+export const insertVersion = internalMutation({
   args: { versionId: v.string(), config: v.string() },
   returns: v.null(),
   handler: async (ctx, { versionId, config }) => {
@@ -182,98 +155,93 @@ export const createVersion = internalMutation({
   },
 });
 
-/** The batches of `startVersion`: creates entries, with the stored file of a recorded twin. */
-export const createEntries = internalMutation({
-  args: { versionId: v.string(), entries: v.array(v.object(entryFields)) },
+/**
+ * The stored file of each hash that an entry of any version already has, in the order of
+ * `sha256s`. A query cannot write, so this call does not refresh the lock.
+ *
+ * Each hash reads one index range (`by_sha256`) of at most one document. The CLI sends at most
+ * 8,000 characters of arguments, which hold at most 119 hashes of 67 characters: 119 index ranges
+ * of 4,096 and 119 documents read of 32,000.
+ */
+export const knownFiles = internalQuery({
+  args: { sha256s: v.array(v.string()) },
+  returns: v.array(v.object({ sha256: v.string(), storageId: v.id("_storage") })),
+  handler: async (ctx, { sha256s }) => {
+    const known: { sha256: string; storageId: Id<"_storage"> }[] = [];
+    for (const sha256 of sha256s) {
+      const entry = await ctx.db
+        .query("entries")
+        .withIndex("by_sha256", (q) => q.eq("sha256", sha256))
+        .first();
+      if (entry !== null) known.push({ sha256, storageId: entry.storageId });
+    }
+    return known;
+  },
+});
+
+/**
+ * Inserts complete entries into an `uploading` version, after checking that each stored file has
+ * the entry's sha256. An entry that exists with the same sha256 is skipped, so a retried batch
+ * passes; one that exists with another sha256 is refused.
+ *
+ * Each entry reads one index range (`by_version_path`) of at most one document and one `_storage`
+ * document, and writes at most one document. The CLI sends at most 8,000 characters of arguments,
+ * and an entry takes at least 135 of them (its sha256 and storage id alone are 96), so a call has
+ * at most 60 entries: 60 index ranges of 4,096, at most 123 documents read of 32,000 with the lock
+ * and the version, and 61 writes of 16,000.
+ */
+export const recordFiles = internalMutation({
+  args: {
+    versionId: v.string(),
+    entries: v.array(
+      v.object({
+        path: v.string(),
+        sha256: v.string(),
+        contentType: v.optional(v.string()),
+        storageId: v.id("_storage"),
+      }),
+    ),
+  },
   returns: v.null(),
   handler: async (ctx, { versionId, entries }) => {
     await holdLock(ctx, versionId);
     const version = await getVersionOrThrow(ctx, versionId);
+    if (version.state !== "uploading") {
+      throw new ConvexError(`Version ${versionId} is ${version.state}, not uploading.`);
+    }
     for (const entry of entries) {
       const existing = await getEntry(ctx, versionId, entry.path);
       if (existing !== null) {
-        if (existing.sha256 !== entry.sha256 || existing.contentType !== entry.contentType) {
+        if (existing.sha256 !== entry.sha256) {
           throw new ConvexError(`Version ${versionId} has other contents at ${entry.path}.`);
         }
         continue;
       }
-      if (version.state === "ready") {
-        throw new ConvexError(`Version ${versionId} is ready and has no file ${entry.path}.`);
+      const stored = await ctx.db.system.get("_storage", entry.storageId);
+      if (stored === null || base64ToHex(stored.sha256) !== entry.sha256) {
+        throw new ConvexError(`The file stored for ${entry.path} does not match its sha256.`);
       }
-      const recorded = await ctx.db
-        .query("entries")
-        .withIndex("by_sha256", (q) => q.eq("sha256", entry.sha256))
-        .order("desc")
-        .first();
       await ctx.db.insert("entries", {
         versionId,
         path: entry.path,
         sha256: entry.sha256,
         contentType: entry.contentType,
-        storageId: recorded?.storageId,
+        storageId: entry.storageId,
       });
     }
     return null;
   },
 });
 
-/**
- * One page of the version's entries without a file. A query cannot write, so this call does not
- * refresh the lock; the `recordFiles` call after each page does.
- */
-export const missingEntries = internalQuery({
-  args: { versionId: v.string() },
-  returns: v.array(v.object({ path: v.string(), sha256: v.string() })),
-  handler: async (ctx, { versionId }) => {
-    const entries = await ctx.db
-      .query("entries")
-      .withIndex("by_version_storageId", (q) =>
-        q.eq("versionId", versionId).eq("storageId", undefined),
-      )
-      .take(MISSING_PAGE);
-    return entries.map(({ path, sha256 }) => ({ path, sha256 }));
-  },
-});
-
-export const recordFiles = internalMutation({
-  args: {
-    versionId: v.string(),
-    files: v.array(v.object({ path: v.string(), storageId: v.id("_storage") })),
-  },
-  returns: v.null(),
-  handler: async (ctx, { versionId, files }) => {
-    await holdLock(ctx, versionId);
-    for (const { path, storageId } of files) {
-      const entry = await getEntry(ctx, versionId, path);
-      if (entry === null) throw new ConvexError(`Version ${versionId} has no file ${path}.`);
-      if (entry.storageId !== undefined) continue;
-      const stored = await ctx.db.system.get("_storage", storageId);
-      if (stored === null || base64ToHex(stored.sha256) !== entry.sha256) {
-        throw new ConvexError(`The file stored for ${path} does not match its sha256.`);
-      }
-      await ctx.db.patch("entries", entry._id, { storageId });
-    }
-    return null;
-  },
-});
-
-/** Marks the version `ready` and returns `true`, or returns `false` while an entry has no file. */
+/** Marks the version `ready`. The CLI calls it after every `recordFiles` batch succeeded. */
 export const finishVersion = internalMutation({
   args: { versionId: v.string() },
-  returns: v.boolean(),
+  returns: v.null(),
   handler: async (ctx, { versionId }) => {
     await holdLock(ctx, versionId);
     const version = await getVersionOrThrow(ctx, versionId);
-    if (version.state === "ready") return true;
-    const missing = await ctx.db
-      .query("entries")
-      .withIndex("by_version_storageId", (q) =>
-        q.eq("versionId", versionId).eq("storageId", undefined),
-      )
-      .first();
-    if (missing !== null) return false;
     await ctx.db.patch("versions", version._id, { state: "ready" });
-    return true;
+    return null;
   },
 });
 
@@ -326,7 +294,7 @@ export const finishDeploy = internalMutation({
           .take(DELETE_BATCH);
         for (const entry of entries) {
           await ctx.db.delete("entries", entry._id);
-          if (entry.storageId !== undefined && (await isUnreferenced(ctx, entry.storageId))) {
+          if (await isUnreferenced(ctx, entry.storageId)) {
             await ctx.storage.delete(entry.storageId);
           }
         }
@@ -429,9 +397,6 @@ export const route = query({
 
     let bodyUrl: string | null = null;
     if (response.body !== null && bodyEntry !== undefined) {
-      if (bodyEntry.storageId === undefined) {
-        throw new Error(`The ready version ${versionId} has no file for ${bodyEntry.path}.`);
-      }
       bodyUrl = await ctx.storage.getUrl(bodyEntry.storageId);
     }
     return {
