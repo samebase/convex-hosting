@@ -464,7 +464,7 @@ describe("cleanup", () => {
 
     vi.setSystemTime(T0 + 8 * DAY);
     let done = false;
-    for (let call = 0; call < 10 && !done; call++) {
+    for (let call = 0; call < 20 && !done; call++) {
       ({ done } = await t.mutation(internal.lib.cleanup, {}));
     }
     expect(done).toBe(true);
@@ -523,6 +523,39 @@ describe("cleanup", () => {
 
     expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: true });
     expect(await versionStates(t)).toEqual({ [testVersionId("b")]: "ready" });
+  });
+
+  test("deletes at most 25 versions with their configs per call", async () => {
+    const t = initConvexTest();
+    await deployTestVersion(t, testVersionId("a"), files);
+    const config = JSON.stringify({ base_path: `/${"x".repeat(256 * 1024 - 40)}/` });
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 60; index++) {
+        const versionId = `v_${index}`;
+        await ctx.db.insert("versions", {
+          versionId,
+          state: "ready",
+          manifestSha256: "",
+          entryCount: 0,
+          createdAt: T0,
+          liveAt: T0,
+          supersededAt: T0,
+        });
+        await ctx.db.insert("versionConfigs", { versionId, config });
+      }
+    });
+    const remaining = async () =>
+      (await t.run(async (ctx) => await ctx.db.query("versionConfigs").collect())).length;
+
+    vi.setSystemTime(T0 + 8 * DAY);
+    const results = [];
+    for (let call = 0; call < 3; call++) {
+      results.push((await t.mutation(internal.lib.cleanup, {})).done);
+      // 25 configs of 256 KiB per call stay below Convex's 16 MiB read limit.
+      expect(await remaining()).toBe(Math.max(1, 61 - 25 * (call + 1)));
+    }
+    expect(results).toEqual([false, false, true]);
+    expect(await versionStates(t)).toEqual({ [testVersionId("a")]: "ready" });
   });
 
   test("scans storage in batches and continues where it stopped", async () => {

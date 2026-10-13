@@ -202,7 +202,9 @@ backend APIs during a release is visible at once.
 
 ## Cleanup
 
-An hourly cron in the component starts `cleanup`, a mutation that deletes at most 200 rows and
+An hourly cron in the component starts `cleanup`, a mutation with a budget of 200 units: deleting an
+entry with its object, or scanning a `_storage` object, costs 1, and deleting a version with its
+config costs 8, so one call reads at most 25 configs (6.4 MiB, below the 16 MiB read limit). It
 schedules itself again at once while work remains, so a large version is gone within minutes, not
 hours:
 

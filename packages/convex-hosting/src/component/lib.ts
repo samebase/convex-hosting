@@ -29,8 +29,16 @@ const MAX_ENTRIES = 4000;
 const MAX_CONFIG_BYTES = 256 * 1024;
 /** Entries per `writeEntries` mutation. */
 const ENTRY_WRITE_BATCH = 500;
-/** Rows that one `cleanup` call deletes, and versions and `_storage` objects that it checks. */
+/** Versions that one `cleanup` call checks for expiry. */
 const CLEANUP_ROWS = 200;
+/**
+ * The work of one `cleanup` call, in units: deleting an entry with its object, or scanning one
+ * `_storage` object, costs 1; deleting a version with its config costs 8, because a config can be
+ * 256 KiB. One call then reads at most 25 configs, 25 × 256 KiB = 6.4 MiB, below the 16 MiB that a
+ * Convex transaction can read, beside 200 small version rows and at most 200 entries.
+ */
+const CLEANUP_BUDGET = 200;
+const VERSION_DELETE_COST = 8;
 /** The first date with navigation detection (`Sec-Fetch-Mode`) in the asset worker. */
 const NAVIGATION_COMPATIBILITY_DATE = "2025-04-01";
 
@@ -619,7 +627,8 @@ export const cleanup = internalMutation({
     const versionScanCursor =
       versions.length === CLEANUP_ROWS ? versions[versions.length - 1]._creationTime : undefined;
 
-    let budget = CLEANUP_ROWS;
+    let budget = CLEANUP_BUDGET;
+    let deletionLeft = false;
     const deleting = await ctx.db
       .query("versions")
       .withIndex("by_state", (q) => q.eq("state", "deleting"))
@@ -634,15 +643,17 @@ export const cleanup = internalMutation({
         if (entry.storageId !== undefined) await deleteUnreferencedObject(ctx, entry.storageId);
       }
       budget -= entries.length;
-      if (budget < 2) break;
+      if (budget < VERSION_DELETE_COST) {
+        deletionLeft = true;
+        break;
+      }
       const configRow = await ctx.db
         .query("versionConfigs")
         .withIndex("by_versionId", (q) => q.eq("versionId", version.versionId))
         .unique();
       if (configRow !== null) await ctx.db.delete("versionConfigs", configRow._id);
       await ctx.db.delete("versions", version._id);
-      budget -= 2;
-      if (budget === 0) break;
+      budget -= VERSION_DELETE_COST;
     }
 
     let storageScanCursor = site?.storageScanCursor;
@@ -665,7 +676,7 @@ export const cleanup = internalMutation({
       await ctx.db.insert("site", { versionScanCursor, storageScanCursor });
     }
 
-    const done = budget >= 2 && versionScanCursor === undefined;
+    const done = !deletionLeft && versionScanCursor === undefined;
     if (!done) await ctx.scheduler.runAfter(0, internal.lib.cleanup, {});
     return { done };
   },
