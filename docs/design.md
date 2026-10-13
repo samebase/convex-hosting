@@ -48,10 +48,12 @@ either, `npx convex deploy` goes to production, so `npx convex run` gets `--prod
 own deploy key and `--preview-name` together are an error, because the Convex CLI would ignore the
 name.
 
-1. The CLI chooses a random version id.
+1. The CLI chooses a random version id and writes it to `.convex-hosting/version.js` at once, so a
+   build that typechecks `convex/` on a new project finds the module.
 2. It runs
-   `npx convex deploy --cmd "<command> && convex-hosting upload --dist <dir> --version-id <id> ..."`.
-   Convex gives the build the deployment's URL in `CONVEX_URL` and in one framework variable such as
+   `npx convex deploy --cmd "(<command>) && convex-hosting upload --dist <absolute dir> --version-id <id> ..."`.
+   The build runs in a subshell, so a `cd` inside it does not move the upload. Convex gives the
+   build the deployment's URL in `CONVEX_URL` and in one framework variable such as
    `VITE_CONVEX_URL`, as it documents for frontends. Inside the command, `upload`:
    1. collects the files of `<dir>`, honoring `.assetsignore`, and computes each file's sha256,
       size, and content type; reads `_headers` and `_redirects` with Cloudflare's parsers into the
@@ -94,7 +96,8 @@ against a missing component answers only a generic server error, which must not 
 exact message, `upload` writes the version file and a marker file in `.convex-hosting/` and exits
 without uploading, so the push that follows installs the component. `deploy` sees the marker after
 `npx convex deploy` returns and runs the upload then, followed by `finishDeploy`. Until that upload
-ends, the site answers 404 (see Serve). This happens once per deployment.
+ends, the site answers 404 (see Serve). This happens once per deployment. It is not protected by the
+lock, because the component does not exist yet: run the first deploy of a deployment once, alone.
 
 **Development deployment.** `npx convex deploy` targets production or a preview. For the development
 deployment the developer runs `npx convex dev`, which pushes on every change to the bundle's inputs,
@@ -168,13 +171,15 @@ configuration. When an asset answers, Cloudflare's `handleRequest` computes the 
 `CF-Cache-Status`, which describes a cache we do not run, and returns the status, the headers, and
 the storage URL of the body when the response has one, whatever the status. `serveAsset` fetches
 that body and returns the response. When storage answers 404, because a cleanup deleted the file
-between the query and the fetch, the answer is 404; any other fetch failure answers 502 with no
-caching. An app cannot read a component's storage, so each asset hit costs that one fetch.
+between the query and the fetch, the answer is 404 with `Cache-Control: no-store`; any other fetch
+failure answers 502 with no caching. An app cannot read a component's storage, so each asset hit
+costs that one fetch.
 
 When the version does not exist or is still `uploading`, `serveAsset` returns a 404 response that
-names the version, so a half-installed site answers 404 rather than rendering pages without their
-files. `null` means one thing: no asset matched, and the app continues. `serveAsset` makes no
-mutation call.
+names the version, with `Cache-Control: no-store`, so a half-installed site answers 404 rather than
+rendering pages without their files, and the deployment's Cloudflare front, which caches 404 answers
+on static paths, does not keep that answer after the upload ends. `null` means one thing: no asset
+matched, and the app continues. `serveAsset` makes no mutation call.
 
 The two callbacks that Cloudflare's code takes map to the version's entries: `exists(path)` reads
 one index entry and returns its ETag, the sha256 followed by a short hash of the content type, so
