@@ -1,6 +1,6 @@
 # Design: one live version, served by Cloudflare's asset worker
 
-Status: proposal for 0.4.0, a rewrite of the component and the CLI. Revised after three Codex
+Status: proposal for 0.4.0, a rewrite of the component and the CLI. Revised after four Codex
 reviews, a survey of Cloudflare, Netlify, Vercel, and Firebase, and the production audit in
 samebase/samebase PR #1712.
 
@@ -77,42 +77,49 @@ app-storage fallback go away.
 
 ## Serving
 
-Each request selects one version once, then every lookup uses that version:
+Each request is routed by one component query, `route`, so every lookup of the request reads one
+version in one transaction, and the app's HTTP action does nothing but build the response:
 
-1. `getLiveVersion` returns the live version's ID and config. No live version: 404 with `no-store`.
-2. The caller computes the candidate paths that the handler can probe for the request path (the path
-   itself, with and without a trailing slash, with `.html`, with `/index.html`, `/index.html` and
-   `/404.html` for the fallback modes) and calls `resolveMany({ versionId, paths })` once.
-   `exists(path)` answers from that result; a path outside it calls `resolve`. `resolve` returns the
-   version's entry, else (for an immutable path) the newest entry at that path from any `ready`
-   version, else null. The result carries `sha256`, `contentType`, `immutable`, and a storage URL.
-3. `getByETag(sha256)` returns the metadata of the entry that `exists` selected and a lazy body
-   stream that starts `fetch(storageUrl)` on first read, so a HEAD request or a 304 downloads
-   nothing. Inside the component's own route, the body comes from `ctx.storage.get`.
-4. After the handler: a response with status 400 or above gets `Cache-Control: no-store` (the front
-   caches 404s for static extensions, and a `_headers` rule must not make an error immutable). A 200
-   or 304 for an immutable entry gets `public, max-age=31536000, immutable`. Everything else keeps
-   the handler's headers: `public, max-age=0, must-revalidate` with an ETag, or the app's `_headers`
-   rules.
+1. The query reads the pointer and the live version. No live version: 404 with `no-store`.
+2. It normalizes the version's config. `serveStaticAsset` asks for an exact lookup (`html_handling`
+   and `not_found_handling` forced to `none`), so `/` reaches the app's renderer and no `index.html`
+   is required. For a request that is not a navigation (`Sec-Fetch-Mode` is not `navigate`),
+   `not_found_handling` is forced to `none`, so a missing script never gets the SPA page, also
+   through a rewrite. Navigation detection needs the asset worker's compatibility date of 2025-04-01
+   or later, which the config carries.
+3. It builds the `Request` from the method, URL, and headers it received, and runs `canFetch` and
+   then `handleRequest`. `exists(path)` is a per-request map over index lookups: the version's entry
+   at that path, else (for a path that some entry marks immutable) the newest entry at that path
+   from another `ready` version, else nothing. The key it returns is the entry's SHA-256 plus a
+   short hash of its content type, so identical bytes under two content types never share one key.
+   `getByETag(key)` returns that entry's content type and an empty stream that nothing reads.
+4. It post-processes the headers: a status of 400 or above loses `Cache-Control`,
+   `CDN-Cache-Control`, `Cloudflare-CDN-Cache-Control`, and `Surrogate-Control` and gets
+   `Cache-Control: no-store` (the front caches 404s for static extensions, and a `_headers` rule
+   must not make an error cacheable). A 200 or 304 for an immutable entry gets
+   `public, max-age=31536000, immutable`. Everything else keeps the handler's headers:
+   `public, max-age=0, must-revalidate` with an ETag, or the app's `_headers` rules.
+5. It returns `handled: false` when `canFetch` was false, else the status, the headers, and the
+   selected entry (storage ID, storage URL, content type) for a 200 GET.
+
+The HTTP action builds the `Response`. The body comes from `ctx.storage.get` inside the component's
+own route, or from `fetch(storageUrl)` in the app, only when the query selected an entry for a 200
+GET; a HEAD or a 304 reads no bytes.
 
 Entry points:
 
-- `registerStaticRoutes(http, components.hosting)`: a static app. One GET route for the prefix
-  (Convex routes HEAD through GET, and the handler sees the real method). It calls `canFetch` and
-  then `handleRequest`; when `canFetch` is false, it answers 404 with `no-store`. With
-  `not_found_handling: "single-page-application"` the handler serves `index.html` only to navigation
-  requests (`Sec-Fetch-Mode: navigate`), so a missing script gets a 404, which is the behavior of a
-  Worker with assets, not of an assets-only Worker.
+- `registerStaticRoutes(http, components.hosting)`: a static app. One GET route for the prefix plus,
+  for a prefix other than `/`, the exact route for the prefix without its trailing slash (Convex
+  matches prefixes literally). Convex routes HEAD through GET, and the handler sees the real method.
+  `handled: false` answers 404 with `no-store`. With `not_found_handling: "single-page-application"`
+  the handler serves `index.html` only to navigation requests, so a missing script gets a 404: the
+  behavior of a Worker with assets, not of an assets-only Worker.
 - `serveStaticAsset(ctx, components.hosting, request)`: an app with its own `http.ts` (server
-  rendering, APIs, auth routes). It calls `canFetch` and returns `null` when it is false, so the app
-  continues. Its defaults are `html_handling: "none"` and `not_found_handling: "none"`: an exact
-  lookup, so `/` reaches the renderer and no `index.html` is required or served. The app can set the
-  modes in its upload config when it wants them.
+  rendering, APIs, auth routes). `handled: false` returns `null`, so the app continues.
 - Other methods never reach the handler. An app's own routes stay first in Convex's router.
 
-Cost: one page request makes one `getLiveVersion` query, one `resolveMany` query, and one storage
-read. Measure the function calls and the storage egress per request before calling this a default
-for apps with traffic.
+Cost: one page request makes one query and, for a 200 GET, one storage read. Measure the function
+calls and the storage egress per request before calling this a default for apps with traffic.
 
 ## Upload
 
@@ -121,7 +128,8 @@ for apps with traffic.
 1. Collect the files. `.assetsignore` (gitignore syntax) and the built-in ignores apply: dot
    directories and dot files except `.well-known`, and the rule files `_headers` and `_redirects`,
    which are parsed into the version's config and not uploaded. A file above 25 MiB fails the
-   upload. At most 20,000 files per version; a path at most 1,024 bytes.
+   upload. At most 4,000 files per version, a path at most 1,024 bytes, and a config of at most 256
+   KiB as JSON, so every version fits one Convex value and one transaction.
 2. Classify immutable paths from a setting with presets (`vite`: `/assets/**`; `next`:
    `/_next/static/**`; `astro`: `/_astro/**`; `sveltekit`: `/_app/immutable/**`) or an explicit
    glob. It is a promise by the operator, with one guard: an immutable path whose bytes differ from
@@ -134,16 +142,20 @@ for apps with traffic.
    call `startVersion({ versionId, manifestStorageId })`, an internal action: it validates the
    manifest, creates the version with `manifestSha256` and `entryCount`, writes the entries in
    batches (skipping paths that exist, so a repeat continues), and returns the entries without a
-   `storageId`, at most 8,192 per call. A repeat with the same `versionId` and a different digest
-   fails. A `ready` or `deleting` version fails.
+   `storageId`. A repeat with the same `versionId` and a different digest fails; a repeat on a
+   `ready` version with the same digest reports `ready`, so a lost response never blocks a retry. A
+   `deleting` version fails.
 4. Upload each returned entry through an upload URL and call
    `recordFile({ versionId, path, storageId })`, which checks the `sha256` and `size` that Convex
-   recorded in `_storage` against the entry and sets `storageId`; a mismatch deletes the object and
-   fails.
+   recorded in `_storage` against the entry and sets `storageId`. A mismatch deletes the object and
+   returns a failure result (a thrown error would roll the deletion back). Only an `uploading`
+   version accepts files.
 5. `finishVersion({ versionId })` checks that the entry count matches and every entry has a
    `storageId`; it sets `ready` or returns the entries that still lack one.
-6. `activate({ versionId })` requires `ready`, sets the pointer, `liveAt`, and `supersededAt` on the
-   old live version. Static deploys activate at once; `deploy` activates after the code push.
+6. `activate({ versionId, afterCodePush })` requires `ready`, sets the pointer, `liveAt`, and
+   `supersededAt` on the old live version, and records whether a code push came before it. A plain
+   `upload` activates at once with `afterCodePush: false`; `deploy` activates after the code push
+   with `true`.
 
 The `versionId` is made before the build (`v_` plus 26 base32 characters) and saved with the
 manifest digest in `<dist>/.convex-hosting/version.json`. An upload reuses it when the digest
@@ -163,8 +175,8 @@ environment fails. The base path (default `/`) is a CLI setting, given to the bu
 | Normal release (the component answers)  | `npx convex deploy --cmd "<build> && convex-hosting upload --no-activate --version-id <id>"` (the upload runs before the push, the push replaces the functions and the renderer), then `activate`, then verify.             |
 | First install, or an upgrade from 0.3.x | `npx convex deploy --cmd "<build>"` (the push installs the component), then `convex-hosting upload` (which activates), then verify. The site answers 404 until the upload ends; a failed upload leaves it so until a rerun. |
 
-Verification fetches `--verify-path` (default `/`). A static app: the ETag of `/index.html` equals
-the new manifest's hash for it. A server-rendered app: the HTML carries
+Verification fetches `--verify-path` (default `/`), relative to the base path. A static app: the
+ETag of `/index.html` equals the new manifest's hash for it. A server-rendered app: the HTML carries
 `<meta name="convex-hosting-version" content="<id>">` with the new ID, which the Vite plugin defines
 from `CONVEX_HOSTING_VERSION_ID` at build time. Then `getLiveVersion` must name the new version.
 
@@ -181,16 +193,19 @@ backend APIs during a release is visible at once.
 
 ## Cleanup
 
-An hourly cron in the component, with bounded work per run (at most 200 rows):
+An hourly cron in the component starts `cleanup`, a mutation that deletes at most 200 rows and
+schedules itself again at once while work remains, so a large version is gone within minutes, not
+hours:
 
 - Eligible for deletion: a version that is not live and was superseded more than seven days ago; an
   `uploading` version older than one day; a `ready` version that never went live, when a later
-  version was activated after it was created and that activation is more than seven days old. The
-  last rule protects a release whose push succeeded and whose activation failed: its renderer may be
-  live, and only a later activated release proves that it is not.
+  version was activated after a code push (`afterCodePush: true`) more than seven days ago. The last
+  rule protects a release whose push succeeded and whose activation failed: its renderer may be
+  live, and only a later release with its own code push proves that it is not. A later file-only
+  activation does not count.
 - Deletion first sets `deleting` in the same transaction that checks eligibility. `activate`,
-  `startVersion`, `finishVersion`, and the immutable fallback reject a `deleting` version. Then the
-  entries and their storage objects go in batches, then the row.
+  `startVersion`, `recordFile`, `finishVersion`, and the immutable fallback reject a `deleting`
+  version. Then the entries and their storage objects go in batches, then the row.
 - Storage objects older than one day that no entry references, found by a cursor scan of `_storage`
   with the `entries.storageId` index: delete them. They come from uploads whose `recordFile` call
   never ran.
@@ -200,8 +215,9 @@ rollback of the files. SSR rollback is a release of the older commit.
 
 ## Limits
 
-- 25 MiB per file, 20,000 files per version, a path up to 1,024 bytes. Convex HTTP actions stop at
-  100 MiB per response.
+- 25 MiB per file, 4,000 files per version, a path up to 1,024 bytes, a config up to 256 KiB. Convex
+  HTTP actions stop at 100 MiB per response. Larger versions need pagination that this release does
+  not have.
 - `Range` requests get the whole body with status 200, as on Cloudflare Pages.
 - `_headers`: 100 rules. `_redirects`: 2,000 static and 100 dynamic rules. The vendored parsers
   enforce them.
