@@ -1,4 +1,4 @@
-import type { AssetConfig } from "../../utils/types";
+import type { AssetConfig } from "../../utils/types.js";
 
 export type NormalizedAssetConfig = Required<AssetConfig>;
 

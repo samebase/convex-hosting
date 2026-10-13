@@ -1,5 +1,5 @@
 import { describe, it } from "vite-plus/test";
-import { normalizeBasePath, normalizeUriEncodedBasePath } from "../base-path";
+import { normalizeBasePath, normalizeUriEncodedBasePath } from "../base-path.js";
 import fixture from "../testdata/base-path-normalization.json";
 
 describe("normalizeBasePath", () => {

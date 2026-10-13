@@ -1,6 +1,6 @@
 import { describe, it, vi } from "vite-plus/test";
-import { Analytics, EntrypointType, getRequestKind } from "../src/analytics";
-import type { ReadyAnalyticsEvent } from "../src/types";
+import { Analytics, EntrypointType, getRequestKind } from "../src/analytics.js";
+import type { ReadyAnalyticsEvent } from "../src/types.js";
 
 describe("[Asset Worker] Analytics", () => {
 	function captureEvent(): {

@@ -1,10 +1,10 @@
 import { describe, it, vi } from "vite-plus/test";
-import { mockJaegerBinding } from "../../utils/tracing";
-import { Analytics } from "../src/analytics";
-import { SEC_FETCH_MODE_NAVIGATE_HEADER_PREFERS_ASSET_SERVING } from "../src/compatibility-flags";
-import { normalizeConfiguration } from "../src/configuration";
-import { canFetch, handleRequest } from "../src/handler";
-import type { AssetConfig } from "../../utils/types";
+import { mockJaegerBinding } from "../../utils/tracing.js";
+import { Analytics } from "../src/analytics.js";
+import { SEC_FETCH_MODE_NAVIGATE_HEADER_PREFERS_ASSET_SERVING } from "../src/compatibility-flags.js";
+import { normalizeConfiguration } from "../src/configuration.js";
+import { canFetch, handleRequest } from "../src/handler.js";
+import type { AssetConfig } from "../../utils/types.js";
 
 const mockEnv = {
 	JAEGER: mockJaegerBinding(),

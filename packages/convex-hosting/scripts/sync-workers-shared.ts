@@ -4,14 +4,20 @@
 //
 //   node scripts/sync-workers-shared.ts [<commit>]
 //
-// The copied files keep their upstream paths, so their relative imports keep working. Test files
-// get one mechanical change: they import from "vite-plus/test" instead of "vitest". The files in
-// LOCAL_FILES are ours and are never overwritten.
+// The copied files keep their upstream paths, so their relative imports keep working. The `.ts`
+// files get two mechanical changes, and nothing else differs from upstream:
+//
+// - Relative import and export specifiers without an extension get `.js` (`"./types"` becomes
+//   `"./types.js"`), because Node's ESM loader runs the built CLI and needs the extension. A
+//   specifier with an extension, such as `.json`, stays as is.
+// - Test files import from "vite-plus/test" instead of "vitest".
+//
+// The files in LOCAL_FILES are ours and are never overwritten.
 
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 
 const REPOSITORY = "https://github.com/cloudflare/workers-sdk.git";
 const UPSTREAM_DIRECTORY = "packages/workers-shared";
@@ -61,6 +67,18 @@ const LICENSE_FILES = ["LICENSE-APACHE", "LICENSE-MIT"];
 /** Our own files in the target folder. The sync keeps them. */
 const LOCAL_FILES = ["UPSTREAM", "asset-worker/src/worker.ts"];
 
+/** A relative specifier in `from "./types"`, `import "./polyfill"`, or `import("./module")`. */
+const RELATIVE_SPECIFIER = /(\bfrom\s*|\bimport\s*\(?\s*)(["'])(\.{1,2}\/[^"'\n]*)\2/g;
+
+/** Adds `.js` to every relative specifier without an extension. */
+function addJsExtensions(source: string): string {
+  return source.replace(
+    RELATIVE_SPECIFIER,
+    (match, keyword: string, quote: string, specifier: string) =>
+      extname(specifier) === "" ? `${keyword}${quote}${specifier}.js${quote}` : match,
+  );
+}
+
 function readUpstreamCommit(): string {
   const upstream = readFileSync(join(TARGET, "UPSTREAM"), "utf8");
   const commit = /^commit: ([0-9a-f]{40})$/m.exec(upstream)?.[1];
@@ -105,11 +123,11 @@ try {
     const source = join(checkout, UPSTREAM_DIRECTORY, file);
     const target = join(TARGET, file);
     mkdirSync(dirname(target), { recursive: true });
-    if (file.endsWith(".test.ts")) {
-      const contents = readFileSync(source, "utf8").replaceAll(
-        'from "vitest"',
-        'from "vite-plus/test"',
-      );
+    if (file.endsWith(".ts")) {
+      let contents = addJsExtensions(readFileSync(source, "utf8"));
+      if (file.endsWith(".test.ts")) {
+        contents = contents.replaceAll('from "vitest"', 'from "vite-plus/test"');
+      }
       writeFileSync(target, contents);
     } else {
       cpSync(source, target);
@@ -128,6 +146,7 @@ try {
       `synced: ${new Date().toISOString().slice(0, 10)}`,
       "",
       "Run `node scripts/sync-workers-shared.ts [<commit>]` from packages/convex-hosting to update.",
+      "Relative import and export specifiers without an extension get .js, for Node's ESM loader.",
       "Test files import from vite-plus/test instead of vitest. asset-worker/src/worker.ts is ours:",
       "it declares the types that handler.ts imports from the upstream entrypoint.",
       "",

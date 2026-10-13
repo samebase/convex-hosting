@@ -1,18 +1,6 @@
 #!/usr/bin/env node
-import { registerHooks } from "node:module";
-
-// The vendored files in ../workers-shared keep Cloudflare's extensionless relative imports, so a
-// sync stays a clean copy. tsc keeps them as written, and Node's ESM loader needs the extension.
-// This hook adds `.js` for those files only. It must run before the commands are imported.
-const workersShared = new URL("../workers-shared/", import.meta.url).href;
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (context.parentURL?.startsWith(workersShared) && /^\.\.?\/.*(?<!\.js)$/.test(specifier)) {
-      return nextResolve(`${specifier}.js`, context);
-    }
-    return nextResolve(specifier, context);
-  },
-});
+import { deployCommand } from "./deploy.js";
+import { uploadCommand } from "./upload.js";
 
 const HELP = `Usage: convex-hosting <command> [options]
 
@@ -58,10 +46,8 @@ try {
   ) {
     console.log(HELP);
   } else if (command === "upload") {
-    const { uploadCommand } = await import("./upload.js");
     await uploadCommand(args);
   } else if (command === "deploy") {
-    const { deployCommand } = await import("./deploy.js");
     await deployCommand(args);
   } else {
     console.error(`Unknown command: ${command}\n\n${HELP}`);
