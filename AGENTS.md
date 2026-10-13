@@ -1,10 +1,9 @@
 # AGENTS.md
 
 A Convex component that serves a built web app (static files, and optionally server-rendered pages)
-from a Convex deployment. It started as a fork of
-[get-convex/static-hosting](https://github.com/get-convex/static-hosting) and now goes its own way.
-Changes offered back to upstream live on branches in
-[samebase/static-hosting](https://github.com/samebase/static-hosting).
+from a Convex deployment. It began as a fork of
+[get-convex/static-hosting](https://github.com/get-convex/static-hosting); since 0.4 none of that
+code remains.
 
 ## Layout
 
