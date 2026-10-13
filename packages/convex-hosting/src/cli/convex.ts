@@ -20,16 +20,13 @@ export interface Cli {
   env: Record<string, string | undefined>;
   /** Runs the app's `convex` CLI and captures its output. */
   convex: (args: string[]) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
-  /**
-   * Runs the app's `convex` CLI with this process's standard streams; resolves with its exit code.
-   * Aborting `signal` kills it.
-   */
-  convexInherited: (args: string[], signal: AbortSignal) => Promise<number>;
+  /** Runs the app's `convex` CLI with this process's standard streams; resolves with its exit code. */
+  convexInherited: (args: string[]) => Promise<number>;
   /**
    * Runs a shell command in `cwd` with this process's environment and standard streams; resolves
-   * with its exit code. Aborting `signal` kills it.
+   * with its exit code.
    */
-  shell: (command: string, signal: AbortSignal) => Promise<number>;
+  shell: (command: string) => Promise<number>;
   fetch: typeof fetch;
   /** Writes a line to standard error. */
   log: (message: string) => void;
@@ -56,11 +53,9 @@ export const nodeCli: Cli = {
         },
       );
     }),
-  convexInherited: (args, signal) =>
-    exitCode(
-      spawn(process.execPath, [convexBin(process.cwd()), ...args], { stdio: "inherit", signal }),
-    ),
-  shell: (command, signal) => exitCode(spawn(command, { shell: true, stdio: "inherit", signal })),
+  convexInherited: (args) =>
+    exitCode(spawn(process.execPath, [convexBin(process.cwd()), ...args], { stdio: "inherit" })),
+  shell: (command) => exitCode(spawn(command, { shell: true, stdio: "inherit" })),
   fetch: (input, init) => fetch(input, init),
   log: (message) => console.error(message),
 };
@@ -84,15 +79,31 @@ function readConvexEnv(cli: Cli): Record<string, string | undefined> {
   return { ...fromFile(".env"), ...fromFile(".env.local"), ...cli.env };
 }
 
+/** The deployment of a deploy: production by default, `--preview <name>`, or `--dev`. */
+export type Destination =
+  | { kind: "production" }
+  | { kind: "preview"; name: string }
+  | { kind: "dev" };
+
 /**
- * The deployment selector of `deploy`'s `npx convex run` calls: `--preview-name <name>` when
- * given, else `--prod`, because `npx convex deploy` goes to production by default while
- * `npx convex run` goes to development. A deploy key in the environment wins over the selector in
- * both commands. A self-hosted deployment takes no selector.
+ * The deployment selector of a deploy's `npx convex run` calls. Production gets `--prod`, because
+ * `npx convex deploy` goes to production by default while `npx convex run` goes to development; a
+ * preview gets `--preview-name <name>`; the development deployment, which `npx convex run` picks
+ * from `.env.local`, gets none. A deploy key in the environment wins over the selector. A
+ * self-hosted deployment takes no selector.
  */
-export function deploymentSelector(cli: Cli, previewName: string | undefined): string[] {
+export function deploymentSelector(cli: Cli, destination: Destination): string[] {
   if (readConvexEnv(cli).CONVEX_SELF_HOSTED_URL) return [];
-  return previewName === undefined ? ["--prod"] : ["--preview-name", previewName];
+  switch (destination.kind) {
+    case "production":
+      return ["--prod"];
+    case "preview":
+      return ["--preview-name", destination.name];
+    case "dev":
+      return [];
+    default:
+      return destination satisfies never;
+  }
 }
 
 /** The component instance and the deployment that every call of one command reaches. */

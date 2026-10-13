@@ -7,19 +7,26 @@ import { z } from "zod";
 import { internal } from "../component/_generated/api.js";
 import type { Id } from "../component/_generated/dataModel.js";
 import { AssetConfigSchema } from "../workers-shared/utils/types.js";
-import { deploymentSelector, hasComponent, runComponent, type Cli, type Target } from "./convex.js";
+import {
+  deploymentSelector,
+  hasComponent,
+  runComponent,
+  type Cli,
+  type Destination,
+  type Target,
+} from "./convex.js";
 import { readDist, type DistEntry, type HandlingOptions } from "./files.js";
 
 const USAGE = `Usage:
-  convex-hosting dev --build "<command>" --dist <dir> [options]
   convex-hosting deploy --build "<command>" --dist <dir> [options]
 
 Options:
+  --dev                         the development deployment of this checkout, instead of production
+  --preview <name>              the preview deployment with this name, instead of production
   --html-handling <value>       auto-trailing-slash (default), force-trailing-slash,
                                 drop-trailing-slash, or none
   --not-found-handling <value>  none (default), single-page-application, or 404-page
-  --component <name>            the component instance (default: hosting)
-  --preview-name <name>         the preview deployment (deploy only)`;
+  --component <name>            the component instance (default: hosting)`;
 
 /**
  * The CLI's state folder at the project root, like Wrangler's `.wrangler/`. It holds its own
@@ -35,9 +42,6 @@ export const VERSION_FILE = join(STATE_DIR, "version.js");
  * `deploy` then uploads after the push.
  */
 const FIRST_INSTALL_MARKER = join(STATE_DIR, "first-install");
-
-/** The CLI refreshes the lock this often, from the build to the end of the push. */
-const HEARTBEAT_INTERVAL_MS = 30_000;
 
 /** Files that the upload sends to storage at once. */
 const UPLOAD_CONCURRENCY = 4;
@@ -61,11 +65,10 @@ const notFoundHandlingSchema = AssetConfigSchema.shape.not_found_handling.unwrap
 type Options = HandlingOptions & {
   dist: string;
   component: string;
-  previewName: string | undefined;
+  destination: Destination;
 };
 
 type Command =
-  | { name: "dev"; build: string; options: Options }
   | { name: "deploy"; build: string; options: Options }
   | { name: "upload"; versionId: string; options: Options };
 
@@ -77,18 +80,20 @@ function parseCommand(args: string[]): Command {
     options: {
       build: { type: "string" },
       dist: { type: "string" },
+      dev: { type: "boolean", default: false },
+      preview: { type: "string" },
       "html-handling": { type: "string", default: "auto-trailing-slash" },
       "not-found-handling": { type: "string", default: "none" },
       component: { type: "string", default: "hosting" },
-      "preview-name": { type: "string" },
       "version-id": { type: "string" },
     },
   });
   const [name, ...rest] = positionals;
-  if ((name !== "dev" && name !== "deploy" && name !== "upload") || rest.length > 0) {
-    throw new Error(USAGE);
-  }
+  if ((name !== "deploy" && name !== "upload") || rest.length > 0) throw new Error(USAGE);
   if (values.dist === undefined) throw new Error(`--dist is required.\n\n${USAGE}`);
+  if (values.dev && values.preview !== undefined) {
+    throw new Error("--dev and --preview exclude each other.");
+  }
   const htmlHandling = htmlHandlingSchema.safeParse(values["html-handling"]);
   if (!htmlHandling.success) {
     throw new Error(`--html-handling must be one of: ${htmlHandlingSchema.options.join(", ")}.`);
@@ -104,18 +109,21 @@ function parseCommand(args: string[]): Command {
     html_handling: htmlHandling.data,
     not_found_handling: notFoundHandling.data,
     component: values.component,
-    previewName: values["preview-name"],
+    destination: values.dev
+      ? { kind: "dev" }
+      : values.preview === undefined
+        ? { kind: "production" }
+        : { kind: "preview", name: values.preview },
   };
   // `upload` is the step that `deploy` runs inside `npx convex deploy --cmd`, after the build.
   if (name === "upload") {
-    if (values["version-id"] === undefined || values.build !== undefined) throw new Error(USAGE);
+    if (values["version-id"] === undefined || values.build !== undefined || values.dev) {
+      throw new Error(USAGE);
+    }
     return { name, versionId: values["version-id"], options };
   }
   if (values.build === undefined) throw new Error(`--build is required.\n\n${USAGE}`);
   if (values["version-id"] !== undefined) throw new Error(USAGE);
-  if (name === "dev" && options.previewName !== undefined) {
-    throw new Error("--preview-name is a deploy option: dev targets the development deployment.");
-  }
   return { name, build: values.build, options };
 }
 
@@ -123,9 +131,7 @@ function parseCommand(args: string[]): Command {
 export async function main(args: string[], cli: Cli): Promise<number> {
   try {
     const command = parseCommand(args);
-    if (command.name === "dev") {
-      await dev(cli, command.options, command.build);
-    } else if (command.name === "deploy") {
+    if (command.name === "deploy") {
       await deploy(cli, command.options, command.build);
     } else {
       await uploadInsideDeploy(cli, command.options, command.versionId);
@@ -143,40 +149,61 @@ function quote(arg: string): string {
 }
 
 /**
- * `deploy` for the development deployment, the one that `npx convex dev` and `npx convex run` pick
- * by default, so no Convex command gets a selector. The build runs as a child of this process in
- * the project directory: the framework reads the deployment's URL from `.env.local` itself (Vite
- * reads `VITE_CONVEX_URL`). Then the upload runs here, and `npx convex run --push` pushes.
- * `npx convex dev --once` cannot push here: it refuses while `npx convex dev` runs a local
- * deployment's backend, which the upload needs.
+ * Builds, uploads, writes the version file, and pushes. The push is the switch, and the command
+ * ends: the first request that the new code serves marks its version live.
  */
-async function dev(cli: Cli, options: Options, build: string) {
-  const target: Target = { component: options.component, flags: [] };
-  const versionId = randomUUID();
-  await runDeploy(cli, target, versionId, async (signal, progress) => {
-    const buildExitCode = await cli.shell(build, signal);
-    if (buildExitCode !== 0) throw new Error(`The build failed with exit code ${buildExitCode}.`);
-    progress.firstInstall = !(await upload(cli, options, target, versionId));
-    if (progress.firstInstall) cli.log(notInstalledYet(options.component));
-    // The smallest command that pushes: an inline query at the app's root, which exists before the
-    // push installs the component.
-    const exitCode = await cli.convexInherited(["run", "--push", "--inline-query", "null"], signal);
-    if (exitCode !== 0) throw new Error(`npx convex run --push failed with exit code ${exitCode}.`);
-    if (progress.firstInstall) await uploadAfterPush(cli, options, target, versionId);
-  });
-}
-
 async function deploy(cli: Cli, options: Options, build: string) {
   const target: Target = {
     component: options.component,
-    flags: deploymentSelector(cli, options.previewName),
+    flags: deploymentSelector(cli, options.destination),
   };
   const versionId = randomUUID();
+  if (options.destination.kind === "dev") {
+    await deployDev(cli, options, target, versionId, build);
+  } else {
+    await deployWithConvexDeploy(cli, options, target, versionId, build);
+  }
+  cli.log(`Deployed version ${versionId}.`);
+}
+
+/**
+ * The development deployment, in one process. The build runs as a child of this process in the
+ * project directory: the framework reads the deployment's URL from `.env.local` itself (Vite reads
+ * `VITE_CONVEX_URL`). Then the upload runs here, and `npx convex run --push` pushes, with an inline
+ * query at the app's root, which exists before the push installs the component. It works whether
+ * or not `npx convex dev` runs; `npx convex dev --once` refuses while it runs a local deployment's
+ * backend.
+ */
+async function deployDev(
+  cli: Cli,
+  options: Options,
+  target: Target,
+  versionId: string,
+  build: string,
+) {
+  const buildExitCode = await cli.shell(build);
+  if (buildExitCode !== 0) throw new Error(`The build failed with exit code ${buildExitCode}.`);
+  const uploaded = await upload(cli, options, target, versionId);
+  if (!uploaded) cli.log(notInstalledYet(options.component));
+  const exitCode = await cli.convexInherited(["run", "--push", "--inline-query", "null"]);
+  if (exitCode !== 0) throw new Error(`npx convex run --push failed with exit code ${exitCode}.`);
+  if (!uploaded) await uploadAfterPush(cli, options, target, versionId);
+}
+
+/** Production or a preview: the build and the upload run inside `npx convex deploy --cmd`. */
+async function deployWithConvexDeploy(
+  cli: Cli,
+  options: Options,
+  target: Target,
+  versionId: string,
+  build: string,
+) {
   const marker = join(cli.cwd, FIRST_INSTALL_MARKER);
   rmSync(marker, { force: true });
-
   // `npx convex deploy` goes to production by default and has no `--prod` flag.
   const deployFlags = target.flags.filter((flag) => flag !== "--prod");
+  const previewFlags =
+    options.destination.kind === "preview" ? ["--preview", options.destination.name] : [];
   const innerUpload = [
     process.execPath,
     fileURLToPath(new URL("./index.js", import.meta.url)),
@@ -191,60 +218,29 @@ async function deploy(cli: Cli, options: Options, build: string) {
     options.not_found_handling,
     "--component",
     options.component,
-    ...deployFlags,
+    ...previewFlags,
   ]
     .map(quote)
     .join(" ");
 
   // The build and the upload run in the project directory; a build must not change directory.
-  await runDeploy(cli, target, versionId, async (signal, progress) => {
-    const exitCode = await cli.convexInherited(
-      ["deploy", "--cmd", `${build} && ${innerUpload}`, ...deployFlags],
-      signal,
-    );
-    progress.firstInstall = existsSync(marker);
-    rmSync(marker, { force: true });
-    if (exitCode !== 0) throw new Error(`npx convex deploy failed with exit code ${exitCode}.`);
-    if (progress.firstInstall) await uploadAfterPush(cli, options, target, versionId);
-  });
-}
-
-/**
- * Runs the steps of `dev` or `deploy`, from the build to the end of the upload after the push of a
- * first install, while `heartbeat` keeps the lock. When they succeed, `finishDeploy` deletes every
- * other version. When they fail, `releaseLock` frees the lock and keeps the version, so a retry
- * reuses its files.
- */
-async function runDeploy(
-  cli: Cli,
-  target: Target,
-  versionId: string,
-  steps: (signal: AbortSignal, progress: { firstInstall: boolean }) => Promise<void>,
-) {
-  const progress = { firstInstall: false };
-  try {
-    await withHeartbeat(cli, target, versionId, (signal) => steps(signal, progress));
-  } catch (error) {
-    // A first install takes no lock before the push. When the build failed on a first install, the
-    // component does not exist and this call fails too; the deploy has failed either way.
-    if (!progress.firstInstall) {
-      try {
-        await runComponent(cli, target, internal.lib.releaseLock, { versionId }, z.null());
-      } catch (releaseError) {
-        cli.log(`Could not release the deploy lock: ${String(releaseError)}`);
-      }
-    }
-    throw error;
-  }
-  await runComponent(cli, target, internal.lib.finishDeploy, { versionId }, z.null());
-  cli.log(`Deployed version ${versionId}.`);
+  const exitCode = await cli.convexInherited([
+    "deploy",
+    "--cmd",
+    `${build} && ${innerUpload}`,
+    ...deployFlags,
+  ]);
+  const firstInstall = existsSync(marker);
+  rmSync(marker, { force: true });
+  if (exitCode !== 0) throw new Error(`npx convex deploy failed with exit code ${exitCode}.`);
+  if (firstInstall) await uploadAfterPush(cli, options, target, versionId);
 }
 
 /** The upload inside `npx convex deploy --cmd`. On a first install, `deploy` uploads after the push. */
 async function uploadInsideDeploy(cli: Cli, options: Options, versionId: string) {
   const target: Target = {
     component: options.component,
-    flags: deploymentSelector(cli, options.previewName),
+    flags: deploymentSelector(cli, options.destination),
   };
   if (!(await upload(cli, options, target, versionId))) {
     writeStateFile(cli, FIRST_INSTALL_MARKER, "");
@@ -354,45 +350,6 @@ async function upload(
   writeVersionFile(cli, versionId);
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
   return true;
-}
-
-/**
- * Runs `work` and calls `heartbeat` every 30 seconds meanwhile, so the lock means that the process
- * is alive. When a heartbeat answers that the deploy lost its lock, it aborts `work`'s signal,
- * which kills the build or the push, and fails with the component's message. Other heartbeat
- * errors are ignored; on a first install, a heartbeat fails until the push installs the component.
- */
-async function withHeartbeat(
-  cli: Cli,
-  target: Target,
-  versionId: string,
-  work: (signal: AbortSignal) => Promise<void>,
-): Promise<void> {
-  const controller = new AbortController();
-  let lostLock: Error | undefined;
-  let heartbeat: Promise<void> | undefined;
-  const timer = setInterval(() => {
-    heartbeat ??= runComponent(cli, target, internal.lib.heartbeat, { versionId }, z.null()).then(
-      () => (heartbeat = undefined),
-      (error: unknown) => {
-        heartbeat = undefined;
-        // The ConvexError of the component's `holdLock`.
-        const message = /The deploy of version \S+ lost its lock[^\n]*/.exec(String(error))?.[0];
-        if (message !== undefined) {
-          lostLock = new Error(message);
-          controller.abort(lostLock);
-        }
-      },
-    );
-  }, HEARTBEAT_INTERVAL_MS);
-  try {
-    await work(controller.signal);
-  } catch (error) {
-    throw lostLock ?? error;
-  } finally {
-    clearInterval(timer);
-    await heartbeat;
-  }
 }
 
 function writeVersionFile(cli: Cli, versionId: string) {

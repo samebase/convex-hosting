@@ -54,9 +54,9 @@ export default http;
 ```
 
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
-Wrangler's `.wrangler/`. `dev` and `deploy` write the version to `.convex-hosting/version.js`. The
-folder has its own `.gitignore`, so git ignores it. One committed declaration,
-`convex/convex-hosting.d.ts`, types the module before the first `dev` or `deploy`:
+Wrangler's `.wrangler/`. Every deploy writes the version to `.convex-hosting/version.js`. The folder
+has its own `.gitignore`, so git ignores it. One committed declaration,
+`convex/convex-hosting.d.ts`, types the module before the first deploy:
 
 ```ts
 declare module "*/.convex-hosting/version.js" {
@@ -76,23 +76,21 @@ npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling 
 The build command runs in the project directory. Do not change directory in it.
 
 `deploy` runs `npx convex deploy` with your build and the upload of `--dist` as its `--cmd`. The
-pushed code names the version it was built with, so the push switches the site. After the push,
-`deploy` deletes the earlier versions and their files.
+pushed code names the version it was built with, so the push switches the site, and the command
+ends. The first request that the new code serves marks its version live, which deletes the versions
+that were live before it. A version that never becomes live, from a deploy that failed, is deleted
+when it is a day old, with the stored files that no version uses.
 
-`deploy` goes to the preview named by `--preview-name` (with a login or a project's preview deploy
-key; always pass the name with that key), or else to production. A deploy key in `CONVEX_DEPLOY_KEY`
-or `CONVEX_DEPLOYMENT_TOKEN` (from the environment or `.env.local`) selects its own deployment
-instead, and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment.
+`deploy` goes to production. `--preview <name>` sends it to that preview (with a login or a
+project's preview deploy key; always pass the name with that key), and `--dev` to the development
+deployment (see [Development](#development)). A deploy key in `CONVEX_DEPLOY_KEY` or
+`CONVEX_DEPLOYMENT_TOKEN` (from the environment or `.env.local`) selects its own deployment instead,
+and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment.
 
 The first deploy to a deployment pushes the component, then uploads the files. Until that upload
-ends, the site answers 404. The deploy lock does not protect this first deploy, because the
-component does not exist yet: run the first deploy of a deployment once, alone.
+ends, the site answers 404. Run the first deploy of a deployment once, alone.
 
-Two deploys at once: the second one stops with
-`A deploy of version <id> is in progress: it refreshed the lock <n> seconds ago.` Try again when the
-first one ends. A deploy that stopped frees its lock 2 minutes after its last refresh. If it resumes
-after another deploy took the lock, for example on a laptop that slept, it kills its push at its
-next refresh and fails with `The deploy of version <id> lost its lock`. There is no cancel command.
+Two deploys that overlap both complete, and the last push wins.
 
 ## Development
 
@@ -103,34 +101,36 @@ which pushes your function changes.
 When the development deployment should serve the current build, run the one-shot command:
 
 ```sh
-npx convex-hosting dev --build "vite build" --dist dist --not-found-handling single-page-application
+npx convex-hosting deploy --dev --build "vite build" --dist dist --not-found-handling single-page-application
 ```
 
-`dev` does for the development deployment what `deploy` does for production: it runs the build,
-uploads `--dist`, writes `.convex-hosting/version.js`, pushes with `npx convex run --push`, and
-deletes the earlier versions. On a new deployment, it pushes the component first, then uploads. The
-build runs with your environment, so the framework reads the deployment's URL from `.env.local`
-(Vite reads `VITE_CONVEX_URL`). There is no watch mode: a build, an upload, and a push per change is
-not an inner loop, and Cloudflare's own tooling works the same way, with a local dev server and a
-push on demand.
+`deploy --dev` goes to the development deployment of this checkout, the one in `.env.local`. It runs
+the build itself, uploads `--dist`, writes `.convex-hosting/version.js`, and pushes with
+`npx convex run --push`, which works whether or not `npx convex dev` runs. The build runs with your
+environment, so the framework reads the deployment's URL from `.env.local` (Vite reads
+`VITE_CONVEX_URL`). There is no watch mode: a build, an upload, and a push per change is not an
+inner loop, and Cloudflare's own tooling works the same way, with a local dev server and a push on
+demand. A fresh clone runs `deploy --dev` once; after that, the version file exists and
+`npx convex dev` bundles as usual.
 
 Two cases are transient:
 
 - A server-rendered app imports `dist/server` in `convex/http.ts`, so a running `npx convex dev`
-  pushes after the build, before `dev` writes the new version. Until `dev` ends, the new pages refer
-  to files that answer 404.
+  pushes after the build, before `deploy --dev` writes the new version. Until `deploy --dev` ends,
+  the new pages refer to files that answer 404.
 - A production deploy writes production's version to the version file, and a running
   `npx convex dev` pushes it to the development deployment, where that version does not exist, until
-  the next `convex-hosting dev`. Run production deploys in CI or in a separate checkout.
+  the next `deploy --dev`. Run production deploys in CI or in a separate checkout.
 
 ## Options
 
 | Option                         | Values                                                                                 |
 | ------------------------------ | -------------------------------------------------------------------------------------- |
+| `--dev`                        | The development deployment of this checkout, instead of production                     |
+| `--preview <name>`             | The preview deployment with this name, instead of production                           |
 | `--html-handling <value>`      | `auto-trailing-slash` (default), `force-trailing-slash`, `drop-trailing-slash`, `none` |
 | `--not-found-handling <value>` | `none` (default), `single-page-application`, `404-page`                                |
 | `--component <name>`           | The component instance, `hosting` by default                                           |
-| `--preview-name <name>`        | The preview deployment, for `deploy` only                                              |
 
 The two handling options work as
 [Cloudflare documents them](https://developers.cloudflare.com/workers/static-assets/routing/).
@@ -159,7 +159,7 @@ files for a year, add a `_headers` rule:
 
 `serveAsset` returns the asset's response, or `null` when no asset matches, so your route continues.
 When the version does not exist or is still uploading, it returns a 404 response that names the
-version.
+version. At the first request for a new version, it marks the version live.
 
 `not_found_handling` applies to navigation requests (`Sec-Fetch-Mode: navigate`) only, as on
 Cloudflare when a Worker runs: other requests that match no file reach your code. Two differences

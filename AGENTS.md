@@ -11,7 +11,7 @@ Changes offered back to upstream live on branches in
 - `packages/convex-hosting`: the published component and CLI.
   - `src/component`: code that runs inside the component on Convex.
   - `src/client`: `serveAsset`, which apps call from their `convex/http.ts`.
-  - `src/cli`: the `convex-hosting` command: `dev` and `deploy`.
+  - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, its inner step.
   - `src/workers-shared`: Cloudflare's asset worker, copied by `scripts/sync-workers-shared.ts`.
     Never edit it by hand.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack

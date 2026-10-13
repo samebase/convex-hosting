@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import { deploymentSelector, type Cli } from "./convex.js";
 import { main, VERSION_FILE } from "./main.js";
 
@@ -23,7 +23,7 @@ function app(files: Record<string, string>) {
 
 /**
  * A fake `Cli`: `npx convex run` answers like a deployment with the component, the build calls
- * `build`, and `npx convex deploy` or `npx convex dev --once` calls `push`. No processes, no
+ * `build`, and `npx convex deploy` or `npx convex run --push` calls `push`. No processes, no
  * network. `events` lists the builds, the probes, the function calls, and the pushes in order.
  */
 function fake(
@@ -34,7 +34,7 @@ function fake(
     /** The stored file id of each sha256 that `knownFiles` knows. */
     known?: Record<string, string>;
     build?: () => Promise<number>;
-    push?: (cli: Cli, args: string[], signal: AbortSignal) => Promise<number>;
+    push?: (cli: Cli, args: string[]) => Promise<number>;
   } = {},
 ) {
   const runs: string[][] = [];
@@ -75,10 +75,10 @@ function fake(
           return ok(null);
       }
     },
-    convexInherited: async (args, signal) => {
+    convexInherited: async (args) => {
       pushes.push(args);
       events.push(`push: ${args[0]}`);
-      return (await options.push?.(cli, args, signal)) ?? 0;
+      return (await options.push?.(cli, args)) ?? 0;
     },
     shell: async (command) => {
       builds.push(command);
@@ -96,25 +96,6 @@ function fake(
   const callArgs = (name: string) =>
     runs.filter((args) => args[3] === name).map((args) => JSON.parse(args[4]));
   return { cli, runs, pushes, builds, events, stored, logs, calls, callArgs };
-}
-
-/**
- * Answers the `heartbeat` calls of `cli` in turn: `null` succeeds, a string fails with it as the
- * standard error. Later calls succeed.
- */
-function answerHeartbeats(cli: Cli, answers: (string | null)[]) {
-  const run = cli.convex;
-  cli.convex = async (args) => {
-    const result = await run(args);
-    if (args[3] !== "lib:heartbeat") return result;
-    const stderr = answers.shift() ?? null;
-    return stderr === null ? result : { exitCode: 1, stdout: "", stderr };
-  };
-}
-
-/** The standard error of `npx convex run lib:heartbeat` when the component's `holdLock` fails. */
-function lostLockError(message: string) {
-  return `✖ Failed to run function "lib:heartbeat":\nConvexError: [Request ID: 1] Server Error\nUncaught ConvexError: ${message}\n    at holdLock (lib.ts:89:2)`;
 }
 
 /** Runs the upload that `deploy` put in `--cmd`, the way the shell would. */
@@ -141,18 +122,18 @@ const site = {
   "dist/_redirects": "/old / 301\n",
 };
 
-const DEV = ["dev", "--build", "vite build", "--dist", "dist"];
 const DEPLOY = ["deploy", "--build", "vite build", "--dist", "dist"];
+const DEV = [...DEPLOY, "--dev"];
 
-afterEach(() => {
-  vi.useRealTimers();
-});
+/** A selector flag in any Convex command. */
+const selectors = (commands: string[][]) =>
+  commands.flat().filter((arg) => arg === "--prod" || arg === "--preview-name");
 
-describe("dev", () => {
-  test("builds, uploads, writes the version file, pushes with npx convex run --push, then finishDeploy", async () => {
+describe("deploy --dev", () => {
+  test("builds, uploads, writes the version file, pushes with npx convex run --push, and ends", async () => {
     const cwd = app(site);
     let pushedVersionId: string | undefined;
-    const { cli, events, builds, pushes, runs, callArgs } = fake(cwd, {
+    const { cli, events, builds, pushes, runs, logs } = fake(cwd, {
       push: async () => {
         pushedVersionId = writtenVersionId(cwd);
         return 0;
@@ -161,6 +142,7 @@ describe("dev", () => {
     expect(await main(DEV, cli)).toBe(0);
 
     expect(builds).toEqual(["vite build"]);
+    // Nothing runs after the push.
     expect(events).toEqual([
       "build",
       "probe",
@@ -171,16 +153,14 @@ describe("dev", () => {
       "lib:recordFiles",
       "lib:finishVersion",
       "push: run",
-      "lib:finishDeploy",
     ]);
     // An inline query at the app's root, which exists before a first install.
     expect(pushes).toEqual([["run", "--push", "--inline-query", "null"]]);
-    // The development deployment is the default of every Convex command.
-    expect(runs.flat().filter((arg) => arg === "--prod" || arg === "--preview-name")).toEqual([]);
+    // The development deployment is the default of `npx convex run`.
+    expect(selectors(runs)).toEqual([]);
     const versionId = writtenVersionId(cwd);
     expect(pushedVersionId).toBe(versionId);
-    expect(callArgs("lib:createVersion")[0].versionId).toBe(versionId);
-    expect(callArgs("lib:finishDeploy")).toEqual([{ versionId }]);
+    expect(logs[logs.length - 1]).toBe(`Deployed version ${versionId}.`);
   });
 
   test("on a first install, writes the version file, pushes, then uploads", async () => {
@@ -202,54 +182,100 @@ describe("dev", () => {
       "probe",
       "lib:generateUploadUrls",
     ]);
+    expect(events[events.length - 1]).toBe("lib:finishVersion");
     expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
-    const versionId = writtenVersionId(cwd);
-    expect(callArgs("lib:createVersion")[0].versionId).toBe(versionId);
-    expect(callArgs("lib:finishDeploy")).toEqual([{ versionId }]);
+    expect(callArgs("lib:createVersion")[0].versionId).toBe(writtenVersionId(cwd));
   });
 
   test("a failed build stops before the upload", async () => {
     const { cli, events, logs } = fake(app(site), { build: async () => 2 });
     expect(await main(DEV, cli)).toBe(1);
-    // `releaseLock` has nothing to release.
-    expect(events).toEqual(["build", "lib:releaseLock"]);
+    expect(events).toEqual(["build"]);
     expect(logs[logs.length - 1]).toBe("The build failed with exit code 2.");
   });
 
-  test("a failed push releases the lock and keeps the version", async () => {
-    const cwd = app(site);
-    const { cli, callArgs, logs } = fake(cwd, { push: async () => 1 });
+  test("a failed push fails the deploy", async () => {
+    const { cli, events, logs } = fake(app(site), { push: async () => 1 });
     expect(await main(DEV, cli)).toBe(1);
-    expect(callArgs("lib:releaseLock")).toEqual([{ versionId: writtenVersionId(cwd) }]);
-    expect(callArgs("lib:finishDeploy")).toEqual([]);
+    expect(events[events.length - 1]).toBe("push: run");
     expect(logs[logs.length - 1]).toBe("npx convex run --push failed with exit code 1.");
   });
 
-  test("calls heartbeat every 30 seconds while a long page of files uploads", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  test("refuses --dev with --preview", async () => {
+    const { cli, events, logs } = fake(app(site));
+    expect(await main([...DEV, "--preview", "pr-7"], cli)).toBe(1);
+    expect(events).toEqual([]);
+    expect(logs[logs.length - 1]).toBe("--dev and --preview exclude each other.");
+  });
+});
+
+describe("deploy", () => {
+  test("runs the build and the upload inside npx convex deploy, and ends after the push", async () => {
     const cwd = app(site);
-    const { cli, calls, callArgs } = fake(cwd);
-    const storeFile = cli.fetch;
-    let slow = true;
-    cli.fetch = async (url, init) => {
-      // The first file of the page takes 65 seconds; the config is stored before `createVersion`.
-      if (calls().includes("lib:createVersion") && slow) {
-        slow = false;
-        await vi.advanceTimersByTimeAsync(65_000);
-      }
-      return await storeFile(url, init);
-    };
-    expect(await main(DEV, cli)).toBe(0);
-    const versionId = writtenVersionId(cwd);
-    expect(callArgs("lib:heartbeat")).toEqual([{ versionId }, { versionId }]);
-    expect(calls().indexOf("lib:heartbeat")).toBeGreaterThan(calls().indexOf("lib:createVersion"));
+    const { cli, pushes, runs, events, callArgs } = fake(cwd, { push: innerUpload });
+    expect(await main(DEPLOY, cli)).toBe(0);
+
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].slice(0, 2)).toEqual(["deploy", "--cmd"]);
+    expect(pushes[0][2]).toMatch(
+      /^vite build && '.+' '.+' 'upload' '--dist' '[^']+' '--version-id' '/,
+    );
+    expect(pushes[0][2]).toContain("'--dist' 'dist'");
+    // `npx convex deploy` goes to production by default and has no --prod flag; every run gets it.
+    expect(pushes[0]).not.toContain("--prod");
+    expect(runs.every((args) => args.includes("--prod"))).toBe(true);
+    // The upload runs inside the push, and nothing runs after it.
+    expect(events[0]).toBe("push: deploy");
+    expect(events[events.length - 1]).toBe("lib:finishVersion");
+    expect(callArgs("lib:createVersion")[0].versionId).toBe(writtenVersionId(cwd));
   });
 
-  test("refuses --preview-name: dev targets the development deployment", async () => {
-    const { cli, events, logs } = fake(app(site));
-    expect(await main([...DEV, "--preview-name", "pr-7"], cli)).toBe(1);
-    expect(events).toEqual([]);
-    expect(logs[logs.length - 1]).toContain("--preview-name is a deploy option");
+  test("on a first install, uploads after the push", async () => {
+    const cwd = app(site);
+    let pushed = false;
+    const { cli, calls } = fake(cwd, {
+      installed: () => pushed,
+      push: async (cli, args) => {
+        const exitCode = await innerUpload(cli, args);
+        expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(true);
+        expect(existsSync(join(cwd, VERSION_FILE))).toBe(true);
+        pushed = true;
+        return exitCode;
+      },
+    });
+    expect(await main(DEPLOY, cli)).toBe(0);
+
+    expect(calls().slice(0, 3)).toEqual(["probe", "probe", "lib:generateUploadUrls"]);
+    expect(calls()[calls().length - 1]).toBe("lib:finishVersion");
+    expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
+  });
+
+  test("a failed push fails the deploy", async () => {
+    const { cli, events, logs } = fake(app(site), {
+      push: async (cli, args) => {
+        await innerUpload(cli, args);
+        return 1;
+      },
+    });
+    expect(await main(DEPLOY, cli)).toBe(1);
+    expect(events[events.length - 1]).toBe("lib:finishVersion");
+    expect(logs[logs.length - 1]).toBe("npx convex deploy failed with exit code 1.");
+  });
+
+  test("--preview passes --preview-name to npx convex deploy and to every run", async () => {
+    const { cli, pushes, runs } = fake(app(site), { push: innerUpload });
+    expect(await main([...DEPLOY, "--preview", "pr-7"], cli)).toBe(0);
+    expect(pushes[0].slice(-2)).toEqual(["--preview-name", "pr-7"]);
+    expect(pushes[0][2]).toContain("'--preview' 'pr-7'");
+    expect(runs.every((args) => args.slice(-2).join(" ") === "--preview-name pr-7")).toBe(true);
+  });
+
+  test("passes no selector to a self-hosted deployment", async () => {
+    const env = { CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:3210" };
+    const { cli, pushes, runs } = fake(app(site), { env, push: innerUpload });
+    expect(await main([...DEPLOY, "--preview", "pr-7"], cli)).toBe(0);
+    expect(pushes[0]).toHaveLength(3);
+    expect(selectors(runs)).toEqual([]);
   });
 });
 
@@ -270,7 +296,7 @@ describe("upload", () => {
       "lib:recordFiles",
       "lib:finishVersion",
     ]);
-    // Inside `npx convex deploy`, every run goes to production.
+    // Inside `npx convex deploy` to production, every run gets --prod.
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
 
     expect(callArgs("lib:createVersion")).toEqual([{ versionId: "v1", configId: "storage-0" }]);
@@ -366,148 +392,28 @@ describe("upload", () => {
   });
 });
 
-describe("deploy", () => {
-  test("runs the build and the upload inside npx convex deploy, then finishDeploy", async () => {
-    const cwd = app(site);
-    const { cli, pushes, runs, callArgs } = fake(cwd, { push: innerUpload });
-    expect(await main(DEPLOY, cli)).toBe(0);
-
-    expect(pushes).toHaveLength(1);
-    expect(pushes[0].slice(0, 2)).toEqual(["deploy", "--cmd"]);
-    expect(pushes[0][2]).toMatch(
-      /^vite build && '.+' '.+' 'upload' '--dist' '[^']+' '--version-id' '/,
-    );
-    expect(pushes[0][2]).toContain("'--dist' 'dist'");
-    // `npx convex deploy` goes to production by default and has no --prod flag; every run gets it.
-    expect(pushes[0]).not.toContain("--prod");
-    expect(runs.every((args) => args.includes("--prod"))).toBe(true);
-    const versionId = writtenVersionId(cwd);
-    expect(callArgs("lib:createVersion")[0].versionId).toBe(versionId);
-    expect(callArgs("lib:finishDeploy")).toEqual([{ versionId }]);
-  });
-
-  test("on a first install, uploads after the push", async () => {
-    const cwd = app(site);
-    let pushed = false;
-    const { cli, calls, callArgs } = fake(cwd, {
-      installed: () => pushed,
-      push: async (cli, args) => {
-        const exitCode = await innerUpload(cli, args);
-        expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(true);
-        expect(existsSync(join(cwd, VERSION_FILE))).toBe(true);
-        pushed = true;
-        return exitCode;
-      },
-    });
-    expect(await main(DEPLOY, cli)).toBe(0);
-
-    expect(calls().slice(0, 3)).toEqual(["probe", "probe", "lib:generateUploadUrls"]);
-    expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
-    const versionId = writtenVersionId(cwd);
-    expect(callArgs("lib:finishDeploy")).toEqual([{ versionId }]);
-  });
-
-  test("a failed push releases the lock and keeps the version", async () => {
-    const cwd = app(site);
-    const { cli, callArgs, logs } = fake(cwd, {
-      push: async (cli, args) => {
-        await innerUpload(cli, args);
-        return 1;
-      },
-    });
-    expect(await main(DEPLOY, cli)).toBe(1);
-    expect(callArgs("lib:releaseLock")).toEqual([{ versionId: writtenVersionId(cwd) }]);
-    expect(callArgs("lib:finishDeploy")).toEqual([]);
-    expect(logs[logs.length - 1]).toBe("npx convex deploy failed with exit code 1.");
-  });
-
-  test("calls heartbeat every 30 seconds while the push runs", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    const { cli, callArgs } = fake(app(site), {
-      push: async () => {
-        await vi.advanceTimersByTimeAsync(65_000);
-        return 0;
-      },
-    });
-    expect(await main(DEPLOY, cli)).toBe(0);
-    const heartbeats = callArgs("lib:heartbeat");
-    expect(heartbeats).toHaveLength(2);
-    const { versionId } = heartbeats[0];
-    expect(callArgs("lib:finishDeploy")).toEqual([{ versionId }]);
-  });
-
-  test("a heartbeat that reports a lost lock kills the push and fails the deploy", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    const lost = "The deploy of version v1 lost its lock: a deploy of version v2 holds it.";
-    let killedAfter = 0;
-    const { cli, calls, logs } = fake(app(site), {
-      // The push runs until its signal kills it.
-      push: (_cli, _args, signal) => {
-        const killedPush = new Promise<number>((_, reject) =>
-          signal.addEventListener("abort", () => {
-            killedAfter = calls().length;
-            reject(signal.reason);
-          }),
-        );
-        void vi.advanceTimersByTimeAsync(30_000);
-        return killedPush;
-      },
-    });
-    answerHeartbeats(cli, [lostLockError(lost)]);
-    expect(await main(DEPLOY, cli)).toBe(1);
-    expect(killedAfter).toBe(1);
-    expect(logs[logs.length - 1]).toBe(lost);
-    // Nothing is deleted; the lock is not this deploy's to release.
-    expect(calls()).toEqual(["lib:heartbeat", "lib:releaseLock"]);
-  });
-
-  test("other heartbeat errors are ignored", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    const { cli, calls } = fake(app(site), {
-      push: async () => {
-        await vi.advanceTimersByTimeAsync(60_000);
-        return 0;
-      },
-    });
-    answerHeartbeats(cli, [null, "✖ Not logged in."]);
-    expect(await main(DEPLOY, cli)).toBe(0);
-    expect(calls()).toEqual(["lib:heartbeat", "lib:heartbeat", "lib:finishDeploy"]);
-  });
-
-  test("passes --preview-name to npx convex deploy and to every run", async () => {
-    const { cli, pushes, runs } = fake(app(site), { push: innerUpload });
-    expect(await main([...DEPLOY, "--preview-name", "pr-7"], cli)).toBe(0);
-    expect(pushes[0].slice(-2)).toEqual(["--preview-name", "pr-7"]);
-    expect(runs.every((args) => args.slice(-2).join(" ") === "--preview-name pr-7")).toBe(true);
-  });
-
-  test("passes no selector to a self-hosted deployment", async () => {
-    const env = { CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:3210" };
-    const { cli, pushes, runs } = fake(app(site), { env, push: innerUpload });
-    expect(await main([...DEPLOY, "--preview-name", "pr-7"], cli)).toBe(0);
-    expect(pushes[0]).toHaveLength(3);
-    expect(runs.flat().filter((arg) => arg === "--prod" || arg === "--preview-name")).toEqual([]);
-  });
-});
-
 describe("deploymentSelector", () => {
-  const selector = (files: Record<string, string>, previewName?: string) =>
-    deploymentSelector(fake(app(files)).cli, previewName);
+  const selfHosted = { ".env.local": "CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210\n" };
+  const select = (files: Record<string, string>) => ({
+    production: deploymentSelector(fake(app(files)).cli, { kind: "production" }),
+    preview: deploymentSelector(fake(app(files)).cli, { kind: "preview", name: "pr-7" }),
+    dev: deploymentSelector(fake(app(files)).cli, { kind: "dev" }),
+  });
 
-  test("--preview-name when given, else --prod", () => {
-    expect(selector({})).toEqual(["--prod"]);
-    expect(selector({}, "pr-7")).toEqual(["--preview-name", "pr-7"]);
+  test("production gets --prod, a preview --preview-name, and the development deployment none", () => {
+    expect(select({})).toEqual({
+      production: ["--prod"],
+      preview: ["--preview-name", "pr-7"],
+      dev: [],
+    });
   });
 
   test("a deploy key changes nothing: the Convex CLI lets it win over the selector", () => {
-    expect(selector({ ".env.local": "CONVEX_DEPLOY_KEY=prod:happy-cat-123|secret\n" })).toEqual([
-      "--prod",
-    ]);
+    const keyed = { ".env.local": "CONVEX_DEPLOY_KEY=prod:happy-cat-123|secret\n" };
+    expect(select(keyed)).toEqual(select({}));
   });
 
   test("a self-hosted deployment takes no selector", () => {
-    const selfHosted = { ".env.local": "CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210\n" };
-    expect(selector(selfHosted)).toEqual([]);
-    expect(selector(selfHosted, "pr-7")).toEqual([]);
+    expect(select(selfHosted)).toEqual({ production: [], preview: [], dev: [] });
   });
 });

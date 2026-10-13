@@ -5,7 +5,7 @@
   "scripts": {
     "build": "vp build",
     "dev": "vp dev",
-    "deploy:dev": "convex-hosting dev --build \"pnpm run build\" --dist dist/client",
+    "deploy:dev": "convex-hosting deploy --dev --build \"pnpm run build\" --dist dist/client",
     "deploy": "convex-hosting deploy --build \"pnpm run build\" --dist dist/client",
     "typecheck": "tsc -p . && tsc -p convex"
   },
