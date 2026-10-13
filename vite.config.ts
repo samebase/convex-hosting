@@ -2,7 +2,13 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   fmt: {
-    ignorePatterns: ["**/_generated/**", "**/routeTree.gen.ts"],
+    // src/workers-shared is copied from cloudflare/workers-sdk; keep its formatting so a sync is a
+    // clean diff.
+    ignorePatterns: [
+      "**/_generated/**",
+      "**/routeTree.gen.ts",
+      "packages/convex-hosting/src/workers-shared/**",
+    ],
     printWidth: 100,
     proseWrap: "always",
   },
@@ -15,7 +21,12 @@ export default defineConfig({
       builtin: true,
       browser: true,
     },
-    ignorePatterns: ["**/dist", "**/_generated", "**/routeTree.gen.ts"],
+    ignorePatterns: [
+      "**/dist",
+      "**/_generated",
+      "**/routeTree.gen.ts",
+      "packages/convex-hosting/src/workers-shared/**",
+    ],
     jsPlugins: [
       {
         name: "@convex-dev",
