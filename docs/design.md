@@ -48,8 +48,10 @@ either, `npx convex deploy` goes to production, so `npx convex run` gets `--prod
 own deploy key and `--preview-name` together are an error, because the Convex CLI would ignore the
 name.
 
-1. The CLI chooses a random version id and writes it to `.convex-hosting/version.js` at once, so a
-   build that typechecks `convex/` on a new project finds the module.
+1. The CLI chooses a random version id. It writes nothing yet: the version file is written only
+   after the lock is taken, so a second deploy from the same checkout, refused at the lock, cannot
+   overwrite the id that the first one pushes. A typecheck of `convex/` before the file exists
+   passes through the committed declaration.
 2. It runs
    `npx convex deploy --cmd "(<command>) && convex-hosting upload --dist <absolute dir> --version-id <id> ..."`.
    The build runs in a subshell, so a `cd` inside it does not move the upload. Convex gives the
@@ -99,9 +101,12 @@ without uploading, so the push that follows installs the component. `deploy` see
 ends, the site answers 404 (see Serve). This happens once per deployment. It is not protected by the
 lock, because the component does not exist yet: run the first deploy of a deployment once, alone.
 
-**Development deployment.** `npx convex deploy` targets production or a preview. For the development
-deployment the developer runs `npx convex dev`, which pushes on every change to the bundle's inputs,
-and uploads with the build of their choice:
+**Development deployment.** `npx convex deploy` targets production or a preview. `upload` on its own
+targets only the development deployment, the one `npx convex dev` pushes: with `--preview-name` or a
+deploy key it stops and names `deploy`, because its cleanup deletes the version the deployment's
+code still references, and nobody pushes a preview or a keyed deployment after a standalone upload.
+For the development deployment the developer runs `npx convex dev`, which pushes on every change to
+the bundle's inputs, and uploads with the build of their choice:
 
 ```
 vite build && convex-hosting upload --dist dist
@@ -154,7 +159,8 @@ import { versionId } from "../.convex-hosting/version.js";
 
 const asset = await serveAsset(ctx, components.hosting, request, versionId);
 if (asset) return asset;
-// A static site: 404. A server-rendered site: render the page.
+// A static site: 404. A server-rendered site: render the page, with `Cache-Control: no-store`,
+// because the deployment's Cloudflare front caches answers on static-looking paths.
 ```
 
 `serveAsset` calls the component query `route` with the method, the URL, and the request headers
