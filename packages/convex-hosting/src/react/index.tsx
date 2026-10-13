@@ -5,11 +5,8 @@ import { useState, useMemo, type CSSProperties, type JSX } from "react";
 import { makeFunctionReference, type FunctionReference } from "convex/server";
 
 type DeploymentInfo = {
-  _id: string;
-  _creationTime: number;
-  currentDeploymentId: string;
-  deployedAt: number;
-  spaFallback?: boolean;
+  versionId: string;
+  liveAt: number;
 } | null;
 
 type DeploymentQueryRef = FunctionReference<
@@ -20,7 +17,7 @@ type DeploymentQueryRef = FunctionReference<
 >;
 
 const DEFAULT_QUERY_REF = makeFunctionReference<"query", Record<string, never>, DeploymentInfo>(
-  "hosting:getCurrentDeployment",
+  "hosting:getLiveVersion",
 ) as DeploymentQueryRef;
 
 /* eslint-disable react-refresh/only-export-components */
@@ -28,8 +25,8 @@ const DEFAULT_QUERY_REF = makeFunctionReference<"query", Record<string, never>, 
 /**
  * Hook to detect when a new deployment is available.
  *
- * @param getCurrentDeployment - Optional query reference. Defaults to
- *   `api.hosting.getCurrentDeployment` (resolved by path). If you've
+ * @param getLiveVersion - Optional query reference. Defaults to
+ *   `api.hosting.getLiveVersion` (resolved by path). If you've
  *   re-exported the deployment query under a different module name, pass the
  *   reference explicitly.
  *
@@ -43,27 +40,26 @@ const DEFAULT_QUERY_REF = makeFunctionReference<"query", Record<string, never>, 
  * }
  * ```
  */
-export function useDeploymentUpdates(getCurrentDeployment?: DeploymentQueryRef) {
+export function useDeploymentUpdates(getLiveVersion?: DeploymentQueryRef) {
   const result = useQuery_experimental({
-    query: getCurrentDeployment ?? DEFAULT_QUERY_REF,
+    query: getLiveVersion ?? DEFAULT_QUERY_REF,
     args: {},
   });
 
   const deployment = result.status === "success" ? result.data : null;
-  const setupError =
-    result.status === "error" ? deploymentQuerySetupHelp(getCurrentDeployment) : null;
+  const setupError = result.status === "error" ? deploymentQuerySetupHelp(getLiveVersion) : null;
 
   const [initialDeploymentId, setInitialDeploymentId] = useState<string | null>(null);
   const [dismissedDeploymentId, setDismissedDeploymentId] = useState<string | null>(null);
 
   if (deployment && initialDeploymentId === null) {
-    setInitialDeploymentId(deployment.currentDeploymentId);
+    setInitialDeploymentId(deployment.versionId);
   }
 
   const updateAvailable = useMemo(() => {
     if (!deployment || initialDeploymentId === null) return false;
-    const hasNew = deployment.currentDeploymentId !== initialDeploymentId;
-    const isDismissed = deployment.currentDeploymentId === dismissedDeploymentId;
+    const hasNew = deployment.versionId !== initialDeploymentId;
+    const isDismissed = deployment.versionId === dismissedDeploymentId;
     return hasNew && !isDismissed;
   }, [deployment, initialDeploymentId, dismissedDeploymentId]);
 
@@ -73,7 +69,7 @@ export function useDeploymentUpdates(getCurrentDeployment?: DeploymentQueryRef) 
 
   const dismiss = () => {
     if (deployment) {
-      setDismissedDeploymentId(deployment.currentDeploymentId);
+      setDismissedDeploymentId(deployment.versionId);
     }
   };
 
@@ -101,9 +97,7 @@ function deploymentQuerySetupHelp(ref: DeploymentQueryRef | undefined): string {
     "",
     '  import { exposeDeploymentQuery } from "@samebase/convex-hosting";',
     '  import { components } from "./_generated/api";',
-    "  export const { getCurrentDeployment } = exposeDeploymentQuery(",
-    "    components.hosting,",
-    "  );",
+    "  export const { getLiveVersion } = exposeDeploymentQuery(components.hosting);",
   ].join("\n");
 }
 
@@ -117,22 +111,21 @@ function deploymentQuerySetupHelp(ref: DeploymentQueryRef | undefined): string {
  * ```
  */
 export function UpdateBanner({
-  getCurrentDeployment,
+  getLiveVersion,
   message = "A new version is available!",
   buttonText = "Reload",
   dismissable = true,
   className,
   style,
 }: {
-  getCurrentDeployment?: DeploymentQueryRef;
+  getLiveVersion?: DeploymentQueryRef;
   message?: string;
   buttonText?: string;
   dismissable?: boolean;
   className?: string;
   style?: CSSProperties;
 } = {}): JSX.Element | null {
-  const { updateAvailable, reload, dismiss, setupError } =
-    useDeploymentUpdates(getCurrentDeployment);
+  const { updateAvailable, reload, dismiss, setupError } = useDeploymentUpdates(getLiveVersion);
 
   if (setupError) {
     if (typeof console !== "undefined") {

@@ -5,45 +5,20 @@ import {
   type GenericDataModel,
   type HttpRouter,
 } from "convex/server";
-import { v, type GenericId } from "convex/values";
+import { v } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
-import {
-  cacheControlFor,
-  decodeRequestPath,
-  errorResponse,
-  etagMatches,
-  getMimeType,
-  getSetupHtml,
-  isHtmlContentType,
-} from "../component/serving.js";
-
-const deploymentInfoValidator = v.object({
-  _id: v.string(),
-  _creationTime: v.number(),
-  currentDeploymentId: v.string(),
-  deployedAt: v.number(),
-  spaFallback: v.optional(v.boolean()),
-});
-
-type CdnBaseUrl = string | ((request: Request) => string);
-
-/** The parts of an action context needed to serve a static file. */
-type AssetServingCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "storage">;
+import { notFound, serveRequest } from "../component/serving.js";
 
 /**
- * Register app-owned HTTP routes for the hosted site.
+ * Serve the live version from the app's HTTP router: a GET route for `pathPrefix` (default `/`).
+ * Exact app routes and longer prefixes stay ahead of it in Convex's router. With a prefix, upload
+ * with the same base path.
  *
- * Prefer mounting the component's own HTTP routes when it can own the URL
- * prefix. Use this compatibility mode when existing app HTTP routes must stay
- * at the same root. Exact app routes take precedence over this catch-all.
- * Assets and deployment state still live in the component.
+ * The version config decides the behavior: `html_handling`, `not_found_handling`, `_headers`, and
+ * `_redirects`. A request that the live version does not handle gets a 404 with `no-store`.
  *
  * @example
  * ```typescript
- * // convex/convex.config.ts
- * const app = defineApp();
- * app.use(hosting); // no httpPrefix: the app owns HTTP routing
- *
  * // convex/http.ts
  * const http = httpRouter();
  * auth.addHttpRoutes(http);
@@ -54,87 +29,30 @@ type AssetServingCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "st
 export function registerStaticRoutes(
   http: HttpRouter,
   component: ComponentApi,
-  {
-    pathPrefix = "/",
-    spaFallback,
-    cdnBaseUrl,
-  }: {
-    /** URL prefix where the app should serve static files. */
-    pathPrefix?: string;
-    /** Override the deployment's SPA fallback setting. */
-    spaFallback?: boolean;
-    /** Optional custom base URL for convex-fs blob redirects. */
-    cdnBaseUrl?: CdnBaseUrl;
-  } = {},
+  { pathPrefix = "/" }: { pathPrefix?: string } = {},
 ) {
   if (!pathPrefix.startsWith("/")) {
     throw new Error("pathPrefix must start with /");
   }
-
-  const normalizedPrefix = pathPrefix === "/" ? "" : pathPrefix.replace(/\/$/, "");
-
-  const serveStaticFile = httpActionGeneric(async (ctx, request) => {
-    const decodedPath = decodeRequestPath(new URL(request.url).pathname);
-    if (decodedPath === null) {
-      return errorResponse(400, "Bad Request");
-    }
-    let path = decodedPath;
-
-    if (normalizedPrefix && path.startsWith(normalizedPrefix)) {
-      path = path.slice(normalizedPrefix.length) || "/";
-    }
-    if (path === "" || path === "/") {
-      path = "/index.html";
-    }
-
-    const response = await serveAsset(ctx, component, request, path, {
-      spaFallback,
-      cdnBaseUrl,
-    });
-    if (response) return response;
-
-    if (path === "/index.html") {
-      return new Response(getSetupHtml(), {
-        status: 503,
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-          "Retry-After": "5",
-        },
-      });
-    }
-    return errorResponse(404, "Not Found");
-  });
-
-  http.route({
-    pathPrefix: pathPrefix === "/" ? "/" : `${normalizedPrefix}/`,
-    method: "GET",
-    handler: serveStaticFile,
-  });
-
-  if (normalizedPrefix) {
-    http.route({
-      path: normalizedPrefix,
-      method: "GET",
-      handler: serveStaticFile,
-    });
+  const handler = httpActionGeneric(
+    async (ctx, request) =>
+      (await serveRequest(ctx, component.lib.route, request, false, fetchBody)) ?? notFound(),
+  );
+  const prefix = pathPrefix.replace(/\/$/, "");
+  http.route({ pathPrefix: `${prefix}/`, method: "GET", handler });
+  if (prefix !== "") {
+    http.route({ path: prefix, method: "GET", handler });
   }
 }
 
 /**
- * Serve an uploaded static file from your own HTTP action, or return null when
- * no file matches so the action can continue with its own routing: server
- * rendering, prerendered pages, redirects.
+ * Serve an uploaded file from your own HTTP action, or return null when the live version does not
+ * handle the request, so the action can continue with its own routing: server rendering, APIs,
+ * redirects.
  *
- * Found files get the same response as `registerStaticRoutes`: content type,
- * cache headers, ETag revalidation, and legacy CDN redirects. A found file
- * whose storage can't be read gets a 500 response. A request path with
- * malformed percent-encoding matches no file, so it returns null.
- *
- * The lookup is exact by default. `/` is not mapped to `/index.html`, and there
- * is no SPA fallback, so the SPA shell never answers for a route your action
- * handles. To serve the shell, pass `{ path: "/index.html" }`. When your route
- * has a prefix, pass `path` with the prefix removed.
+ * The lookup is exact by default (`html_handling` and `not_found_handling` are "none"), so `/`
+ * reaches your action and no `index.html` is needed. Pass `exact: false` to use the modes of the
+ * version config.
  *
  * @example
  * ```typescript
@@ -153,141 +71,23 @@ export function registerStaticRoutes(
  * ```
  */
 export async function serveStaticAsset(
-  ctx: AssetServingCtx,
+  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery">,
   component: ComponentApi,
   request: Request,
-  {
-    path,
-    spaFallback = false,
-    cdnBaseUrl,
-  }: {
-    /**
-     * Decoded file path to look up, starting with `/`, such as
-     * `/about/index.html`. Defaults to the decoded request path.
-     */
-    path?: string;
-    /** Serve `/index.html` for a missing path without a file extension. */
-    spaFallback?: boolean;
-    /** Optional custom base URL for convex-fs blob redirects. */
-    cdnBaseUrl?: CdnBaseUrl;
-  } = {},
+  { exact = true }: { exact?: boolean } = {},
 ): Promise<Response | null> {
-  if (path !== undefined && !path.startsWith("/")) {
-    throw new Error("path must start with /");
-  }
-  const filePath = path ?? decodeRequestPath(new URL(request.url).pathname);
-  if (filePath === null) return null;
-  return await serveAsset(ctx, component, request, filePath, {
-    spaFallback,
-    cdnBaseUrl,
-  });
+  return await serveRequest(ctx, component.lib.route, request, exact, fetchBody);
 }
 
-export { decodeRequestPath };
-
-/**
- * Serve the uploaded file at `path` (decoded, relative to the mount prefix),
- * or return null when no file matches. An undefined `spaFallback` uses the
- * deployment's stored setting.
- */
-async function serveAsset(
-  ctx: AssetServingCtx,
-  component: ComponentApi,
-  request: Request,
-  path: string,
-  {
-    spaFallback,
-    cdnBaseUrl,
-  }: {
-    spaFallback: boolean | undefined;
-    cdnBaseUrl: CdnBaseUrl | undefined;
-  },
-): Promise<Response | null> {
-  const asset = await ctx.runQuery(component.lib.resolveAssetForHttp, {
-    path,
-    ...(spaFallback === undefined ? {} : { spaFallback }),
-  });
-  if (!asset) return null;
-
-  const contentType = asset.contentType || getMimeType(path);
-  const cacheControl = cacheControlFor(path);
-
-  if (asset.blobId && !isHtmlContentType(contentType)) {
-    const configuredBase = typeof cdnBaseUrl === "function" ? cdnBaseUrl(request) : cdnBaseUrl;
-    const baseUrl = configuredBase ?? `${new URL(request.url).origin}/fs/blobs`;
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: `${baseUrl.replace(/\/$/, "")}/${asset.blobId}`,
-        "Cache-Control": cacheControl,
-      },
-    });
-  }
-
-  // TODO(remove in a future major): v1→v2 transitional path. The file still
-  // lives in the app's own storage (a same-name migration inherited the v1
-  // row; see the component's resolveAssetForHttp). Serve it directly from app
-  // storage so the site stays up during migration with no re-upload. Once v1
-  // app-storage assets are no longer supported, delete this branch.
-  if (asset.appStorageId) {
-    if (asset.etag && etagMatches(request.headers.get("If-None-Match"), asset.etag)) {
-      return new Response(null, {
-        status: 304,
-        headers: { ETag: asset.etag, "Cache-Control": cacheControl },
-      });
-    }
-    const blob = await ctx.storage.get(asset.appStorageId as GenericId<"_storage">);
-    if (!blob) {
-      // The component surfaces appStorageId whenever it can't resolve a
-      // storage URL, which also covers a genuinely deleted file (the two are
-      // indistinguishable from the component). If it isn't in app storage
-      // either, treat it as missing, like an empty deployment, rather than
-      // erroring.
-      return null;
-    }
-    return new Response(blob, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": cacheControl,
-        ...(asset.etag ? { ETag: asset.etag } : {}),
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
-  }
-
-  if (!asset.storageUrl) {
-    return errorResponse(500, "Asset not available");
-  }
-
-  if (asset.etag && etagMatches(request.headers.get("If-None-Match"), asset.etag)) {
-    return new Response(null, {
-      status: 304,
-      headers: { ETag: asset.etag, "Cache-Control": cacheControl },
-    });
-  }
-
-  const storageResponse = await fetch(asset.storageUrl);
-  if (!storageResponse.ok || !storageResponse.body) {
-    return errorResponse(500, "Storage error");
-  }
-
-  return new Response(storageResponse.body, {
-    status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": cacheControl,
-      ...(asset.etag ? { ETag: asset.etag } : {}),
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+/** The component's storage is not the app's, so an app's action reads a file by its URL. */
+async function fetchBody({ storageUrl }: { storageUrl: string }) {
+  const response = await fetch(storageUrl);
+  return response.ok ? response.body : null;
 }
 
 /**
- * Expose a query that clients can subscribe to for live reload on deploy.
- * This is only needed if you use `UpdateBanner` / `useDeploymentUpdates` from
- * `@samebase/convex-hosting/react`. If you don't surface deployment updates
- * in your app, you don't need to call this.
+ * Expose the live version to clients, for `UpdateBanner` and `useDeploymentUpdates` from
+ * `@samebase/convex-hosting/react`. Only needed if you use them.
  *
  * @example
  * ```typescript
@@ -295,27 +95,15 @@ async function serveAsset(
  * import { exposeDeploymentQuery } from "@samebase/convex-hosting";
  * import { components } from "./_generated/api";
  *
- * export const { getCurrentDeployment } = exposeDeploymentQuery(
- *   components.hosting,
- * );
+ * export const { getLiveVersion } = exposeDeploymentQuery(components.hosting);
  * ```
  */
 export function exposeDeploymentQuery(component: ComponentApi) {
   return {
-    getCurrentDeployment: queryGeneric({
+    getLiveVersion: queryGeneric({
       args: {},
-      returns: v.union(deploymentInfoValidator, v.null()),
-      handler: async (ctx) => {
-        const deployment = await ctx.runQuery(component.lib.getCurrentDeployment, {});
-        if (!deployment) return null;
-        // Cleanup accounting is private component state. Returning it through
-        // this public wrapper would fail the narrower response validator.
-        const deploymentWithCleanup = deployment as typeof deployment & {
-          pendingBlobCleanupCount?: number;
-        };
-        const { pendingBlobCleanupCount: _pending, ...publicDeployment } = deploymentWithCleanup;
-        return publicDeployment;
-      },
+      returns: v.union(v.object({ versionId: v.string(), liveAt: v.number() }), v.null()),
+      handler: async (ctx) => await ctx.runQuery(component.lib.getLiveVersion, {}),
     }),
   };
 }

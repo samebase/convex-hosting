@@ -1,170 +1,58 @@
-// Pure, dependency-free helpers shared by the HTTP handler (http.ts) and the
-// asset-resolution query (lib.ts). Kept separate so lib.ts can reuse them
-// without importing the HTTP router.
+// The HTTP side of serving, shared by the component's own route (http.ts) and the app-side entry
+// points in src/client. The routing itself runs in the component's `route` query.
 
-const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".mjs": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".webp": "image/webp",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".txt": "text/plain; charset=utf-8",
-  ".map": "application/json",
-  ".webmanifest": "application/manifest+json",
-  ".xml": "application/xml",
-};
+import type { FunctionReference, GenericActionCtx, GenericDataModel } from "convex/server";
 
-export function getSetupHtml(): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Convex Hosting</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      max-width: 640px;
-      margin: 0 auto;
-      padding: 40px 20px;
-      background: #fafafa;
-      color: #333;
-      line-height: 1.6;
-    }
-    h1 { color: #111; margin-bottom: 8px; }
-    .subtitle { color: #666; margin-bottom: 32px; }
-    code {
-      background: #e8e8e8;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-    pre {
-      background: #1a1a1a;
-      color: #f0f0f0;
-      padding: 16px;
-      border-radius: 8px;
-      overflow-x: auto;
-      font-size: 14px;
-    }
-    .step { margin-bottom: 24px; }
-    .step-num {
-      display: inline-block;
-      background: #333;
-      color: white;
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      text-align: center;
-      font-size: 14px;
-      line-height: 24px;
-      margin-right: 8px;
-    }
-    a { color: #0070f3; }
-  </style>
-</head>
-<body>
-  <h1>Almost there!</h1>
-  <p class="subtitle">Your Convex backend is running, but no static files have been deployed yet.</p>
+type Header = { name: string; value: string };
 
-  <div class="step">
-    <span class="step-num">1</span>
-    <strong>Build your frontend</strong>
-    <pre>npm run build</pre>
-  </div>
+/** What `route` returns for a body: the selected entry's object. */
+type RoutedBody = { storageId: string; storageUrl: string; contentType: string };
 
-  <div class="step">
-    <span class="step-num">2</span>
-    <strong>Deploy your static files</strong>
-    <pre>npx @samebase/convex-hosting deploy</pre>
-  </div>
-
-  <p>Or deploy everything in one command:</p>
-  <pre>npm run deploy</pre>
-
-  <p style="margin-top: 32px; color: #666; font-size: 14px;">
-    Learn more at <a href="https://github.com/samebase/convex-hosting">github.com/samebase/convex-hosting</a>
-  </p>
-</body>
-</html>`;
-}
-
-export function getMimeType(path: string): string {
-  const ext = path.substring(path.lastIndexOf(".")).toLowerCase();
-  return MIME_TYPES[ext] || "application/octet-stream";
-}
-
-export function hasFileExtension(path: string): boolean {
-  const lastSegment = path.split("/").pop() || "";
-  return lastSegment.includes(".") && !lastSegment.startsWith(".");
-}
-
-// Bundler content-hash suffix: e.g. `index-lj_vq_aF.js`,
-// `index-D3LP-ukt.js`, or `style-B71cUw87.css`. Requiring at least one
-// non-letter avoids treating ordinary names such as `privacy-policy.html` as
-// content-addressed assets.
-export function isHashedAsset(path: string): boolean {
-  const match = path.match(/[-.]([\dA-Za-z_-]{6,32})\.[A-Za-z\d]+$/);
-  return match !== null && /[\d_-]/.test(match[1]);
-}
-
-export function isHtmlContentType(contentType: string): boolean {
-  return contentType.startsWith("text/html");
-}
-
-export function cacheControlFor(path: string): string {
-  return !path.toLowerCase().endsWith(".html") && isHashedAsset(path)
-    ? "public, max-age=31536000, immutable"
-    : "public, max-age=0, must-revalidate";
-}
+/** `api.lib.route` in the component, or the component's `lib.route` in an app. */
+type RouteQuery<Body extends RoutedBody> = FunctionReference<
+  "query",
+  "public" | "internal",
+  { method: "GET" | "HEAD"; url: string; headers: Header[]; exact: boolean },
+  { handled: false } | { handled: true; status: number; headers: Header[]; body: Body | null }
+>;
 
 /**
- * A plain-text response sent when no uploaded file answers. Without
- * `no-store`, Cloudflare in front of `*.convex.site` caches it for paths with a
- * static extension, so a missing file stays a cached 404 after it is uploaded.
+ * Route `request` through the component and build the response, or return null when the live
+ * version does not handle it. `read` returns the body of the selected entry, or null when storage
+ * does not have it.
  */
-export function errorResponse(status: number, body: string): Response {
+export async function serveRequest<Body extends RoutedBody>(
+  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery">,
+  route: RouteQuery<Body>,
+  request: Request,
+  exact: boolean,
+  read: (body: Body) => Promise<BodyInit | null>,
+): Promise<Response | null> {
+  const result = await ctx.runQuery(route, {
+    // Convex routes HEAD requests through GET routes, so no other method arrives here.
+    method: request.method === "HEAD" ? "HEAD" : "GET",
+    url: request.url,
+    headers: Array.from(request.headers, ([name, value]) => ({ name, value })),
+    exact,
+  });
+  if (!result.handled) return null;
+  const headers = new Headers(
+    result.headers.map(({ name, value }): [string, string] => [name, value]),
+  );
+  if (result.body === null) return new Response(null, { status: result.status, headers });
+  const body = await read(result.body);
+  if (body === null) return textResponse(500, "Storage error");
+  return new Response(body, { status: result.status, headers });
+}
+
+/** The response of a static route for a request that the live version does not handle. */
+export function notFound() {
+  return textResponse(404, "Not Found");
+}
+
+function textResponse(status: number, body: string) {
   return new Response(body, {
     status,
     headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" },
-  });
-}
-
-/**
- * Decode the URL pathname before looking it up in the asset table. A malformed
- * escape sequence is a bad request, not a missing static asset.
- */
-export function decodeRequestPath(pathname: string): string | null {
-  try {
-    return decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * If-None-Match uses weak comparison for GET and HEAD requests. Browsers and
- * proxies may send a weak validator or a comma-separated list of validators.
- */
-export function etagMatches(ifNoneMatch: string | null, currentEtag: string): boolean {
-  if (!ifNoneMatch) return false;
-
-  const normalize = (value: string) => value.trim().replace(/^W\//, "").trim();
-  const normalizedCurrent = normalize(currentEtag);
-
-  return ifNoneMatch.split(",").some((candidate) => {
-    const normalizedCandidate = normalize(candidate);
-    return normalizedCandidate === "*" || normalizedCandidate === normalizedCurrent;
   });
 }
