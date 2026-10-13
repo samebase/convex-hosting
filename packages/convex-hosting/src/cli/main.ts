@@ -139,6 +139,8 @@ async function deploy(cli: Cli, options: Options, build: string) {
     flags: deploymentFlags(cli, options.previewName, true),
   };
   const versionId = randomUUID();
+  // A build that typechecks `convex/` on a new project needs the module that `http.ts` imports.
+  writeVersionFile(cli, versionId);
   const marker = join(cli.cwd, FIRST_INSTALL_MARKER);
   rmSync(marker, { force: true });
 
@@ -149,7 +151,7 @@ async function deploy(cli: Cli, options: Options, build: string) {
     fileURLToPath(new URL("./index.js", import.meta.url)),
     "upload",
     "--dist",
-    options.dist,
+    resolve(cli.cwd, options.dist),
     "--version-id",
     versionId,
     "--html-handling",
@@ -163,9 +165,11 @@ async function deploy(cli: Cli, options: Options, build: string) {
     .map(quote)
     .join(" ");
 
+  // The build runs in a subshell, so a `cd` inside it does not move the upload.
+  const subshell = process.platform === "win32" ? `cmd /c "${build}"` : `(${build})`;
   // The lock stays alive through the build and the push, when no other call refreshes it.
   const exitCode = await withHeartbeat(cli, target, versionId, () =>
-    cli.convexInherited(["deploy", "--cmd", `${build} && ${innerUpload}`, ...previewFlags]),
+    cli.convexInherited(["deploy", "--cmd", `${subshell} && ${innerUpload}`, ...previewFlags]),
   );
 
   const firstInstall = existsSync(marker);

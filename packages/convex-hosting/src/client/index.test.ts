@@ -72,15 +72,19 @@ describe("serveAsset", () => {
     const missing = await serve("/", "v3");
     expect(missing?.status).toBe(404);
     expect(missing?.body).toContain("v3");
+    expect(missing?.cacheControl).toBe("no-store");
     const uploading = await serve("/", "v2");
     expect(uploading?.status).toBe(404);
     expect(uploading?.body).toContain("v2");
+    expect(uploading?.cacheControl).toBe("no-store");
   });
 
   test("answers 404 when storage no longer has the file, and 502 for other failures", async () => {
     const serve = await setup();
     vi.stubGlobal("fetch", async () => new Response(null, { status: 404 }));
-    expect((await serve("/"))?.status).toBe(404);
+    const deleted = await serve("/");
+    expect(deleted?.status).toBe(404);
+    expect(deleted?.cacheControl).toBe("no-store");
 
     vi.stubGlobal("fetch", async () => new Response(null, { status: 500 }));
     const failed = await serve("/");

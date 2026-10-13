@@ -22,7 +22,10 @@ export async function serveAsset(
   });
   if (state !== "ready") {
     const problem = state === null ? "does not exist" : "is still uploading";
-    return new Response(`Version ${versionId} of the site ${problem}.`, { status: 404 });
+    return new Response(`Version ${versionId} of the site ${problem}.`, {
+      status: 404,
+      headers: NO_STORE,
+    });
   }
   if (asset === null) return null;
 
@@ -38,7 +41,7 @@ export async function serveAsset(
     return badGateway();
   }
   // A deploy deleted the file between the query and the fetch.
-  if (stored.status === 404) return new Response(null, { status: 404 });
+  if (stored.status === 404) return new Response(null, { status: 404, headers: NO_STORE });
   if (!stored.ok) return badGateway();
   return new Response(stored.body, { status: asset.status, headers });
 }
@@ -59,6 +62,13 @@ function handlerHeaders(headers: Headers): Record<string, string> {
   return picked;
 }
 
+/**
+ * For the answers that no uploaded file gives. The deployment's Cloudflare front caches 404 answers
+ * on static paths, so without it a script requested seconds before its upload ended would stay
+ * missing for hours (the 0.3.2 incident in CHANGELOG.md).
+ */
+const NO_STORE = { "Cache-Control": "no-store" };
+
 function badGateway() {
-  return new Response(null, { status: 502, headers: { "Cache-Control": "no-store" } });
+  return new Response(null, { status: 502, headers: NO_STORE });
 }

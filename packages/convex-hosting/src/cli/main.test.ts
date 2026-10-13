@@ -1,5 +1,6 @@
 // @vitest-environment node
 // The CLI runs in Node; the edge-runtime environment of the other tests has no `process.execPath`.
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -100,7 +101,7 @@ async function withTimers<T>(promise: Promise<T>): Promise<T> {
 /** Runs the upload that `deploy` put in `--cmd`, the way the shell would. */
 function innerUpload(cli: Cli, args: string[]) {
   const command = args[args.indexOf("--cmd") + 1];
-  const quoted = [...command.slice(command.indexOf("&&")).matchAll(/'([^']*)'/g)];
+  const quoted = [...command.slice(command.lastIndexOf("&&")).matchAll(/'([^']*)'/g)];
   return main(
     quoted.slice(2).map(([, arg]) => arg),
     cli,
@@ -258,20 +259,54 @@ describe("upload", () => {
 describe("deploy", () => {
   test("runs the build and the upload inside npx convex deploy, then finishDeploy", async () => {
     const cwd = app(site);
-    const { cli, pushes, runs, callArgs } = fake(cwd, { push: innerUpload });
+    let beforeBuild: string | undefined;
+    const { cli, pushes, runs, callArgs } = fake(cwd, {
+      push: async (cli, args) => {
+        beforeBuild = writtenVersionId(cwd);
+        return await innerUpload(cli, args);
+      },
+    });
     expect(await main(["deploy", "--build", "vite build", "--dist", "dist"], cli)).toBe(0);
 
     expect(pushes).toHaveLength(1);
     expect(pushes[0].slice(0, 2)).toEqual(["deploy", "--cmd"]);
     expect(pushes[0][2]).toMatch(
-      /^vite build && '.+' '.+' 'upload' '--dist' 'dist' '--version-id' '/,
+      /^\(vite build\) && '.+' '.+' 'upload' '--dist' '[^']+' '--version-id' '/,
     );
+    expect(pushes[0][2]).toContain(`'--dist' '${join(cwd, "dist")}'`);
     // Without a deploy key, `npx convex deploy` goes to production, so every run gets --prod.
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
     const versionId = writtenVersionId(cwd);
+    // The version file has the deploy's id before the build runs.
+    expect(beforeBuild).toBe(versionId);
     expect(callArgs("lib:startVersion")[0].versionId).toBe(versionId);
     expect(callArgs("lib:finishDeploy")).toEqual([{ versionId, pushed: true }]);
   });
+
+  test.skipIf(process.platform === "win32")(
+    "a build that changes directory does not move the upload",
+    async () => {
+      const cwd = app(site);
+      const { cli, callArgs } = fake(cwd, {
+        push: async (cli, args) => {
+          // The shell runs the build, then the upload in the directory where the build left it.
+          const command = args[args.indexOf("--cmd") + 1];
+          const build = command.slice(0, command.lastIndexOf("&&"));
+          const shellCwd = execFileSync("/bin/sh", ["-c", `${build} && pwd`], {
+            cwd,
+            encoding: "utf8",
+          }).trim();
+          return await innerUpload({ ...cli, cwd: shellCwd }, args);
+        },
+      });
+      expect(await main(["deploy", "--build", "cd dist", "--dist", "dist"], cli)).toBe(0);
+      expect(callArgs("lib:startVersion")).toHaveLength(1);
+      expect(existsSync(join(cwd, "dist", VERSION_FILE))).toBe(false);
+      expect(callArgs("lib:finishDeploy")).toEqual([
+        { versionId: writtenVersionId(cwd), pushed: true },
+      ]);
+    },
+  );
 
   test("on a first install, uploads after the push", async () => {
     const cwd = app(site);

@@ -81,7 +81,8 @@ The deployment is the one that `npx convex deploy` selects: the deployment of `C
 project's preview deploy key), or else production.
 
 The first deploy to a deployment pushes the component, then uploads the files. Until that upload
-ends, the site answers 404.
+ends, the site answers 404. The deploy lock does not protect this first deploy, because the
+component does not exist yet: run the first deploy of a deployment once, alone.
 
 Two deploys at once: the second one stops with
 `A deploy of version <id> is in progress: it refreshed the lock <n> seconds ago.` Try again when the
