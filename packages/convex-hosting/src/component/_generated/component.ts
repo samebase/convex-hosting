@@ -47,7 +47,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             status: number;
           };
           newestLiveAt: number | null;
-          state: "uploading" | "ready" | "live" | null;
+          state: "uploading" | "ready" | "live" | "deleting" | null;
         },
         Name
       >;

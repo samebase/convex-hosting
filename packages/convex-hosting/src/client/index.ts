@@ -5,9 +5,10 @@ import type { ComponentApi } from "../component/_generated/component.js";
  * Answers `request` with the asset of version `versionId` that Cloudflare's asset handler picks.
  *
  * Returns `null` when no asset matches, so the app continues (a static site answers 404, a
- * server-rendered site renders the page). A version that does not exist or is still uploading
- * answers 404, so a half-installed site does not render pages without their files. The first
- * request for a `ready` version marks it live, which deletes the versions that were live before it.
+ * server-rendered site renders the page). A version that does not exist, is still uploading, or
+ * is being deleted answers 404, so a half-installed site does not render pages without their
+ * files. The first request for a `ready` version marks it live, which deletes the versions that
+ * were live before it.
  */
 export async function serveAsset(
   ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
@@ -21,8 +22,13 @@ export async function serveAsset(
     url: request.url,
     headers: handlerHeaders(request.headers),
   });
-  if (state === null || state === "uploading") {
-    const problem = state === null ? "does not exist" : "is still uploading";
+  if (state === null || state === "uploading" || state === "deleting") {
+    const problem =
+      state === null
+        ? "does not exist"
+        : state === "uploading"
+          ? "is still uploading"
+          : "is being deleted";
     return new Response(`Version ${versionId} of the site ${problem}.`, {
       status: 404,
       headers: NO_STORE,

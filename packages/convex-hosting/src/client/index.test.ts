@@ -60,7 +60,7 @@ async function setup() {
         )?.state.kind,
     );
   const finish = () => t.finishAllScheduledFunctions(vi.runAllTimers);
-  return { serve, state, finish };
+  return { t, serve, state, finish };
 }
 
 afterEach(() => {
@@ -105,6 +105,23 @@ describe("serveAsset", () => {
 
   test("returns null when no asset matches", async () => {
     expect((await (await setup()).serve("/missing")).response).toBeNull();
+  });
+
+  test("answers 404 for a version that is being deleted, and does not mark it", async () => {
+    const { t, serve } = await setup();
+    await t.run(async (ctx) => {
+      const version = await ctx.db
+        .query("versions")
+        .withIndex("by_versionId", (q) => q.eq("versionId", "v1"))
+        .unique();
+      if (version !== null)
+        await ctx.db.patch("versions", version._id, { state: { kind: "deleting" } });
+    });
+    const deleting = await serve("/");
+    expect(deleting.response?.status).toBe(404);
+    expect(deleting.response?.body).toBe("Version v1 of the site is being deleted.");
+    expect(deleting.response?.cacheControl).toBe("no-store");
+    expect(deleting.mutations).toBe(0);
   });
 
   test("answers 404 naming a version that does not exist or is uploading", async () => {

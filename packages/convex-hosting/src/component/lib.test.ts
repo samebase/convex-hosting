@@ -261,6 +261,27 @@ describe("markLive", () => {
     expect((await liveness(t)).versions).toEqual({ a: "live" });
   });
 
+  test("a mark in the same millisecond as the newest is still strictly newer", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    await uploadVersion(t, "b", site);
+    // The clock does not move between the two marks.
+    await markLive(t, "b");
+    await markLive(t, "a");
+    const at = (versionId: string) =>
+      t.run(async (ctx) => {
+        const version = await ctx.db
+          .query("versions")
+          .withIndex("by_versionId", (q) => q.eq("versionId", versionId))
+          .unique();
+        return version?.state.kind === "live" ? version.state.at : null;
+      });
+    expect(await at("a")).toBe(Date.now() + 1);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await liveness(t)).versions).toEqual({ a: "live" });
+  });
+
   test("two first requests of one version mark it live once", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
@@ -357,7 +378,7 @@ describe("collect", () => {
     expect(await pendingSteps(t)).toEqual([]);
   });
 
-  test("deletes the entries of a large version in batches of 1,000", async () => {
+  test("deletes the entries of a large version in batches of 1,000, and it is never marked live between them", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await createVersion(t, "large");
@@ -366,13 +387,23 @@ describe("collect", () => {
       versionId: "large",
       entries: Array.from({ length: 1001 }, (_, i) => ({ ...entry, path: `/${i}.txt` })),
     });
+    await t.mutation(internal.lib.finishVersion, { versionId: "large" });
     vi.advanceTimersByTime(DAY + 1);
 
     await t.mutation(internal.lib.collect, { step: { kind: "versions" } });
     const after = await tables(t);
-    expect(after.versions).toEqual([["large", "uploading"]]);
+    expect(after.versions).toEqual([["large", "deleting"]]);
     expect(after.entries).toHaveLength(1);
-    // The next call reads the same version again.
+    // A request between the pages answers 404 and cannot mark the version live.
+    expect(await route(t, "large", "/0.txt")).toEqual({
+      state: "deleting",
+      newestLiveAt: null,
+      asset: null,
+    });
+    await expect(
+      t.mutation(api.lib.markLive, { versionId: "large", expectedNewestLiveAt: null }),
+    ).rejects.toThrow("Version large is being deleted.");
+    // The next call reads the same version again and ends it.
     expect(await pendingSteps(t)).toEqual([{ kind: "versions" }]);
     await runNext(t);
     expect(await tables(t)).toMatchObject({ versions: [], entries: [] });

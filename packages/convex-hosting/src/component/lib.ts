@@ -41,9 +41,9 @@ const VERSION_PAGE = 8;
  * Entries that one `collect` call deletes, without their stored files, across the versions of its
  * page. Entries below 4 KiB read and delete at most 4 MiB, which, with the 9 MiB of version
  * documents, keeps a call at 13 MiB of the 16 MiB read limit and, with the 8 version rows it may
- * delete, at 12 MiB written. Documents read: at most 1,009 of 32,000. Index ranges: `by_live`, the
- * page, and one range of entries per version, at most 10 of 4,096. Writes: at most 1,000 entries,
- * 8 versions, and the next call, 1,009 of 16,000.
+ * delete and the one it may mark `deleting`, at 13 MiB written. Documents read: at most 1,009 of
+ * 32,000. Index ranges: `by_live`, the page, and one range of entries per version, at most 10 of
+ * 4,096. Writes: at most 1,000 entries, 8 versions, and the next call, 1,009 of 16,000.
  */
 const DELETE_BATCH = 1000;
 
@@ -254,8 +254,14 @@ export const markLive = mutation({
     if (version.state.kind === "uploading") {
       throw new ConvexError(`Version ${versionId} is still uploading.`);
     }
-    if ((await getNewestLiveAt(ctx)) !== expectedNewestLiveAt) return null;
-    await ctx.db.patch("versions", version._id, { state: { kind: "live", at: Date.now() } });
+    if (version.state.kind === "deleting") {
+      throw new ConvexError(`Version ${versionId} is being deleted.`);
+    }
+    const newestLiveAt = await getNewestLiveAt(ctx);
+    if (newestLiveAt !== expectedNewestLiveAt) return null;
+    // Strictly newer than the newest, also within one millisecond, so that `collect` deletes it.
+    const at = newestLiveAt === null ? Date.now() : Math.max(Date.now(), newestLiveAt + 1);
+    await ctx.db.patch("versions", version._id, { state: { kind: "live", at } });
     await ctx.scheduler.runAfter(0, internal.lib.collect, { step: { kind: "files" } });
     return null;
   },
@@ -326,10 +332,12 @@ export const collect = internalMutation({
     let budget = DELETE_BATCH;
     let finished = after;
     for (const version of page) {
+      const { state } = version;
       const garbage =
-        version.state.kind === "live"
-          ? currentAt !== null && version.state.at < currentAt
-          : version._creationTime < garbageBefore;
+        state.kind === "deleting" ||
+        (state.kind === "live"
+          ? currentAt !== null && state.at < currentAt
+          : version._creationTime < garbageBefore);
       if (garbage) {
         const entries = await ctx.db
           .query("entries")
@@ -337,7 +345,11 @@ export const collect = internalMutation({
           .take(budget);
         for (const entry of entries) await ctx.db.delete("entries", entry._id);
         if (entries.length === budget) {
-          // The version may have more entries: the next call reads it again.
+          // The version may have more entries: the next call reads it again. Until its row goes,
+          // it is `deleting`, so that no request serves it or marks it live between the pages.
+          if (state.kind !== "deleting") {
+            await ctx.db.patch("versions", version._id, { state: { kind: "deleting" } });
+          }
           await ctx.scheduler.runAfter(0, internal.lib.collect, {
             step: { kind: "versions", after: finished },
           });
@@ -364,12 +376,18 @@ const routeHeaders = v.record(v.string(), v.string());
  * version's state, or `null` when the version does not exist. `newestLiveAt` is, for a `ready`
  * version, the `at` of the newest live version that this query saw, which `serveAsset` passes to
  * `markLive`; otherwise `null`, and a live version's requests read nothing more. `asset` is
- * `null` when the version is still uploading or does not exist, or when no asset answers.
+ * `null` when the version is uploading, being deleted, or does not exist, or when no asset answers.
  */
 export const route = query({
   args: { versionId: v.string(), method: v.string(), url: v.string(), headers: routeHeaders },
   returns: v.object({
-    state: v.union(v.literal("uploading"), v.literal("ready"), v.literal("live"), v.null()),
+    state: v.union(
+      v.literal("uploading"),
+      v.literal("ready"),
+      v.literal("live"),
+      v.literal("deleting"),
+      v.null(),
+    ),
     newestLiveAt: v.union(v.number(), v.null()),
     asset: v.union(
       v.null(),
@@ -385,7 +403,9 @@ export const route = query({
     const version = await getVersion(ctx, versionId);
     if (version === null) return { state: null, newestLiveAt: null, asset: null };
     const state = version.state.kind;
-    if (state === "uploading") return { state, newestLiveAt: null, asset: null };
+    if (state === "uploading" || state === "deleting") {
+      return { state, newestLiveAt: null, asset: null };
+    }
     const newestLiveAt = state === "ready" ? await getNewestLiveAt(ctx) : null;
 
     const configuration = normalizeConfiguration({

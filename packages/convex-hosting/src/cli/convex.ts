@@ -110,13 +110,14 @@ export function deploymentSelector(cli: Cli, destination: Destination): string[]
 export type Target = { component: string; flags: string[] };
 
 /**
- * Whether the deployment has the component instance. This probe exists because a function run
- * against a missing component answers a generic `InternalServerError` ("Your request couldn't be
- * completed"), while the Convex CLI's own component lookup for `--inline-query` prints
- * `Component path "<name>" was not found.` The probe is an inline query that reads nothing. Any
- * other failure is an error.
+ * Probes whether the deployment has the component instance: `undefined` when it has it, and the
+ * Convex CLI's output when it does not, which lists the components the deployment has. This probe
+ * exists because a function run against a missing component answers a generic
+ * `InternalServerError` ("Your request couldn't be completed"), while the Convex CLI's own
+ * component lookup for `--inline-query` prints `Component path "<name>" was not found.` The probe
+ * is an inline query that reads nothing. Any other failure is an error.
  */
-export async function hasComponent(cli: Cli, target: Target): Promise<boolean> {
+export async function probeComponent(cli: Cli, target: Target): Promise<string | undefined> {
   const { exitCode, stdout, stderr } = await cli.convex([
     "run",
     "--component",
@@ -125,10 +126,9 @@ export async function hasComponent(cli: Cli, target: Target): Promise<boolean> {
     "null",
     ...target.flags,
   ]);
-  if (exitCode === 0) return true;
-  if (`${stderr}\n${stdout}`.includes(`Component path "${target.component}" was not found.`)) {
-    return false;
-  }
+  if (exitCode === 0) return undefined;
+  const output = `${stderr}\n${stdout}`.trim();
+  if (output.includes(`Component path "${target.component}" was not found.`)) return output;
   throw new Error(stderr.trim() || stdout.trim() || `npx convex run exited with ${exitCode}.`);
 }
 

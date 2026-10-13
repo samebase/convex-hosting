@@ -1,14 +1,23 @@
 // @vitest-environment node
 // The CLI runs in Node; the edge-runtime environment of the other tests has no `process.execPath`.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { deploymentSelector, type Cli } from "./convex.js";
 import { main, VERSION_FILE } from "./main.js";
 
-const MISSING = `✖ Component path "hosting" was not found.\n\nThis deployment has no mounted components.`;
+/** What `npx convex run --component <name> --inline-query` prints when the component is missing. */
+const missing = (component: string) =>
+  `✖ Component path "${component}" was not found.\n\nThis deployment has no mounted components.`;
 
 /** An app directory with `convex/` and the given files. */
 function app(files: Record<string, string>) {
@@ -57,7 +66,7 @@ function fake(
         events.push("probe");
         return (options.installed?.() ?? true)
           ? ok(null)
-          : { exitCode: 1, stdout: "", stderr: MISSING };
+          : { exitCode: 1, stdout: "", stderr: missing(args[args.indexOf("--component") + 1]) };
       }
       events.push(args[3]);
       const fnArgs = JSON.parse(args[4]);
@@ -128,6 +137,18 @@ const DEV = [...DEPLOY, "--dev"];
 /** A selector flag in any Convex command. */
 const selectors = (commands: string[][]) =>
   commands.flat().filter((arg) => arg === "--prod" || arg === "--preview-name");
+
+describe("help", () => {
+  test("no arguments, --help, and -h print the usage and exit 0", async () => {
+    for (const args of [[], ["--help"], ["-h"], ["deploy", "--help"]]) {
+      const { cli, logs, events } = fake(app(site));
+      expect(await main(args, cli)).toBe(0);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatch(/^Usage:\n {2}convex-hosting deploy/);
+      expect(events).toEqual([]);
+    }
+  });
+});
 
 describe("deploy --dev", () => {
   test("builds, uploads, writes the version file, pushes with npx convex run --push, and ends", async () => {
@@ -270,6 +291,14 @@ describe("deploy", () => {
     expect(runs.every((args) => args.slice(-2).join(" ") === "--preview-name pr-7")).toBe(true);
   });
 
+  test("names the probe's output when the push did not install the component", async () => {
+    const { cli, logs } = fake(app(site), { installed: () => false, push: innerUpload });
+    expect(await main([...DEPLOY, "--component", "hostin"], cli)).toBe(1);
+    const message = logs[logs.length - 1];
+    expect(message).toContain('The component "hostin" is not installed after the push.');
+    expect(message).toContain("This deployment has no mounted components.");
+  });
+
   test("passes no selector to a self-hosted deployment", async () => {
     const env = { CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:3210" };
     const { cli, pushes, runs } = fake(app(site), { env, push: innerUpload });
@@ -354,6 +383,28 @@ describe("upload", () => {
     expect(uploaded.entries.map((entry: { path: string }) => entry.path)).toEqual([
       "/assets/app.js",
     ]);
+  });
+
+  test("follows a symbolic link to a file, and skips a link to nothing", async () => {
+    const cwd = app({ "dist/index.html": "<h1>Home</h1>", "shared/logo.svg": "<svg/>" });
+    symlinkSync(join(cwd, "shared", "logo.svg"), join(cwd, "dist", "logo.svg"));
+    symlinkSync(join(cwd, "missing.txt"), join(cwd, "dist", "gone.txt"));
+    const { cli, callArgs, logs } = fake(cwd);
+    expect(await main(upload(), cli)).toBe(0);
+    const [{ entries }] = callArgs("lib:recordFiles");
+    expect(entries.map((entry: { path: string }) => entry.path).sort()).toEqual([
+      "/index.html",
+      "/logo.svg",
+    ]);
+    expect(logs).toContain(`Skipped ${join(cwd, "dist", "gone.txt")}: a symbolic link to nothing.`);
+  });
+
+  test("names a --dist folder that does not exist", async () => {
+    const cwd = app(site);
+    const { cli, logs, runs } = fake(cwd);
+    expect(await main(["upload", "--dist", "build", "--version-id", "v1"], cli)).toBe(1);
+    expect(logs[logs.length - 1]).toBe(`The --dist folder ${join(cwd, "build")} does not exist.`);
+    expect(runs).toEqual([]);
   });
 
   test("requires --version-id: it is the step inside deploy", async () => {

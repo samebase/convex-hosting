@@ -13,6 +13,8 @@ export default defineSchema({
       v.object({ kind: v.literal("uploading") }),
       v.object({ kind: v.literal("ready") }),
       v.object({ kind: v.literal("live"), at: v.number() }),
+      /** `collect` deletes its entries in pages; it never becomes live again. */
+      v.object({ kind: v.literal("deleting") }),
     ),
     /**
      * The JSON of Cloudflare's `AssetConfig`. A string, because `redirects.staticRules` has one

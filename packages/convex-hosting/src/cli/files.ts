@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { Config } from "../component/lib.js";
 import {
@@ -46,18 +46,26 @@ export async function readDist(
   handling: HandlingOptions,
   log: (message: string) => void,
 ): Promise<{ config: Config; entries: DistEntry[] }> {
+  if (!existsSync(dist)) throw new Error(`The --dist folder ${dist} does not exist.`);
   const { assetsIgnoreFunction } = await createAssetsIgnoreFunction(dist);
   const entries: DistEntry[] = [];
 
   const walk = (directory: string) => {
-    for (const dirent of readdirSync(directory, { withFileTypes: true })) {
-      const file = join(directory, dirent.name);
+    for (const name of readdirSync(directory)) {
+      const file = join(directory, name);
+      // A symbolic link counts as what it points to, as in Wrangler, which reads each path with
+      // `stat`. A name that `readdir` lists and `stat` cannot find is a link to nothing.
+      const stats = statSync(file, { throwIfNoEntry: false });
+      if (stats === undefined) {
+        log(`Skipped ${file}: a symbolic link to nothing.`);
+        continue;
+      }
       // `ignore` takes paths relative to `dist` with `/`, and a directory with a trailing `/`.
       const ignorePath = relative(dist, file).replaceAll("\\", "/");
-      if (dirent.isDirectory()) {
+      if (stats.isDirectory()) {
         // An ignored directory is not walked: gitignore rules cannot re-include a file in it.
         if (!assetsIgnoreFunction(`${ignorePath}/`)) walk(file);
-      } else if (dirent.isFile() && !assetsIgnoreFunction(ignorePath)) {
+      } else if (stats.isFile() && !assetsIgnoreFunction(ignorePath)) {
         const bytes = readFileSync(file);
         // Cloudflare's limit per asset, 25 MiB. The HTTP action that serves a file cannot answer
         // more than Convex's 100 MiB response limit anyway.

@@ -9,7 +9,7 @@ import type { Id } from "../component/_generated/dataModel.js";
 import { AssetConfigSchema } from "../workers-shared/utils/types.js";
 import {
   deploymentSelector,
-  hasComponent,
+  probeComponent,
   runComponent,
   type Cli,
   type Destination,
@@ -26,7 +26,8 @@ Options:
   --html-handling <value>       auto-trailing-slash (default), force-trailing-slash,
                                 drop-trailing-slash, or none
   --not-found-handling <value>  none (default), single-page-application, or 404-page
-  --component <name>            the component instance (default: hosting)`;
+  --component <name>            the component instance (default: hosting)
+  -h, --help                    this text`;
 
 /**
  * The CLI's state folder at the project root, like Wrangler's `.wrangler/`. It holds its own
@@ -69,6 +70,7 @@ type Options = HandlingOptions & {
 };
 
 type Command =
+  | { name: "help" }
   | { name: "deploy"; build: string; options: Options }
   | { name: "upload"; versionId: string; options: Options };
 
@@ -86,8 +88,10 @@ function parseCommand(args: string[]): Command {
       "not-found-handling": { type: "string", default: "none" },
       component: { type: "string", default: "hosting" },
       "version-id": { type: "string" },
+      help: { type: "boolean", short: "h", default: false },
     },
   });
+  if (args.length === 0 || values.help) return { name: "help" };
   const [name, ...rest] = positionals;
   if ((name !== "deploy" && name !== "upload") || rest.length > 0) throw new Error(USAGE);
   if (values.dist === undefined) throw new Error(`--dist is required.\n\n${USAGE}`);
@@ -131,7 +135,9 @@ function parseCommand(args: string[]): Command {
 export async function main(args: string[], cli: Cli): Promise<number> {
   try {
     const command = parseCommand(args);
-    if (command.name === "deploy") {
+    if (command.name === "help") {
+      cli.log(USAGE);
+    } else if (command.name === "deploy") {
       await deploy(cli, command.options, command.build);
     } else {
       await uploadInsideDeploy(cli, command.options, command.versionId);
@@ -183,11 +189,11 @@ async function deployDev(
 ) {
   const buildExitCode = await cli.shell(build);
   if (buildExitCode !== 0) throw new Error(`The build failed with exit code ${buildExitCode}.`);
-  const uploaded = await upload(cli, options, target, versionId);
-  if (!uploaded) cli.log(notInstalledYet(options.component));
+  const missing = await upload(cli, options, target, versionId);
+  if (missing !== undefined) cli.log(notInstalledYet(options.component));
   const exitCode = await cli.convexInherited(["run", "--push", "--inline-query", "null"]);
   if (exitCode !== 0) throw new Error(`npx convex run --push failed with exit code ${exitCode}.`);
-  if (!uploaded) await uploadAfterPush(cli, options, target, versionId);
+  if (missing !== undefined) await uploadAfterPush(cli, options, target, versionId);
 }
 
 /** Production or a preview: the build and the upload run inside `npx convex deploy --cmd`. */
@@ -242,7 +248,7 @@ async function uploadInsideDeploy(cli: Cli, options: Options, versionId: string)
     component: options.component,
     flags: deploymentSelector(cli, options.destination),
   };
-  if (!(await upload(cli, options, target, versionId))) {
+  if ((await upload(cli, options, target, versionId)) !== undefined) {
     writeStateFile(cli, FIRST_INSTALL_MARKER, "");
     cli.log(notInstalledYet(options.component));
   }
@@ -252,23 +258,28 @@ function notInstalledYet(component: string) {
   return `The component "${component}" is not installed yet. The push installs it, and the upload runs after the push.`;
 }
 
+/** The upload of a first install, after the push. The probe's output shows a mistyped `--component`. */
 async function uploadAfterPush(cli: Cli, options: Options, target: Target, versionId: string) {
-  if (!(await upload(cli, options, target, versionId))) {
-    throw new Error(`The component "${options.component}" is not installed after the push.`);
+  const missing = await upload(cli, options, target, versionId);
+  if (missing !== undefined) {
+    throw new Error(
+      `The component "${options.component}" is not installed after the push. The Convex CLI ` +
+        `said:\n${missing}`,
+    );
   }
 }
 
 /**
  * Uploads `--dist` as version `versionId` and writes the version file. When the component is not
  * installed yet, it writes only the version file, so that the push that follows installs the
- * component, and returns `false`.
+ * component, and returns the probe's output.
  */
 async function upload(
   cli: Cli,
   options: Options,
   target: Target,
   versionId: string,
-): Promise<boolean> {
+): Promise<string | undefined> {
   const dist = resolve(cli.cwd, options.dist);
   const { config, entries } = await readDist(dist, options, cli.log);
   const generateUploadUrls = (count: number) =>
@@ -280,9 +291,10 @@ async function upload(
       z.array(z.string()).length(count),
     );
 
-  if (!(await hasComponent(cli, target))) {
+  const missing = await probeComponent(cli, target);
+  if (missing !== undefined) {
     writeVersionFile(cli, versionId);
-    return false;
+    return missing;
   }
 
   cli.log(`Uploading version ${versionId}: ${entries.length} files.`);
@@ -349,7 +361,7 @@ async function upload(
   await runComponent(cli, target, internal.lib.finishVersion, { versionId }, z.null());
   writeVersionFile(cli, versionId);
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
-  return true;
+  return undefined;
 }
 
 function writeVersionFile(cli: Cli, versionId: string) {
