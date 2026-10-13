@@ -4,8 +4,7 @@ A Convex deployment serves the app's site: the files of a build and, when the ap
 those pages. It behaves like Cloudflare Workers with static assets, so a developer who knows that
 model learns nothing new: the same files (`_headers`, `_redirects`, `.assetsignore`), the same two
 options (`html_handling`, `not_found_handling`), the same responses, computed by Cloudflare's own
-asset-serving code. One command deploys. No old version is ever served, and a deploy deletes the
-ones before it.
+asset-serving code. One command deploys. No old version is ever served.
 
 This document is the proposal. Every file, function, option, and table field in the package must
 trace to a line here. Nothing exists for compatibility with earlier releases or with
@@ -15,7 +14,7 @@ get-convex/static-hosting.
 
 On Cloudflare, `wrangler deploy` uploads the asset files and the Worker code as one version. The
 Worker is bound to the assets it was deployed with, so the switch is atomic, and old versions are
-gone from the production hostname. Cloudflare also runs one deployment of a Worker at a time.
+gone from the production hostname.
 
 On Convex, two systems hold the two halves: `npx convex deploy` pushes the app code, and the site
 files live in a component's storage. The design binds them the way Cloudflare does: the pushed code
@@ -23,49 +22,46 @@ carries the id of the asset version it was built with, and asks the component fo
 version. The push is the switch. There is no pointer that a second step must move, so there is no
 moment when new code serves old files.
 
-Deploys do not interleave. A deploy holds a lock in the component from its first call until its
-cleanup ends; a second deploy that starts meanwhile is refused with a message that names the first.
-Because nothing else can be in flight, the end of a deploy is a safe moment to delete: once the push
-has landed, the CLI tells the component, and the component deletes every other version and every
-stored file nothing references. Every call of the deploy refreshes the lock, and during the push,
-when the CLI makes no other call, it refreshes the lock every 30 seconds. The lock expires 2 minutes
-after the last refresh, so a dead deploy frees itself in 2 minutes with nobody involved, while a
-live one, however slow its upload or push, keeps it. Every call of a deploy first checks that the
-lock is still its own: when it expired and another deploy took it, the call fails with "lost its
-lock", the deploy fails, and nothing is deleted; when that answer comes from a heartbeat during the
-push, the CLI kills the push. There is no cancel command: waiting 2 minutes is the cancel.
+Only the pushed code knows which version a deployment runs, so the serving code reports it: the
+first request that new code serves finds its version in state `ready` and marks it `live`. Marking a
+version live deletes the versions that were live before it, because their code is gone by
+definition. A version that never becomes live, from a push that failed, is garbage, not a
+correctness problem; it is deleted when it is a day old, at a later switch. That day is the only
+time constant in the design and it bounds garbage only. Two deploys that overlap both complete, the
+last push wins, and no overlap can break the site: a version is deleted only after another version
+has served in its place.
 
 ## Deploy
 
 ```
-convex-hosting deploy --build "<command>" --dist <dir> [--html-handling ...] [--not-found-handling ...] [--preview-name <name>]
+convex-hosting deploy --build "<command>" --dist <dir> [--dev | --preview <name>] [--html-handling ...] [--not-found-handling ...] [--component <name>]
 ```
 
-Every Convex call of one deploy reaches one deployment, and the CLI parses no credential to get
-there: it passes the same explicit selector to `npx convex deploy` and to every `npx convex run`,
-`--preview-name <name>` when given, else `--prod`, because `npx convex deploy` goes to production by
-default while `npx convex run` goes to development. A deploy key in the environment
-(`CONVEX_DEPLOY_KEY` or its alias `CONVEX_DEPLOYMENT_TOKEN`) wins over that selector in both
-commands, the same way. A self-hosted deployment (`CONVEX_SELF_HOSTED_URL`) takes no selector.
+One command for every target. Without a flag, production: `npx convex deploy` pushes there by
+default, and every `npx convex run` of the deploy gets `--prod`, because `run` goes to development
+by default. `--preview <name>`: both commands get `--preview-name <name>`. `--dev`: the development
+deployment this checkout is bound to, the one `npx convex dev` and `npx convex run` pick from
+`.env.local`; no selector is passed, and the push is `npx convex run --push` (which pushes the whole
+`convex/` like `npx convex dev --once` does, typecheck included, and works whether or not
+`npx convex dev` is running). A deploy key in the environment (`CONVEX_DEPLOY_KEY` or its alias
+`CONVEX_DEPLOYMENT_TOKEN`) wins over the selector in both commands, the same way. A self-hosted
+deployment (`CONVEX_SELF_HOSTED_URL`) takes no selector. The CLI parses no credential.
 
-1. The CLI chooses a random version id. It writes nothing yet: the version file is written only
-   after the lock is taken, so a second deploy from the same checkout, refused at the lock, cannot
-   overwrite the id that the first one pushes. A typecheck of `convex/` before the file exists
-   passes through the committed declaration.
-2. It runs
+1. The CLI chooses a random version id.
+2. Production and preview: it runs
    `npx convex deploy --cmd "<command> && convex-hosting upload --dist <dir> --version-id <id> ..."`.
    Both run in the project directory; a build must not change directory. Convex gives the build the
    deployment's URL in `CONVEX_URL` and in one framework variable such as `VITE_CONVEX_URL`, as it
    documents for frontends. Inside the command, `upload`:
    1. collects the files of `<dir>`, honoring `.assetsignore`, and computes each file's sha256 and
-      content type; reads `_headers` and `_redirects` with Cloudflare's parsers into the version's
-      config;
+      content type; refuses a file above 25 MiB, Cloudflare's limit per asset (the HTTP action that
+      serves a file could not answer more than Convex's 100 MiB response limit anyway); reads
+      `_headers` and `_redirects` with Cloudflare's parsers into the version's config;
    2. stores the config as one file through an upload URL, because `npx convex run` passes arguments
       on the command line, which the operating system limits, and a `_redirects` file can be large;
       (`npx convex run` stays the transport because it handles every way a deployment is selected:
       login, deploy keys, previews by name;) then calls `createVersion` with the config's storage
-      id. The component takes the lock, or refuses when another version holds it and has refreshed
-      it less than 2 minutes ago, and creates the version in state `uploading`;
+      id, which creates the version in state `uploading`;
    3. asks `knownFiles` which of its hashes already have a stored file, from any version's entries,
       in batches that fit a command line;
    4. uploads the other files a few at a time, then sends every entry complete, with its storage id
@@ -73,68 +69,52 @@ commands, the same way. A self-hosted deployment (`CONVEX_SELF_HOSTED_URL`) take
       checks each stored file's sha256 against Convex's storage metadata and inserts the entries; an
       entry is never without a file;
    5. calls `finishVersion`, which puts the version in state `ready`. The CLI calls it only after
-      every batch succeeded; a crashed upload leaves an `uploading` version, which the next deploy
-      deletes, and a retry reuses every file the crashed run stored, through step 3;
+      every batch succeeded; a crashed upload leaves an `uploading` version, and a retry reuses
+      every file the crashed run stored, through step 3;
    6. writes `.convex-hosting/version.js` with the id, in the CLI's state folder at the project
       root, like Wrangler's `.wrangler/`; the folder carries its own `.gitignore`, so nothing of it
       reaches git and no tool writes into `convex/`. The file is a build artifact that `http.ts`
       imports, as a server-rendered app's `http.ts` already imports its server build; one committed
       declaration line in `convex/` gives TypeScript its shape on a fresh clone. Then, still inside
       `npx convex deploy`, Convex bundles `convex/` with the new id and pushes. The push is the
-      switch. From `startVersion` to the end of the deploy, the CLI calls `heartbeat` every 30
-      seconds, through the upload and the push, so the lock means that the process is alive.
-3. When `npx convex deploy` returns success, the CLI calls `finishDeploy`. The component deletes
-   every other version, its entries, and the stored files no remaining entry uses, then every file
-   in `_storage` that no entry references (this deploy's config file included), in batches that
-   schedule themselves, and releases the lock when done. When `npx convex deploy` fails, the CLI
-   calls `releaseLock`; the version stays, so the retry reuses its files, and the retry's cleanup
-   deletes it.
+      switch, and the command ends.
+3. `--dev`: the same steps, in one process: the CLI runs the build itself (Vite reads the
+   deployment's URL from `.env.local`, so no nesting is needed), uploads, writes the version file,
+   and pushes with `npx convex run --push`.
 
 **First install.** The component's functions exist only after a push, and a new preview deployment
 exists only once `npx convex deploy` has created it, which happens before it runs the command. So
-the inner `upload` decides. Its first call is a probe,
-`npx convex run --component <name> --inline-query`, because that path of the Convex CLI looks the
-component up before it runs anything and prints the exact message
-`Component path "<name>" was not found.` when the deployment does not have it (a function run
-against a missing component answers only a generic server error, which must not count). On that
-exact message, `upload` writes the version file and a marker file in `.convex-hosting/` and exits
-without uploading, so the push that follows installs the component. `deploy` sees the marker after
-`npx convex deploy` returns and runs the upload then, followed by `finishDeploy`. Until that upload
-ends, the site answers 404 (see Serve). This happens once per deployment. It is not protected by the
-lock, because the component does not exist yet: run the first deploy of a deployment once, alone.
+the upload decides. Its first call is a probe, `npx convex run --component <name> --inline-query`,
+because that path of the Convex CLI looks the component up before it runs anything and prints the
+exact message `Component path "<name>" was not found.` when the deployment does not have it (a
+function run against a missing component answers only a generic server error, which must not count).
+On that exact message, the production and preview upload writes the version file and a marker file
+in `.convex-hosting/` and exits without uploading, so the push that follows installs the component;
+`deploy` sees the marker after `npx convex deploy` returns and runs the upload then. For `--dev`, in
+one process, it writes the version file, pushes, and uploads. Until that upload ends, the site
+answers 404 (see Serve). Once per deployment.
 
-**Development deployment.** `convex-hosting dev --build "<command>" --dist <dir>` does for the
-development deployment what `deploy` does for production, with the same code and one difference: the
-push is `npx convex dev --once`. It runs the build in the project directory (Vite reads the
-deployment's URL from `.env.local`, so no nesting is needed), uploads, writes the version file,
-pushes, and calls `finishDeploy`. First install: when the probe says the component is missing, it
-writes the version file, pushes, uploads, and then calls `finishDeploy`. The lock and the heartbeat
-apply as in `deploy`. No selector is passed to any Convex command: the development deployment is the
-one `npx convex dev` and `npx convex run` pick by default. A fresh clone runs `convex-hosting dev`
-once; after that `npx convex dev` watches as usual, and the version file is one more input it pushes
-when a later `dev` run rewrites it. `upload` is not a command for people: it is the inner step that
-`deploy` runs inside `npx convex deploy --cmd`.
+**The development loop.** Local work uses Vite's dev server, with hot reload, against the
+development deployment's URL, while `npx convex dev` pushes function changes, as in any Convex app.
+`convex-hosting deploy --dev` is a one-shot command for when the development deployment itself
+should serve the current build. There is no watch mode: a build, an upload, and a push per change is
+not an inner loop, and Cloudflare's tooling has the same shape. A fresh clone runs `deploy --dev`
+once; after that the version file exists and `npx convex dev` bundles as usual. Two things in this
+loop are transient and documented, not solved: when a server-rendered app's build changes
+`dist/server`, which `http.ts` imports, a running `npx convex dev` pushes before `deploy --dev` has
+written the new id, so pages reference files that answer 404 until that run ends; and a production
+deploy run from the same checkout writes production's id, which a running `npx convex dev` then
+pushes to the development deployment, where that version does not exist, until the next
+`deploy --dev`. Production deploys belong in CI or a separate checkout.
 
-Two things in the development loop are transient and documented, not solved: when a server-rendered
-app's build changes `dist/server`, which `http.ts` imports, a running `npx convex dev` pushes before
-`convex-hosting dev` has written the new id, so pages reference files that answer 404 until that run
-ends; and a production deploy run from the same checkout writes production's id, which a running
-`npx convex dev` then pushes to the development deployment, where that version does not exist, until
-the next `convex-hosting dev`. Production deploys belong in CI or a separate checkout.
-
-**Two deploys at once.** The second is refused at `startVersion` with the first's version id and the
-seconds since it last refreshed the lock. Its build has run for nothing; the user retries.
-
-**Failures.** A deploy that dies holding the lock blocks the next deploy until 2 minutes after its
-last refresh; the next deploy's cleanup deletes its version. A deploy whose push landed but whose
-`finishDeploy` never ran leaves the old versions until the next deploy; its own version is the one
-the code names, and the next deploy deletes it only after its own push. A push that the command
-reports as failed may still have landed; the site then serves the new version, the lock is released
-as for a failure, and the next deploy is a normal one. A deploy whose process stops for more than 2
-minutes, for example on a laptop that sleeps, loses its lock; when it wakes up, its next heartbeat
-answers "lost its lock" and the CLI kills its push at once, so the push lands only in the seconds
-between the wake-up and that heartbeat. If it does land, the site answers 404 naming the missing
-version, and a redeploy fixes it. No resume logic.
+**Failures.** A deploy that dies before the push leaves a version that nothing serves; a later
+switch deletes it when it is a day old. An upload that dies leaves a version in state `uploading`,
+deleted the same way, and a retry reuses the files it stored. A file stored but never recorded, or a
+config file, has no entry; the deletion pass also removes files in Convex's `_storage` table that no
+entry references and that are a day old. A push that the command reports as failed may still have
+landed; the site then serves the new version, which marks itself live at its first request, and the
+next deploy is a normal one. No resume logic. The first deploy of a deployment is run once, alone:
+before the component exists nothing can order two of them.
 
 **Browsers.** A page opened before a deploy keeps asking for its hashed files, which now answer 404,
 exactly as on Cloudflare. An app that wants to reload on a new version adds one query that returns
@@ -153,12 +133,14 @@ import { versionId } from "../.convex-hosting/version.js";
 
 const asset = await serveAsset(ctx, components.hosting, request, versionId);
 if (asset) return asset;
-// A static site: 404. A server-rendered site: render the page, with `Cache-Control: no-store`,
-// because the deployment's Cloudflare front caches answers on static-looking paths.
+// A static site: 404 with `Cache-Control: no-store`. A server-rendered site: render the page,
+// also with `no-store`, because the deployment's Cloudflare front caches answers on static-looking
+// paths.
 ```
 
-`serveAsset` calls the component query `route` with the method, the URL, and the request headers
-that Cloudflare's handler reads. Inside the query, Cloudflare's `canFetch` decides whether an asset
+`serveAsset` calls the component query `route` with the method, the URL, and the four request
+headers that Cloudflare's handler reads (`If-None-Match`, `Sec-Fetch-Mode`, and the presence of
+`Authorization` and `Range`). Inside the query, Cloudflare's `canFetch` decides whether an asset
 answers. The app is the Worker, so Cloudflare's routing with a Worker applies: a request that does
 not resolve to a file goes to the app, and `not_found_handling` (the 404 page, the single-page
 fallback) applies to navigation requests only. Two differences from Cloudflare follow from Convex's
@@ -173,15 +155,19 @@ configuration. When an asset answers, Cloudflare's `handleRequest` computes the 
 `CF-Cache-Status`, which describes a cache we do not run, and returns the status, the headers, and
 the storage URL of the body when the response has one, whatever the status. `serveAsset` fetches
 that body and returns the response. When the query finds no storage URL for the entry, or storage
-answers 404, because a cleanup deleted the file, the answer is 404 with `Cache-Control: no-store`;
-any other fetch failure answers 502 with no caching. An app cannot read a component's storage, so
-each asset hit costs that one fetch.
+answers 404, because a deletion pass removed the file, the answer is 404 with
+`Cache-Control: no-store`; any other fetch failure answers 502 with no caching. An app cannot read a
+component's storage, so each asset hit costs that one fetch.
 
 When the version does not exist or is still `uploading`, `serveAsset` returns a 404 response that
 names the version, with `Cache-Control: no-store`, so a half-installed site answers 404 rather than
 rendering pages without their files, and the deployment's Cloudflare front, which caches 404 answers
 on static paths, does not keep that answer after the upload ends. `null` means one thing: no asset
-matched, and the app continues. `serveAsset` makes no mutation call.
+matched, and the app continues.
+
+When `route` reports the version in state `ready`, `serveAsset` calls `markLive` once, before it
+answers; concurrent first requests all call it, and it is idempotent. That is the only write the
+serving path ever makes, once per deploy.
 
 The two callbacks that Cloudflare's code takes map to the version's entries: `exists(path)` reads
 one index entry and returns its ETag, the sha256 followed by a short hash of the content type, so
@@ -195,49 +181,48 @@ longer prefixes, by Convex's router rules for the same method.
 
 ## Component
 
-Three tables.
+Two tables.
 
 | Table      | Fields                                                                                                        | Indexes                                        |
 | ---------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `versions` | `versionId`, `state` (`uploading`, `ready`), `config` (JSON string)                                           | `by_versionId`                                 |
+| `versions` | `versionId`, `state` (`uploading`, `ready`, or `live` with the time it became live), `config` (JSON string)   | `by_versionId`                                 |
 | `entries`  | `versionId`, `path`, `sha256` (hex), `contentType` (absent when the file name has no known type), `storageId` | `by_version_path`, `by_sha256`, `by_storageId` |
-| `deploy`   | one row at most: `versionId`, `lastCallAt`                                                                    |                                                |
 
-Creation times come from `_creationTime`. `config` is the JSON of Cloudflare's `AssetConfig` for the
-version: `html_handling`, `not_found_handling`, `headers`, `redirects`. It is a string because
-`redirects.staticRules` has one field per rule and Convex limits an object to 1,024 fields. A
-document is limited to 1 MiB, so the CLI refuses a config above 900 KiB, leaving room for the other
-fields and the encoding, and names the file that causes it; Cloudflare's own rule limits (100 header
-rules, 2,000 static and 100 dynamic redirects) fit unless paths are very long.
+The time a version became live lives inside the `live` state, so a version cannot carry a live time
+without being live. Creation times come from `_creationTime`. `config` is the JSON of Cloudflare's
+`AssetConfig` for the version: `html_handling`, `not_found_handling`, `headers`, `redirects`. It is
+a string because `redirects.staticRules` has one field per rule and Convex limits an object to 1,024
+fields. A document is limited to 1 MiB, so the CLI refuses a config above 900 KiB, leaving room for
+the other fields and the encoding, and names the file that causes it. An entry keeps its own content
+type because the type belongs to the path, not to the bytes: paths with identical bytes share one
+stored file but keep their own types, and `route` serves without reading `_storage`.
 
-Functions. The CLI calls the internal ones with `npx convex run --component`; `serveAsset` calls the
-public one through the component reference (an app can call only a component's public functions, and
-clients cannot call them at all). Every internal call of a deploy checks that the lock is its own
-and refreshes `lastCallAt`, or fails; `heartbeat` exists to do only that.
+Functions. The CLI calls the internal ones with `npx convex run --component`, by typed function
+reference; `serveAsset` calls the two public ones through the component reference (an app can call
+only a component's public functions, and clients cannot call them at all).
 
-| Function             | Kind              | Does                                                                                                                                                                                                                                                                                    |
-| -------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `generateUploadUrls` | internal mutation | Returns `count` upload URLs.                                                                                                                                                                                                                                                            |
-| `createVersion`      | internal action   | Takes the lock or refuses. Reads the config from storage and creates the version in state `uploading`. Idempotent for the same id and config.                                                                                                                                           |
-| `knownFiles`         | internal query    | For a list of hashes, the stored file ids that entries of any version already have.                                                                                                                                                                                                     |
-| `recordFiles`        | internal mutation | Inserts complete entries after checking each stored file's sha256; an entry that exists with the same hash is skipped.                                                                                                                                                                  |
-| `finishVersion`      | internal mutation | Marks the version `ready`.                                                                                                                                                                                                                                                              |
-| `heartbeat`          | internal mutation | Refreshes the lock's timestamp. The CLI calls it every 30 seconds from `startVersion` to the end of the deploy.                                                                                                                                                                         |
-| `finishDeploy`       | internal mutation | Only while this version holds the lock. Deletes every other version, their entries, and the stored files no remaining entry uses, then `_storage` files no entry references; one batch per call, scheduling itself with `runAfter(0)` while work remains; releases the lock at the end. |
-| `releaseLock`        | internal mutation | Releases the lock when the push failed; the version stays.                                                                                                                                                                                                                              |
-| `route`              | public query      | Runs Cloudflare's `canFetch` and `handleRequest` for one request against one version; reports the version's state.                                                                                                                                                                      |
+| Function             | Kind              | Does                                                                                                                                                                                                                                                                                                                       |
+| -------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generateUploadUrls` | internal mutation | Returns `count` upload URLs.                                                                                                                                                                                                                                                                                               |
+| `createVersion`      | internal action   | Reads the config from storage and creates the version in state `uploading`. Idempotent for the same id and config.                                                                                                                                                                                                         |
+| `knownFiles`         | internal query    | For a list of hashes, the stored file ids that entries of any version already have.                                                                                                                                                                                                                                        |
+| `recordFiles`        | internal mutation | Inserts complete entries after checking each stored file's sha256; an entry that exists with the same hash is skipped.                                                                                                                                                                                                     |
+| `finishVersion`      | internal mutation | Marks the version `ready`.                                                                                                                                                                                                                                                                                                 |
+| `route`              | public query      | Runs Cloudflare's `canFetch` and `handleRequest` for one request against one version; reports the version's state.                                                                                                                                                                                                         |
+| `markLive`           | public mutation   | Marks a `ready` version `live` and schedules `collect`; a no-op for a version that is already live.                                                                                                                                                                                                                        |
+| `collect`            | internal mutation | Deletes the versions that were live before the current live one, the versions that are not live and a day old, their entries, and the stored files no remaining entry uses, then `_storage` files that no entry references and are a day old; one batch per call, scheduling itself with `runAfter(0)` while work remains. |
 
-The package sets one limit of its own: 25 MiB per file, Cloudflare's limit per asset, because the
-HTTP action that serves a file cannot answer more than Convex's 100 MiB response limit anyway.
-Convex's limits apply: 1 MiB per document, and the transaction limits (16,000 writes, 32,000
-documents scanned, 16 MiB read and written, 8,192 array elements, 4,096 index ranges, argument and
-result sizes) shape the batches.
+The package sets one limit of its own, 25 MiB per file, for the reason above. Convex's limits apply:
+1 MiB per document, and the transaction limits (16,000 writes, 32,000 documents scanned, 16 MiB read
+and written, 8,192 array elements, 4,096 index ranges, argument and result sizes) shape the batches.
 
 ## Not here, and why
 
-- No live pointer, no `activate`, no `getLiveVersion`: the pushed code names its version.
-- No cron, no retention: a deploy deletes the versions before it, under a lock that keeps another
-  deploy from being in flight.
+- No live pointer that a command moves, no `activate`, no `getLiveVersion`: the pushed code names
+  its version, and the serving code reports it.
+- No lock, no heartbeat, no cron, no call after the push: a version is deleted only after another
+  version has served in its place. A one-day age bounds garbage from failed deploys; it decides
+  nothing about what is served.
 - No marking of hashed files, no one-year `Cache-Control`: Cloudflare has neither. A site that wants
   them writes one `_headers` rule.
 - No component HTTP route, no `httpPrefix` mount, no second serving helper: one way for static and
@@ -254,8 +239,8 @@ result sizes) shape the batches.
 - `packages/convex-hosting`
   - `src/component`: `schema.ts`, `lib.ts`, `convex.config.ts`, and its generated files.
   - `src/client`: `serveAsset`.
-  - `src/cli`: the `convex-hosting` command: `dev` and `deploy`, and `upload`, the inner step of
-    `deploy`.
+  - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, the inner step that
+    `npx convex deploy --cmd` has to call as a program.
   - `src/workers-shared`: Cloudflare's asset worker and its tests, copied by
     `scripts/sync-workers-shared.ts` from cloudflare/workers-sdk at the commit in `UPSTREAM`. Only
     the sync script changes it.
