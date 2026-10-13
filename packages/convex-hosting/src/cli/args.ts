@@ -1,153 +1,131 @@
-export interface UploadArgs {
+import { parseArgs } from "node:util";
+import { normalizeBasePath } from "../workers-shared/utils/base-path.js";
+import { AssetConfigSchema, type AssetConfig } from "../workers-shared/utils/types.js";
+import { VERSION_ID_PATTERN } from "./manifest.js";
+
+/** Options shared by `upload` and `deploy`: what to upload, where, and how to serve it. */
+export interface SiteOptions {
   dist: string;
-  component: string;
-  prod: boolean;
+  component: string | null;
   previewName: string | null;
-  build: boolean;
-  buildCommand: string;
-  cdn: boolean;
-  cdnDeleteFunction: string;
-  concurrency: number;
-  spaFallback: boolean;
-  help: boolean;
+  /** A preset name (`vite`, `next`, `astro`, `sveltekit`) or a gitignore-style glob. */
+  immutable: string;
+  /** `null` keeps the serving entry point's default. */
+  htmlHandling: NonNullable<AssetConfig["html_handling"]> | null;
+  notFoundHandling: NonNullable<AssetConfig["not_found_handling"]> | null;
+  /** Normalized by the asset worker's rules: `/` or `/prefix/`. */
+  basePath: string | null;
 }
 
-export interface DeployArgs {
-  dist: string;
-  component: string;
-  help: boolean;
-  skipBuild: boolean;
-  skipConvex: boolean;
-  cdn: boolean;
-  cdnDeleteFunction: string;
-  spaFallback: boolean;
-  buildCommand: string;
+export interface UploadOptions extends SiteOptions {
+  versionId: string | null;
+  activate: boolean;
 }
 
-function optionValue(args: string[], index: number, option: string): string {
-  const value = args[index + 1];
-  if (!value || value.startsWith("-")) {
-    throw new Error(`${option} requires a value`);
-  }
-  return value;
+export interface DeployOptions extends SiteOptions {
+  /** `null` with `--skip-build`. */
+  buildCommand: string | null;
+  verifyPath: string | null;
 }
 
-export function parseUploadArgs(args: string[]): UploadArgs {
-  const result: UploadArgs = {
-    dist: "./dist",
-    component: "hosting",
-    prod: false,
-    previewName: null,
-    build: false,
-    buildCommand: "npm run build",
-    cdn: false,
-    cdnDeleteFunction: "",
-    concurrency: 5,
-    spaFallback: true,
-    help: false,
+const siteOptionConfig = {
+  dist: { type: "string" },
+  component: { type: "string" },
+  "preview-name": { type: "string" },
+  immutable: { type: "string" },
+  "html-handling": { type: "string" },
+  "not-found-handling": { type: "string" },
+  "base-path": { type: "string" },
+} as const;
+
+type SiteValues = { [Key in keyof typeof siteOptionConfig]?: string };
+
+function parseSiteOptions(values: SiteValues): SiteOptions {
+  if (values.dist === undefined) throw new Error("--dist <dir> is required.");
+  const basePath =
+    values["base-path"] === undefined ? null : normalizeBasePath(values["base-path"]);
+  if (basePath !== null && !basePath.valid) throw new Error(`--base-path: ${basePath.error}`);
+  return {
+    dist: values.dist,
+    component: values.component ?? null,
+    previewName: values["preview-name"] ?? null,
+    immutable: values.immutable ?? "vite",
+    htmlHandling: parseChoice(
+      "--html-handling",
+      AssetConfigSchema.shape.html_handling.unwrap().options,
+      values["html-handling"],
+    ),
+    notFoundHandling: parseChoice(
+      "--not-found-handling",
+      AssetConfigSchema.shape.not_found_handling.unwrap().options,
+      values["not-found-handling"],
+    ),
+    basePath: basePath === null ? null : basePath.value,
   };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--help" || arg === "-h") {
-      result.help = true;
-    } else if (arg === "--dist" || arg === "-d") {
-      result.dist = optionValue(args, i, arg);
-      i++;
-    } else if (arg === "--component" || arg === "-c") {
-      result.component = optionValue(args, i, arg);
-      i++;
-    } else if (arg === "--preview-name") {
-      result.previewName = optionValue(args, i, arg);
-      i++;
-    } else if (arg === "--prod") {
-      result.prod = true;
-    } else if (arg === "--no-prod" || arg === "--dev") {
-      result.prod = false;
-    } else if (arg === "--build" || arg === "-b") {
-      result.build = true;
-    } else if (arg === "--build-command") {
-      result.buildCommand = optionValue(args, i, arg);
-      result.build = true;
-      i++;
-    } else if (arg === "--no-spa") {
-      result.spaFallback = false;
-    } else if (arg === "--spa") {
-      result.spaFallback = true;
-    } else if (arg === "--cdn") {
-      result.cdn = true;
-    } else if (arg === "--cdn-delete-function") {
-      result.cdnDeleteFunction = optionValue(args, i, arg);
-      i++;
-    } else if (arg === "--concurrency" || arg === "-j") {
-      const value = optionValue(args, i, arg);
-      const concurrency = Number(value);
-      if (!Number.isInteger(concurrency) || concurrency <= 0) {
-        throw new Error(`${arg} must be a positive integer`);
-      }
-      result.concurrency = concurrency;
-      i++;
-    } else {
-      throw new Error(`Unknown upload option: ${arg}`);
-    }
-  }
-  if (result.prod && result.previewName !== null)
-    throw new Error("--prod and --preview-name cannot be combined");
-  return result;
 }
 
-export function parseDeployArgs(args: string[]): DeployArgs {
-  const result: DeployArgs = {
-    dist: "./dist",
-    component: "hosting",
-    help: false,
-    skipBuild: false,
-    skipConvex: false,
-    cdn: false,
-    cdnDeleteFunction: "",
-    spaFallback: true,
-    buildCommand: "npm run build",
+function parseChoice<const Choice extends string>(
+  flag: string,
+  choices: readonly Choice[],
+  value: string | undefined,
+): Choice | null {
+  if (value === undefined) return null;
+  const choice = choices.find((candidate) => candidate === value);
+  if (choice === undefined) throw new Error(`${flag} must be one of: ${choices.join(", ")}.`);
+  return choice;
+}
+
+export function parseUploadArgs(args: string[]): UploadOptions {
+  const { values } = parseArgs({
+    args,
+    options: {
+      ...siteOptionConfig,
+      "version-id": { type: "string" },
+      "no-activate": { type: "boolean" },
+    },
+  });
+  const versionId = values["version-id"] ?? null;
+  if (versionId !== null && !VERSION_ID_PATTERN.test(versionId)) {
+    throw new Error("--version-id must be v_ followed by 26 characters from a-z and 2-7.");
+  }
+  return { ...parseSiteOptions(values), versionId, activate: !values["no-activate"] };
+}
+
+export function parseDeployArgs(args: string[]): DeployOptions {
+  const { values } = parseArgs({
+    args,
+    options: {
+      ...siteOptionConfig,
+      "build-command": { type: "string" },
+      "skip-build": { type: "boolean" },
+      "verify-path": { type: "string" },
+    },
+  });
+  if (values["skip-build"] && values["build-command"] !== undefined) {
+    throw new Error("--skip-build and --build-command cannot be combined.");
+  }
+  const verifyPath = values["verify-path"] ?? null;
+  if (verifyPath !== null && !verifyPath.startsWith("/")) {
+    throw new Error("--verify-path must start with /.");
+  }
+  return {
+    ...parseSiteOptions(values),
+    buildCommand: values["skip-build"] ? null : (values["build-command"] ?? "npm run build"),
+    verifyPath,
   };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--help" || arg === "-h") {
-      result.help = true;
-    } else if (arg === "--dist" || arg === "-d") {
-      result.dist = optionValue(args, i, arg);
-      i++;
-    } else if (arg === "--component" || arg === "-c") {
-      result.component = optionValue(args, i, arg);
-      i++;
-    } else if (arg === "--skip-build") {
-      result.skipBuild = true;
-    } else if (arg === "--skip-convex") {
-      result.skipConvex = true;
-    } else if (arg === "--cdn") {
-      result.cdn = true;
-    } else if (arg === "--cdn-delete-function") {
-      result.cdnDeleteFunction = optionValue(args, i, arg);
-      i++;
-    } else if (arg === "--no-spa") {
-      result.spaFallback = false;
-    } else if (arg === "--spa") {
-      result.spaFallback = true;
-    } else if (arg === "--build-command") {
-      result.buildCommand = optionValue(args, i, arg);
-      i++;
-    } else {
-      throw new Error(`Unknown deploy option: ${arg}`);
-    }
-  }
-  return result;
 }
 
-export function buildDeployUploadArgs(args: DeployArgs): string[] {
-  const uploadArgs = ["upload", "--dist", args.dist, "--component", args.component, "--prod"];
-  if (args.cdn) uploadArgs.push("--cdn");
-  if (args.cdnDeleteFunction) {
-    uploadArgs.push("--cdn-delete-function", args.cdnDeleteFunction);
-  }
-  if (!args.spaFallback) uploadArgs.push("--no-spa");
-  return uploadArgs;
+/** The `upload` flags that give an `upload` subprocess the same site options. */
+export function siteOptionArgs(options: SiteOptions): string[] {
+  return [
+    "--dist",
+    options.dist,
+    "--immutable",
+    options.immutable,
+    ...(options.htmlHandling === null ? [] : ["--html-handling", options.htmlHandling]),
+    ...(options.notFoundHandling === null
+      ? []
+      : ["--not-found-handling", options.notFoundHandling]),
+    ...(options.basePath === null ? [] : ["--base-path", options.basePath]),
+  ];
 }

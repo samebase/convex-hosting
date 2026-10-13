@@ -1,26 +1,83 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import { rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { collectFiles } from "./collectFiles.js";
+import { checkUploadLimits, collectFiles, MAX_FILES } from "./collectFiles.js";
+import { writeDist } from "./fakeCli.test.helpers.js";
 
 describe("collectFiles", () => {
-  let distDir: string;
+  let dist = "";
 
   afterEach(() => {
-    rmSync(distDir, { recursive: true, force: true });
+    rmSync(dist, { recursive: true, force: true });
   });
 
-  test("skips hosting rule files at the root of the build output", () => {
-    distDir = mkdtempSync(join(tmpdir(), "convex-hosting-dist-"));
-    mkdirSync(join(distDir, "docs"));
-    for (const path of ["index.html", "_headers", "_redirects", "docs/_headers"]) {
-      writeFileSync(join(distDir, path), "");
-    }
+  test("applies .assetsignore and the built-in ignores", async () => {
+    dist = writeDist({
+      "index.html": "",
+      "assets/app.js": "",
+      _headers: "",
+      _redirects: "",
+      "docs/_headers": "",
+      ".assetsignore": "*.map\nprivate/\n",
+      "assets/app.js.map": "",
+      "private/notes.txt": "",
+      ".env": "",
+      ".git/config": "",
+      "assets/.DS_Store": "",
+      ".convex-hosting/version.json": "{}",
+      ".well-known/security.txt": "",
+      ".well-known/.hidden": "",
+    });
 
-    const { files, skipped } = collectFiles(distDir);
+    const files = await collectFiles(dist);
 
-    expect(files.map((file) => file.path).sort()).toEqual(["/docs/_headers", "/index.html"]);
-    expect(skipped.sort()).toEqual(["/_headers", "/_redirects"]);
+    expect(files.map((file) => file.path)).toEqual([
+      "/.well-known/security.txt",
+      "/assets/app.js",
+      "/docs/_headers",
+      "/index.html",
+    ]);
+  });
+
+  test("records each file's size", async () => {
+    dist = writeDist({ "index.html": "<p>hello</p>" });
+    expect(await collectFiles(dist)).toEqual([
+      expect.objectContaining({ path: "/index.html", size: 12 }),
+    ]);
+  });
+});
+
+describe("upload limits", () => {
+  test("a version holds 1 to 4,000 files", () => {
+    const file = (index: number) => ({ path: `/${index}.js`, size: 1 });
+    expect(() => checkUploadLimits("dist", [])).toThrow("dist has no files to upload");
+    expect(() =>
+      checkUploadLimits(
+        "dist",
+        Array.from({ length: MAX_FILES }, (_, index) => file(index)),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      checkUploadLimits(
+        "dist",
+        Array.from({ length: MAX_FILES + 1 }, (_, index) => file(index)),
+      ),
+    ).toThrow("dist has 4001 files. A version holds at most 4000.");
+  });
+
+  test("a path is at most 1,024 bytes, counted in UTF-8", () => {
+    expect(() =>
+      checkUploadLimits("dist", [{ path: `/${"a".repeat(1023)}`, size: 1 }]),
+    ).not.toThrow();
+    expect(() => checkUploadLimits("dist", [{ path: `/${"é".repeat(512)}`, size: 1 }])).toThrow(
+      "is 1025 bytes long",
+    );
+  });
+
+  test("a file is at most 25 MiB", () => {
+    const size = 25 * 1024 * 1024;
+    expect(() => checkUploadLimits("dist", [{ path: "/a.bin", size }])).not.toThrow();
+    expect(() => checkUploadLimits("dist", [{ path: "/a.bin", size: size + 1 }])).toThrow(
+      "/a.bin is 26214401 bytes. A file is at most 25 MiB",
+    );
   });
 });
