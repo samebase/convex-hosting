@@ -1,5 +1,4 @@
 # Written by `npx convex dev --once`, which the codegen in CONTRIBUTING.md needs.
-.env.local
 /convex/
 # Copied from the repository root by `prepack`.
 /README.md

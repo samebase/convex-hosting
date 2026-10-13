@@ -65,7 +65,7 @@ function handlerHeaders(headers: Headers): Record<string, string> {
 /**
  * For the answers that no uploaded file gives. The deployment's Cloudflare front caches 404 answers
  * on static paths, so without it a script requested seconds before its upload ended would stay
- * missing for hours (the 0.3.2 incident in CHANGELOG.md).
+ * missing for hours (the 0.3.2 incident).
  */
 const NO_STORE = { "Cache-Control": "no-store" };
 

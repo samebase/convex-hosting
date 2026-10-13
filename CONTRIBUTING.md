@@ -1,6 +1,9 @@
 # Contributing
 
-You need the Node version in `.node-version` and pnpm 11.
+You need the Node version in `.node-version` and pnpm 11. For install, deploy, and development, see
+the [README](./README.md); each example's README lists its commands.
+
+## Build and check
 
 ```sh
 pnpm install
@@ -8,16 +11,7 @@ pnpm run build
 pnpm run check
 ```
 
-To run the SPA example, start `npx convex dev` in `examples/spa`, then in a second terminal:
-
-```sh
-cd examples/spa
-pnpm run build
-pnpm run upload
-```
-
-The SSR example has its own schema, so it needs a separate Convex project. See
-[examples/tanstack-ssr/README.md](./examples/tanstack-ssr/README.md).
+`pnpm run check` typechecks the examples against the built component, so build first.
 
 ## Component codegen
 
@@ -33,6 +27,16 @@ The first command creates an anonymous local deployment and writes `.env.local`,
 empty app in `convex/`; git ignores all of them. The second runs
 `npx convex codegen --component-dir ./src/component` against that deployment and builds the package.
 Do not edit the generated files.
+
+## Cloudflare's asset worker
+
+`src/workers-shared` is a copy of Cloudflare's asset worker from cloudflare/workers-sdk, at the
+commit in `src/workers-shared/UPSTREAM`. Do not edit it by hand. To update it, from
+`packages/convex-hosting`:
+
+```sh
+node scripts/sync-workers-shared.ts [<commit>]
+```
 
 ## Releasing
 

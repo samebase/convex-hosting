@@ -101,7 +101,6 @@ try {
   git(checkout, "fetch", "--quiet", "--depth", "1", "--filter=blob:none", "origin", commit);
   git(checkout, "checkout", "--quiet", "--detach", "FETCH_HEAD");
 
-  const keep = new Set(LOCAL_FILES);
   const localContents = new Map(
     LOCAL_FILES.flatMap((file) => {
       try {
@@ -114,7 +113,6 @@ try {
   rmSync(TARGET, { recursive: true, force: true });
   mkdirSync(TARGET, { recursive: true });
   for (const [file, contents] of localContents) {
-    if (!keep.has(file)) continue;
     mkdirSync(dirname(join(TARGET, file)), { recursive: true });
     writeFileSync(join(TARGET, file), contents);
   }

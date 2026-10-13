@@ -1,31 +1,16 @@
 # TanStack Start SSR example
 
-Renders TanStack Start pages inside a Convex HTTP action. The first HTML response already contains a
-count from a Convex query, and after React hydrates, the count stays live.
+TanStack Start pages rendered inside a Convex HTTP action. The first HTML response already contains
+a count from a Convex query, and the count stays live after React hydrates. `convex/http.ts` serves
+the browser files with `serveAsset` and renders every other path with the server build, through
+[`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start). The
+example has its own schema, so it needs its own Convex project.
 
-- `convex/http.ts` serves the browser files with `serveAsset` and renders every other path with the
-  TanStack Start server bundle.
-- `src/router.tsx` sets up Convex's TanStack Query integration, so data from
-  `useSuspenseQuery(convexQuery(...))` is in the first HTML and stays live.
-- [`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start) makes
-  TanStack Start run in the Convex runtime: `vite.config.ts` adds its `convexSsr()` plugin, and
-  `src/server.ts` re-exports its server entry.
+From `examples/tanstack-ssr`:
 
-## Development deployment
+- `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`.
+- `pnpm run upload`: upload `dist/client` to the development deployment that `npx convex dev`
+  pushes.
+- `pnpm run deploy`: build, upload, and push to production.
 
-This example has its own schema, so use a separate Convex project. From `examples/tanstack-ssr`,
-with `npx convex dev` running in another terminal:
-
-```bash
-pnpm run build
-pnpm run upload
-```
-
-`convex/http.ts` imports `dist/server`, so `npx convex dev` pushes after each build, before the
-upload writes the new version: until the upload ends, the new pages refer to files that answer 404.
-
-## Production
-
-```bash
-pnpm run deploy
-```
+For the order of the first start and everything else, see the [README](../../README.md).

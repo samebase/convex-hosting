@@ -1,25 +1,13 @@
 # SPA example
 
 A Vite and React app that `@samebase/convex-hosting` serves with
-`--not-found-handling single-page-application`. `public/_headers` gives the hashed files under
-`/assets/` long-term caching.
+`--not-found-handling single-page-application`: `convex/http.ts` serves it with `serveAsset`, and
+`public/_headers` caches the hashed files under `/assets/` for a year.
 
-- `convex/convex.config.ts` installs the component.
-- `convex/http.ts` serves the site with `serveAsset`.
+From `examples/spa`:
 
-## Development deployment
+- `pnpm run build`: build the site into `dist`.
+- `pnpm run upload`: upload `dist` to the development deployment that `npx convex dev` pushes.
+- `pnpm run deploy`: build, upload, and push to production.
 
-From `examples/spa`, with `npx convex dev` running in another terminal:
-
-```bash
-pnpm run build
-pnpm run upload
-```
-
-## Production
-
-```bash
-pnpm run deploy
-```
-
-The site is at `https://<deployment>.convex.site`.
+For the order of the first start and everything else, see the [README](../../README.md).

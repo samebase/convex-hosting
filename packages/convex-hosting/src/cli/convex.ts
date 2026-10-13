@@ -41,7 +41,7 @@ export const nodeCli: Cli = {
       execFile(
         process.execPath,
         [convexBin(process.cwd()), ...args],
-        { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+        { encoding: "utf8" },
         (error, stdout, stderr) => {
           const exitCode = error === null ? 0 : typeof error.code === "number" ? error.code : 1;
           resolve({ exitCode, stdout, stderr });
