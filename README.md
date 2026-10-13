@@ -44,8 +44,9 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const asset = await serveAsset(ctx, components.hosting, request, versionId);
     if (asset) return asset;
-    // A static site: 404. A server-rendered site: render the page here.
-    return new Response(null, { status: 404 });
+    // A static site: 404. A server-rendered site: render the page here, also with `no-store`.
+    // The deployment's Cloudflare front caches answers on static-looking paths.
+    return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
   }),
 });
 
@@ -128,6 +129,10 @@ Two cases are transient:
 
 The two handling options work as
 [Cloudflare documents them](https://developers.cloudflare.com/workers/static-assets/routing/).
+
+Each file of `--dist` must be 25 MiB or smaller, and the CLI names a file that is larger. This is
+Cloudflare's limit per asset, and the HTTP action that serves a file cannot answer more than
+Convex's 100 MiB response limit anyway.
 
 ## `_headers`, `_redirects`, and `.assetsignore`
 

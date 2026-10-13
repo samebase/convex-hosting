@@ -279,6 +279,25 @@ describe("upload", () => {
     expect(await main(["upload", "--dist", "dist"], keyed.cli)).toBe(1);
     expect(keyed.logs[keyed.logs.length - 1]).toContain(refusal);
     expect(keyed.runs).toEqual([]);
+
+    // The Convex CLI also reads the key from CONVEX_DEPLOYMENT_TOKEN.
+    const env = { CONVEX_DEPLOYMENT_TOKEN: "prod:happy-cat-123|secret" };
+    const token = fake(app(site), { env });
+    expect(await main(["upload", "--dist", "dist"], token.cli)).toBe(1);
+    expect(token.logs[token.logs.length - 1]).toContain(refusal);
+  });
+
+  test("uploads when the deploy key is <ignore_deploy_key>, which the Convex CLI treats as no key", async () => {
+    const { cli } = fake(app(site), { env: { CONVEX_DEPLOY_KEY: "<ignore_deploy_key>" } });
+    expect(await main(["upload", "--dist", "dist"], cli)).toBe(0);
+  });
+
+  test("refuses a file above 25 MiB and names it", async () => {
+    const cwd = app({ "dist/index.html": "", "dist/big.bin": "x".repeat(25 * 1024 * 1024 + 1) });
+    const { cli, logs, runs } = fake(cwd);
+    expect(await main(["upload", "--dist", "dist"], cli)).toBe(1);
+    expect(logs[logs.length - 1]).toContain(join(cwd, "dist", "big.bin"));
+    expect(runs).toEqual([]);
   });
 
   test("refuses a config above 900 KiB and names the file", async () => {

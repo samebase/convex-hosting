@@ -12,7 +12,8 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const asset = await serveAsset(ctx, components.hosting, request, versionId);
     if (asset) return asset;
-    return new Response(null, { status: 404 });
+    // The deployment's Cloudflare front caches answers on static-looking paths.
+    return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
   }),
 });
 

@@ -8,7 +8,11 @@ import {
 } from "../workers-shared/utils/configuration/constructConfiguration.js";
 import { parseHeaders } from "../workers-shared/utils/configuration/parseHeaders.js";
 import { parseRedirects } from "../workers-shared/utils/configuration/parseRedirects.js";
-import { HEADERS_FILENAME, REDIRECTS_FILENAME } from "../workers-shared/utils/constants.js";
+import {
+  HEADERS_FILENAME,
+  MAX_ASSET_SIZE,
+  REDIRECTS_FILENAME,
+} from "../workers-shared/utils/constants.js";
 import {
   createAssetsIgnoreFunction,
   getContentType,
@@ -55,6 +59,14 @@ export async function readDist(
         if (!assetsIgnoreFunction(`${ignorePath}/`)) walk(file);
       } else if (dirent.isFile() && !assetsIgnoreFunction(ignorePath)) {
         const bytes = readFileSync(file);
+        // Cloudflare's limit per asset, 25 MiB. The HTTP action that serves a file cannot answer
+        // more than Convex's 100 MiB response limit anyway.
+        if (bytes.byteLength > MAX_ASSET_SIZE) {
+          throw new Error(
+            `${file} is ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MiB. A file must stay at ` +
+              "or below 25 MiB, Cloudflare's limit per asset.",
+          );
+        }
         entries.push({
           path: normalizeFilePath(relative(dist, file)),
           sha256: createHash("sha256").update(bytes).digest("hex"),

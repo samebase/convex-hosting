@@ -398,6 +398,14 @@ export const route = query({
     let bodyUrl: string | null = null;
     if (response.body !== null && bodyEntry !== undefined) {
       bodyUrl = await ctx.storage.getUrl(bodyEntry.storageId);
+      // The file is gone from storage. As in `serveAsset` when storage answers 404, the answer must
+      // not stay in a cache.
+      if (bodyUrl === null) {
+        return {
+          state: "ready" as const,
+          asset: { status: 404, headers: [{ name: "cache-control", value: "no-store" }], bodyUrl },
+        };
+      }
     }
     return {
       state: "ready" as const,

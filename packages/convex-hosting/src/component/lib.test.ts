@@ -301,6 +301,26 @@ describe("route", () => {
     expect(asset?.bodyUrl).toEqual(expect.any(String));
   });
 
+  test("a file that is gone from storage answers 404 with no-store", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    await t.run(async (ctx) => {
+      const entry = await ctx.db
+        .query("entries")
+        .withIndex("by_version_path", (q) => q.eq("versionId", "v1").eq("path", "/index.html"))
+        .unique();
+      if (entry !== null) await ctx.storage.delete(entry.storageId);
+    });
+    expect(await route(t, "v1", "/")).toEqual({
+      state: "ready",
+      asset: {
+        status: 404,
+        headers: [{ name: "cache-control", value: "no-store" }],
+        bodyUrl: null,
+      },
+    });
+  });
+
   test("a _headers rule applies", async () => {
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site, {

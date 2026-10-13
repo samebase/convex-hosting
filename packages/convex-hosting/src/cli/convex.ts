@@ -62,12 +62,22 @@ export const nodeCli: Cli = {
  * The variables that the Convex CLI reads to select a deployment, in its order: the process
  * environment first, then `.env.local`, then `.env`.
  */
-export function readConvexEnv(cli: Cli): Record<string, string | undefined> {
+function readConvexEnv(cli: Cli): Record<string, string | undefined> {
   const fromFile = (name: string) => {
     const path = join(cli.cwd, name);
     return existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};
   };
   return { ...fromFile(".env"), ...fromFile(".env.local"), ...cli.env };
+}
+
+/**
+ * The deploy key that the Convex CLI uses: `CONVEX_DEPLOY_KEY`, else its alias
+ * `CONVEX_DEPLOYMENT_TOKEN`. It treats the value `<ignore_deploy_key>` as no key.
+ */
+export function readDeployKey(cli: Cli): string | undefined {
+  const env = readConvexEnv(cli);
+  const deployKey = env.CONVEX_DEPLOY_KEY || env.CONVEX_DEPLOYMENT_TOKEN;
+  return deployKey && deployKey !== "<ignore_deploy_key>" ? deployKey : undefined;
 }
 
 /**
@@ -81,7 +91,7 @@ export function readConvexEnv(cli: Cli): Record<string, string | undefined> {
  * get `--prod`.
  */
 export function deploymentFlags(cli: Cli, previewName: string | undefined): string[] {
-  const deployKey = readConvexEnv(cli).CONVEX_DEPLOY_KEY;
+  const deployKey = readDeployKey(cli);
   if (deployKey) {
     const prefix = deployKey.split("|")[0].split(":");
     const hasSecret = deployKey.includes("|");

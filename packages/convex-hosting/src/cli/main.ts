@@ -10,7 +10,7 @@ import { AssetConfigSchema } from "../workers-shared/utils/types.js";
 import {
   deploymentFlags,
   hasComponent,
-  readConvexEnv,
+  readDeployKey,
   runComponent,
   type Cli,
   type Target,
@@ -224,13 +224,10 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
   // A user-run upload calls `finishDeploy` at once, which deletes the version that the deployment's
   // code still names. `npx convex dev` then pushes the new id to the development deployment, but
   // nobody pushes a preview or a deployment of a deploy key after a standalone upload.
-  if (
-    mode === "user" &&
-    (options.previewName !== undefined || readConvexEnv(cli).CONVEX_DEPLOY_KEY)
-  ) {
+  if (mode === "user" && (options.previewName !== undefined || readDeployKey(cli))) {
     throw new Error(
       "convex-hosting upload targets the development deployment that npx convex dev pushes. For a " +
-        "preview or a CONVEX_DEPLOY_KEY, use convex-hosting deploy.",
+        "preview or a deploy key, use convex-hosting deploy.",
     );
   }
   const target: Target = {
