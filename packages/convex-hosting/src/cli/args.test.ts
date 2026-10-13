@@ -73,7 +73,27 @@ describe("deploy arguments", () => {
     expect(parseDeployArgs(["--dist", "dist"])).toMatchObject({
       buildCommand: "npm run build",
       verifyPath: null,
+      siteUrl: null,
     });
+  });
+
+  test("the site URL is an http or https origin", () => {
+    expect(
+      parseDeployArgs(["--dist", "dist", "--site-url", "https://app.example.com/"]).siteUrl,
+    ).toBe("https://app.example.com");
+    for (const siteUrl of [
+      "app.example.com",
+      "ftp://app.example.com",
+      "https://app.example.com/app/",
+      "https://app.example.com/?x=1",
+    ]) {
+      expect(() => parseDeployArgs(["--dist", "dist", "--site-url", siteUrl])).toThrow(
+        "--site-url must be an origin",
+      );
+    }
+    expect(() => parseUploadArgs(["--dist", "dist", "--site-url", "https://x.test"])).toThrow(
+      "Unknown option '--site-url'",
+    );
   });
 
   test("--skip-build drops the build", () => {

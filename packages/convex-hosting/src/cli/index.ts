@@ -30,6 +30,8 @@ deploy options:
   --skip-build                  Upload the existing build output
   --verify-path <path>          Page that must carry the version meta tag when the build has no
                                 /index.html, relative to the base path (default: /)
+  --site-url <url>              Origin that verification fetches the site from (default: the
+                                .convex.site URL of the deployment). Required for a custom domain
 
 The target is the deployment of CONVEX_DEPLOY_KEY, the --preview-name deployment, or (upload only)
 the development deployment in CONVEX_DEPLOYMENT.

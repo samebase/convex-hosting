@@ -92,7 +92,8 @@ function pushBackend(cli: Cli, target: Target, cmd: string | null, env: NodeJS.P
 /**
  * Checks that the deployment serves the new version: a static app (with `/index.html`) answers with
  * the new `/index.html`, a server-rendered page carries the new version meta tag, and
- * `lib:getLiveVersion` names the new version.
+ * `lib:getLiveVersion` names the new version. Pages are fetched from `--site-url`, else from the
+ * `.convex.site` origin of the deployment.
  */
 async function verify(
   cli: Cli,
@@ -102,10 +103,13 @@ async function verify(
   options: DeployOptions,
 ): Promise<void> {
   const basePath = options.basePath ?? "/";
-  const spec = functionSpecResult.parse(
-    JSON.parse(await cli.convex(["function-spec", ...selectorArgs(target)])),
-  );
-  const siteUrl = siteUrlFromCloudUrl(spec.url);
+  const siteUrl =
+    options.siteUrl ??
+    siteUrlFromCloudUrl(
+      functionSpecResult.parse(
+        JSON.parse(await cli.convex(["function-spec", ...selectorArgs(target)])),
+      ).url,
+    );
   const index = (await collectFiles(options.dist)).find((file) => file.path === "/index.html");
   if (index !== undefined) {
     const url = new URL(addBasePath("/index.html", basePath), siteUrl);
@@ -154,7 +158,8 @@ export function siteUrlFromCloudUrl(cloudUrl: string): string {
   const url = new URL(cloudUrl);
   if (!url.hostname.endsWith(".convex.cloud")) {
     throw new Error(
-      `Cannot verify: ${cloudUrl} is not a .convex.cloud URL, so its site URL is unknown.`,
+      `Cannot verify: ${cloudUrl} is not a .convex.cloud URL, so its site URL is unknown. ` +
+        "Pass the site's origin with --site-url.",
     );
   }
   url.hostname = `${url.hostname.slice(0, -".convex.cloud".length)}.convex.site`;

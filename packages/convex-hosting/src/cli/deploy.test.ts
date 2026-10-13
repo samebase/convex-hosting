@@ -23,6 +23,7 @@ function options(overrides: Partial<DeployOptions> = {}): DeployOptions {
     basePath: null,
     buildCommand: "npm run build",
     verifyPath: null,
+    siteUrl: null,
     ...overrides,
   };
 }
@@ -203,6 +204,20 @@ describe("deploy verification", () => {
     );
   });
 
+  test("--site-url replaces the derived .convex.site origin", async () => {
+    const fake = releasedFake();
+    fake.setSite(() => new Response(INDEX, { headers: { ETag: INDEX_ETAG } }));
+
+    await deploy(
+      production,
+      options({ siteUrl: "https://app.example.com", basePath: "/app/" }),
+      fake.cli,
+    );
+
+    expect(fake.calls).not.toContain("function-spec");
+    expect(fake.calls).toContain("fetch GET https://app.example.com/app/index.html");
+  });
+
   test("getLiveVersion must name the new version", async () => {
     const fake = releasedFake();
     fake.setSite(() => new Response(INDEX, { headers: { ETag: INDEX_ETAG } }));
@@ -234,7 +249,9 @@ describe("deploy helpers", () => {
     expect(siteUrlFromCloudUrl("https://happy-animal-123.eu-west-1.convex.cloud/")).toBe(
       "https://happy-animal-123.eu-west-1.convex.site",
     );
-    expect(() => siteUrlFromCloudUrl("https://api.example.com")).toThrow("not a .convex.cloud URL");
+    expect(() => siteUrlFromCloudUrl("https://api.example.com")).toThrow(
+      "not a .convex.cloud URL, so its site URL is unknown. Pass the site's origin with --site-url.",
+    );
   });
 
   test("quotes what the shell would change", () => {

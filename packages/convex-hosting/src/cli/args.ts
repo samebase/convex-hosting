@@ -26,6 +26,8 @@ export interface DeployOptions extends SiteOptions {
   /** `null` with `--skip-build`. */
   buildCommand: string | null;
   verifyPath: string | null;
+  /** The origin that verification fetches. `null` derives it from the deployment URL. */
+  siteUrl: string | null;
 }
 
 const siteOptionConfig = {
@@ -99,6 +101,7 @@ export function parseDeployArgs(args: string[]): DeployOptions {
       "build-command": { type: "string" },
       "skip-build": { type: "boolean" },
       "verify-path": { type: "string" },
+      "site-url": { type: "string" },
     },
   });
   if (values["skip-build"] && values["build-command"] !== undefined) {
@@ -112,7 +115,25 @@ export function parseDeployArgs(args: string[]): DeployOptions {
     ...parseSiteOptions(values),
     buildCommand: values["skip-build"] ? null : (values["build-command"] ?? "npm run build"),
     verifyPath,
+    siteUrl: values["site-url"] === undefined ? null : parseSiteUrl(values["site-url"]),
   };
+}
+
+/** An http or https origin. The base path is a separate option, so a path here is a mistake. */
+function parseSiteUrl(value: string): string {
+  const url = URL.parse(value);
+  if (
+    url === null ||
+    (url.protocol !== "https:" && url.protocol !== "http:") ||
+    url.pathname !== "/" ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new Error(
+      "--site-url must be an origin such as https://app.example.com. Give a path prefix with --base-path.",
+    );
+  }
+  return url.origin;
 }
 
 /** The `upload` flags that give an `upload` subprocess the same site options. */
