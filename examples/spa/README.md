@@ -21,8 +21,8 @@ This starts:
 
 ## Deploying Static Files
 
-Once you have a Convex deployment, build and upload the static files with the CLI (it builds with
-the right `VITE_CONVEX_URL`, deploys the backend, and uploads `dist/`):
+With `CONVEX_DEPLOY_KEY` set to a production deploy key, the CLI builds with the right
+`VITE_CONVEX_URL`, uploads `dist/`, pushes the backend, and then makes the new files live:
 
 ```bash
 # From examples/spa
@@ -41,5 +41,4 @@ Your app will then be available at `https://your-deployment.convex.site`.
 
 1. The component stores static files in its own Convex file storage
 2. The component's HTTP routes serve files with proper Content-Type and caching
-3. SPA fallback ensures client-side routing works correctly
-4. Each deployment gets a unique ID for atomic updates and garbage collection
+3. Each upload is a version with its own ID; `deploy` makes it live after the backend push

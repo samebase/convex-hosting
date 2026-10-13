@@ -8,7 +8,7 @@ served alongside your Convex backend with SPA routing and smart caching.
 
 - A drop-in HTTP handler that serves your static files from Convex storage
 - One CLI command (`deploy`) that builds, deploys the backend, and uploads files
-- SPA fallback to `index.html` for client-side routing
+- Optional SPA fallback to `index.html` for client-side routing
 - Long-term cache headers on hashed assets and ETag-based revalidation on HTML
 - Optional live-reload notifications when a new deploy ships
 - Authenticated uploads via the Convex CLI (no public upload endpoint)
@@ -99,26 +99,31 @@ component-owned handler when preserving root-level app routes is not necessary.
 ```json
 {
   "scripts": {
-    "deploy": "npx @samebase/convex-hosting deploy"
+    "deploy": "convex-hosting deploy --dist dist"
   }
 }
 ```
 
+Run it where `CONVEX_DEPLOY_KEY` holds a production deploy key, for example in CI.
+
 ## Deployment
 
 ```bash
-# First time
-npx convex login
-
-# Build + backend deploy + upload static files
-npx @samebase/convex-hosting deploy
+# Push the backend, upload the build, activate it, and verify it
+CONVEX_DEPLOY_KEY=<production deploy key> npx @samebase/convex-hosting deploy --dist dist
 ```
 
-Two-step alternative:
+`deploy` selects one target (the deployment of `CONVEX_DEPLOY_KEY`, or `--preview-name <name>` with
+a preview deploy key), makes a version ID, and runs
+`npx convex deploy --cmd "<build> && convex-hosting upload --no-activate --version-id <id> ..."`, so
+the files upload before the new functions go live. Then it activates the version and checks that the
+site serves it. On a first install or an upgrade from 0.3.x, it pushes the backend with the build
+first, then uploads and activates; the site answers 404 until the upload ends.
+
+To upload a build without a backend push:
 
 ```bash
-npx convex deploy
-npx @samebase/convex-hosting upload --build --prod
+npx @samebase/convex-hosting upload --dist dist
 ```
 
 Your app is live at `https://<deployment>.convex.site`.
@@ -137,10 +142,11 @@ Vite keeps HMR, source maps, and transient UI state intact. Agent-written code d
 tradeoff. HMR may matter less while code is being produced, but it still matters when a person
 verifies visuals and debugs interactions.
 
-Use the hosted development deployment as a smoke-test target before release:
+Use the hosted development deployment as a smoke-test target before release. The build reads
+`VITE_CONVEX_URL` from `.env.local`, which `npx convex dev` writes:
 
 ```bash
-npx @samebase/convex-hosting upload --build
+npm run build && npx @samebase/convex-hosting upload --dist dist
 ```
 
 That catches differences in HTTP routing, cache headers, SPA fallback, and base paths. Production
@@ -190,39 +196,11 @@ import { useDeploymentUpdates } from "@samebase/convex-hosting/react";
 const { updateAvailable, reload, dismiss } = useDeploymentUpdates();
 ```
 
-## Legacy CDN mode
-
-Do not use `--cdn` for a new integration. It targets an older, unauthenticated `convex-fs` HTTP API.
-Current ConvexFS releases require app-owned routes and upload authentication, which this CLI does
-not yet provide.
-
-Existing deployments that already expose the legacy routes can keep using the flag during migration,
-but they must use app-owned root compatibility mode. `/fs/upload` and `/fs/blobs/*` are app routes,
-so component-owned root mode would break both upload and serving. Everyone else should use the
-default Convex storage mode. Supporting current ConvexFS properly needs a separate authenticated
-upload and garbage-collection design, not a copy-paste configuration snippet.
-
-The CLI uploads every file before atomically publishing the mixed storage/CDN manifest and
-deployment settings while queuing exact old-file IDs for bounded follow-up cleanup. New HTML does
-not point at asset records that are still missing, and a failed publish leaves the previous
-deployment live. Failure cleanup removes new files only after it can prove publication did not win
-the transaction race; otherwise later maintenance recovers them. Failed legacy CDN uploads can only
-be cleaned automatically when `--cdn-delete-function` is configured. Old CDN IDs are kept in a
-private cleanup queue until that function succeeds, so a lost publish response does not make them
-unrecoverable.
-
 ## Non-Vite bundlers
 
-The `deploy` build step and `upload --build` set `VITE_CONVEX_URL`. To forward it to another env var
-(Expo, Next.js, etc.), wrap your build script:
-
-```text
-Expo build script:
-EXPO_PUBLIC_CONVEX_URL=${VITE_CONVEX_URL:-$EXPO_PUBLIC_CONVEX_URL} npx expo export --platform web
-
-Next.js build script:
-NEXT_PUBLIC_CONVEX_URL=${VITE_CONVEX_URL:-$NEXT_PUBLIC_CONVEX_URL} next build
-```
+`deploy` runs the build through `npx convex deploy --cmd`, which sets the deployment URL in the
+variable that the framework reads: `VITE_CONVEX_URL` for Vite, `NEXT_PUBLIC_CONVEX_URL` for Next.js,
+`EXPO_PUBLIC_CONVEX_URL` for Expo, and `CONVEX_URL` when it finds no framework.
 
 ## Security
 
@@ -236,41 +214,53 @@ This means unauthorized users cannot upload files, even if they know your Convex
 ## CLI Reference
 
 ```bash
-npx @samebase/convex-hosting deploy [options]
-  -d, --dist <path>         Path to dist directory (default: ./dist)
-  -c, --component <name>    Component instance name (default: hosting)
-      --skip-build          Skip the build step
-      --skip-convex         Skip Convex backend deployment
-      --build-command <cmd> Build command to run (default: 'npm run build')
-      --no-spa              Disable SPA fallback (404 instead of /index.html)
-      --spa                 Enable SPA fallback (default)
-      --cdn                 Upload non-HTML assets to convex-fs CDN
-      --cdn-delete-function App function path that deletes CDN blobs
+npx @samebase/convex-hosting upload --dist <dir> [options]
+npx @samebase/convex-hosting deploy --dist <dir> [options]
 
-npx @samebase/convex-hosting upload [options]
-  -d, --dist <path>         Path to dist directory (default: ./dist)
-  -c, --component <name>    Component instance name (default: hosting)
-      --prod                Deploy to production deployment
-      --preview-name <name> Upload to the named preview deployment
-  -b, --build               Run 'npm run build' with VITE_CONVEX_URL set
-      --build-command <cmd> Override the build command; implies --build
-      --no-spa              Disable SPA fallback (404 instead of /index.html)
-      --spa                 Enable SPA fallback (default)
-      --cdn                 Upload non-HTML assets to convex-fs CDN
-      --cdn-delete-function App function path that deletes CDN blobs
-  -j, --concurrency <n>     Parallel upload workers (default: 5)
+upload and deploy:
+  --dist <dir>                 Build output directory (required)
+  --component <name>           Component instance name (default: hosting, then staticHosting)
+  --preview-name <name>        Target the named preview deployment
+  --immutable <preset|glob>    Paths whose bytes never change: vite (/assets/**, default), next
+                               (/_next/static/**), astro (/_astro/**), sveltekit
+                               (/_app/immutable/**), or a gitignore-style glob
+  --html-handling <mode>       auto-trailing-slash, force-trailing-slash, drop-trailing-slash, none
+  --not-found-handling <mode>  single-page-application, 404-page, none
+  --base-path <prefix>         Path prefix that the site is served under (default: /)
+
+upload:
+  --version-id <id>            Upload under this version ID
+  --no-activate                Keep the current version live
+
+deploy:
+  --build-command <cmd>        Build command (default: npm run build)
+  --skip-build                 Upload the existing build output
+  --verify-path <path>         Page with the version meta tag, for a build without /index.html,
+                               relative to the base path (default: /)
 ```
 
-The complete manifest is staged in small, portable command-line chunks after all uploads finish. One
-final mutation atomically publishes the manifest and deployment settings. Replaced files stay in
-component storage for at least seven days. A request for a missing file with an extension, except
-HTML, gets the newest replaced copy, so pages that are already open can still load their scripts.
-Files remain available until a later upload removes expired files in bounded cleanup transactions.
-Legacy CDN blobs are not retained. A failed attempt leaves the previous deployment live and removes
-only new files that are not referenced by the live manifest. The supported maximum is 1,800 files
-and 2 MiB of serialized manifest metadata, which keeps the atomic switch below Convex transaction
-limits. Upload URLs are generated in bounded batches. Later uploads recover component files and
-staging records left unreferenced for more than 24 hours after an interrupted CLI.
+Target: every `npx convex` call of one command uses the same deployment. That is the deployment of
+`CONVEX_DEPLOY_KEY`, the `--preview-name` deployment (with a preview deploy key or a login), or, for
+`upload` only, the development deployment in `CONVEX_DEPLOYMENT`. `--preview-name` next to a
+production or development deploy key fails before any write, because the Convex CLI would ignore it.
+`deploy` needs a deploy key or `--preview-name`: without a key, `npx convex deploy` pushes to
+production while `npx convex run` uses the development deployment.
+
+Upload: the CLI collects the build output with Cloudflare's rules (`_headers` and `_redirects` at
+the root become the version's rules and are not uploaded, `.assetsignore` excludes files, and dot
+files are skipped except `.well-known`), hashes each file, and uploads the manifest as one file. The
+component returns the files that it does not have; the CLI uploads them, 8 at a time, and records
+each one. When the version is complete, the CLI activates it unless `--no-activate` is given. The
+version ID is kept with a digest of the files in `<dist>/.convex-hosting/version.json`, so a rerun
+of the same build continues an interrupted upload or reuses the finished version.
+
+Limits: at most 4,000 files per version, 25 MiB per file, 1,024 bytes per path, and 256 KiB of
+header and redirect rules.
+
+Verification (`deploy`): for a build with `/index.html`, the ETag of `<base path>index.html` must be
+the new file's; otherwise the `--verify-path` page must carry
+`<meta name="convex-hosting-version" content="<id>">`, which a build can write from
+`CONVEX_HOSTING_VERSION_ID`. Then `lib:getLiveVersion` must name the new version.
 
 Convex HTTP routers currently expose GET but not HEAD routes. Uptime monitors must use a lightweight
 GET request.
@@ -283,9 +273,8 @@ To mount under `/app/` (for example, if you have other HTTP routes at the root):
 app.use(hosting, { httpPrefix: "/app/" });
 ```
 
-The bundler also needs to know the base path so the emitted HTML references the right URLs. The CLI
-sets a `CONVEX_HOSTING_BASE_PATH` env var matching the component's mount when it runs your build, so
-`vite.config.ts` can read it:
+Pass the same prefix to the CLI with `--base-path /app/`. It is stored in the version, and `deploy`
+gives it to the build as `CONVEX_HOSTING_BASE_PATH`, so `vite.config.ts` can read it:
 
 ```typescript
 import { defineConfig } from "vite";
@@ -300,19 +289,15 @@ Root-mounted apps don't need this; the default is `/`. Webpack/Next.js equivalen
 
 ## SPA routing
 
-Requests for an extension-less path that doesn't match an uploaded file fall back to `index.html`,
-so client-side routes survive a reload. Paths with an extension (e.g. `/missing.js`) always 404 when
-not found. To turn the fallback off for a multi-page app (unknown paths become real 404s), deploy
-with `--no-spa`:
+A request for a path with no uploaded file gets a 404 by default. For client-side routes, upload
+with SPA handling:
 
 ```bash
-npx @samebase/convex-hosting deploy --no-spa
-# or: npx @samebase/convex-hosting upload --no-spa
+npx @samebase/convex-hosting deploy --dist dist --not-found-handling single-page-application
 ```
 
-The flag is stored on the deployment record (the `deploymentInfo` table), so the serving behavior
-travels with the code you ship rather than living in a separate env var. Re-deploy without
-`--no-spa` or with `--spa` to turn it back on.
+A page load (`Sec-Fetch-Mode: navigate`) of an unknown path then gets `index.html`, and a missing
+script still gets a 404. The setting is stored in the version, so it changes with each release.
 
 ## Switching from @convex-dev/static-hosting
 
@@ -333,11 +318,11 @@ verify its `httpPrefix`. In app-owned mode, verify that `registerStaticRoutes` i
 ### Wrong `VITE_CONVEX_URL` in the built bundle
 
 ```bash
-# Right: CLI sets VITE_CONVEX_URL for the target deployment
-npx @samebase/convex-hosting deploy
+# Right: npx convex deploy sets VITE_CONVEX_URL for the target deployment
+npx @samebase/convex-hosting deploy --dist dist
 
-# Wrong: uses VITE_CONVEX_URL from .env.local
-npm run build && npx @samebase/convex-hosting upload --prod
+# Wrong for production: the build uses VITE_CONVEX_URL from .env.local
+npm run build && CONVEX_DEPLOY_KEY=<production key> npx @samebase/convex-hosting upload --dist dist
 ```
 
 ### "Cannot find module convex.config"
@@ -354,7 +339,7 @@ If you've renamed the component instance with `app.use(hosting, { name: "custom"
 CLI and replace every generated `components.hosting` reference with `components.custom`:
 
 ```bash
-npx @samebase/convex-hosting upload --component custom
+npx @samebase/convex-hosting upload --dist dist --component custom
 ```
 
 ## API Reference
