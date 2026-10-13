@@ -63,6 +63,11 @@
     "typecheck": "tsc --noEmit",
     "watch": "tsc --build ./tsconfig.build.json --watch --preserveWatchOutput"
   },
+  "dependencies": {
+    "ignore": "catalog:",
+    "mime": "catalog:",
+    "zod": "catalog:"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/react": "catalog:",

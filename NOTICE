@@ -5,3 +5,8 @@ This product includes a modified version of static-hosting
 (https://github.com/get-convex/static-hosting), developed by Convex and licensed under the Apache
 License, Version 2.0. Samebase changed the files in packages/convex-hosting; the git history of
 https://github.com/samebase/convex-hosting records each change.
+
+packages/convex-hosting/src/workers-shared is copied from cloudflare/workers-sdk
+(https://github.com/cloudflare/workers-sdk, packages/workers-shared), developed by Cloudflare and
+licensed under the MIT License or the Apache License, Version 2.0, at your option. The file UPSTREAM
+in that folder records the copied commit, and scripts/sync-workers-shared.ts refreshes it.
