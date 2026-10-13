@@ -54,7 +54,7 @@ describe("upload", () => {
     });
     // The manifest object is gone; only test files remain in storage afterwards.
     expect(await t.run(async (ctx) => await ctx.db.system.query("_storage").collect())).toEqual([]);
-    expect(await t.mutation(internal.lib.finishVersion, { versionId })).toMatchObject({
+    expect(await t.action(internal.lib.finishVersion, { versionId })).toMatchObject({
       state: "uploading",
       // In path order.
       pending: [{ path: "/assets/app-1.js" }, { path: "/index.html" }],
@@ -81,11 +81,11 @@ describe("upload", () => {
       });
     }
 
-    expect(await t.mutation(internal.lib.finishVersion, { versionId })).toEqual({
+    expect(await t.action(internal.lib.finishVersion, { versionId })).toEqual({
       state: "ready",
       pending: [],
     });
-    expect(await t.mutation(internal.lib.finishVersion, { versionId })).toEqual({
+    expect(await t.action(internal.lib.finishVersion, { versionId })).toEqual({
       state: "ready",
       pending: [],
     });
@@ -117,7 +117,7 @@ describe("upload", () => {
       path: "/assets/app-1.js",
       storageId: second,
     });
-    await t.mutation(internal.lib.finishVersion, { versionId });
+    await t.action(internal.lib.finishVersion, { versionId });
     expect(await startTestVersion(t, versionId, files)).toEqual({ state: "ready", pending: [] });
   });
 
@@ -158,6 +158,24 @@ describe("upload", () => {
         "/assets/app-1.js": { body: "console.log(2)", contentType: JS, immutable: true },
       }),
     ).rejects.toThrow("has different bytes");
+  });
+
+  test("finishVersion fails when another upload became ready with other immutable bytes", async () => {
+    const t = initConvexTest();
+    // Both start before either is ready, so startVersion finds no conflict.
+    await startTestVersion(t, testVersionId("a"), files);
+    const other = {
+      "/assets/app-1.js": { body: "console.log(2)", contentType: JS, immutable: true },
+    };
+    await startTestVersion(t, testVersionId("b"), other);
+    await uploadTestVersion(t, testVersionId("a"), files);
+
+    const versionId = testVersionId("b");
+    const storageId = await store(t, "console.log(2)");
+    await t.mutation(internal.lib.recordFile, { versionId, path: "/assets/app-1.js", storageId });
+    await expect(t.action(internal.lib.finishVersion, { versionId })).rejects.toThrow(
+      "different bytes at these immutable paths: /assets/app-1.js",
+    );
   });
 
   test("the manifest is checked", async () => {
@@ -239,7 +257,7 @@ describe("lookups", () => {
     await t.mutation(internal.lib.recordFile, { versionId, path: "/assets/new.js", storageId });
     expect(await route(t, "/assets/new.js")).toEqual({ handled: false });
 
-    await t.mutation(internal.lib.finishVersion, { versionId });
+    await t.action(internal.lib.finishVersion, { versionId });
     expect(await route(t, "/assets/new.js")).toMatchObject({ handled: true, status: 200 });
 
     await t.run(async (ctx) => {
@@ -324,6 +342,56 @@ describe("cleanup", () => {
     vi.setSystemTime(T0 + 37 * DAY + 1);
     await t.mutation(internal.lib.cleanup, {});
     expect(await versionStates(t)).toEqual({ [testVersionId("d")]: "ready" });
+  });
+
+  test("keeps a version activated after a code push while a file-only activation follows it", async () => {
+    const t = initConvexTest();
+    await uploadTestVersion(t, testVersionId("a"), files);
+    await t.mutation(internal.lib.activate, { versionId: testVersionId("a"), afterCodePush: true });
+    vi.setSystemTime(T0 + DAY);
+    // A plain upload: the backend still runs the renderer of version a.
+    await deployTestVersion(t, testVersionId("b"), files);
+
+    vi.setSystemTime(T0 + 30 * DAY);
+    await t.mutation(internal.lib.cleanup, {});
+    expect(await versionStates(t)).toEqual({
+      [testVersionId("a")]: "ready",
+      [testVersionId("b")]: "ready",
+    });
+
+    await uploadTestVersion(t, testVersionId("c"), files);
+    await t.mutation(internal.lib.activate, { versionId: testVersionId("c"), afterCodePush: true });
+    vi.setSystemTime(T0 + 37 * DAY + 1);
+    await t.mutation(internal.lib.cleanup, {});
+    expect(await versionStates(t)).toEqual({ [testVersionId("c")]: "ready" });
+  });
+
+  test("checks the versions after the first page in later calls", async () => {
+    const t = initConvexTest();
+    await deployTestVersion(t, testVersionId("a"), files);
+    // 200 never-activated versions that no code push has replaced, then 5 expired ones.
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 205; index++) {
+        const expired = index >= 200;
+        await ctx.db.insert("versions", {
+          versionId: `v_${index}`,
+          state: "ready",
+          config: "{}",
+          manifestSha256: "",
+          entryCount: 0,
+          createdAt: T0,
+          ...(expired ? { liveAt: T0, supersededAt: T0, activatedAfterCodePush: false } : {}),
+        });
+      }
+    });
+
+    vi.setSystemTime(T0 + 8 * DAY);
+    expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: false });
+    expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: true });
+    const states = await versionStates(t);
+    expect(Object.keys(states)).toHaveLength(201);
+    expect(states).not.toHaveProperty("v_200");
+    expect(states).toHaveProperty("v_199", "ready");
   });
 
   test("marks a version deleting first and finishes in later calls", async () => {

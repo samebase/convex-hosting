@@ -150,8 +150,10 @@ calls and the storage egress per request before calling this a default for apps 
    recorded in `_storage` against the entry and sets `storageId`. A mismatch deletes the object and
    returns a failure result (a thrown error would roll the deletion back). Only an `uploading`
    version accepts files.
-5. `finishVersion({ versionId })` checks that the entry count matches and every entry has a
-   `storageId`; it sets `ready` or returns the entries that still lack one.
+5. `finishVersion({ versionId })` checks, in batches of 500 entries, that the entry count matches,
+   every entry has a `storageId`, and no immutable path has other bytes in the newest ready version
+   that has it (two uploads can start together); it sets `ready` or returns the entries that still
+   lack one.
 6. `activate({ versionId, afterCodePush })` requires `ready`, sets the pointer, `liveAt`, and
    `supersededAt` on the old live version, and records whether a code push came before it. A plain
    `upload` activates at once with `afterCodePush: false`; `deploy` activates after the code push
@@ -197,12 +199,17 @@ An hourly cron in the component starts `cleanup`, a mutation that deletes at mos
 schedules itself again at once while work remains, so a large version is gone within minutes, not
 hours:
 
-- Eligible for deletion: a version that is not live and was superseded more than seven days ago; an
-  `uploading` version older than one day; a `ready` version that never went live, when a later
-  version was activated after a code push (`afterCodePush: true`) more than seven days ago. The last
-  rule protects a release whose push succeeded and whose activation failed: its renderer may be
-  live, and only a later release with its own code push proves that it is not. A later file-only
-  activation does not count.
+- Eligible for deletion, for a version that is not live: an `uploading` version older than one day;
+  a version activated without a code push (`afterCodePush: false`), seven days after a later
+  activation superseded it; a version activated after a code push, or a `ready` version that never
+  went live, when a later version was activated after a code push and that activation is more than
+  seven days old (its `liveAt` is after this version's `liveAt`, or after its `createdAt` if it
+  never went live). The backend runs the renderer of the last code push, and a file-only activation
+  does not replace it, so the files of that renderer's version must stay. A never-activated version
+  can be a release whose push succeeded and whose activation failed. The newest code-push activation
+  that is more than seven days old comes from the index on `[activatedAfterCodePush, liveAt]`.
+- Each run checks the next 200 versions after a cursor in `site` and starts again at the oldest
+  version when the scan ends.
 - Deletion first sets `deleting` in the same transaction that checks eligibility. `activate`,
   `startVersion`, `recordFile`, `finishVersion`, and the immutable fallback reject a `deleting`
   version. Then the entries and their storage objects go in batches, then the row.
@@ -221,7 +228,8 @@ rollback of the files. SSR rollback is a release of the older commit.
 - `Range` requests get the whole body with status 200, as on Cloudflare Pages.
 - `_headers`: 100 rules. `_redirects`: 2,000 static and 100 dynamic rules. The vendored parsers
   enforce them.
-- `If-None-Match` with `*` or a list gets 200, as in the asset worker.
+- `If-None-Match` with `*` or a list that contains the ETag gets 304. The asset worker compares the
+  whole header with one ETag, so `route` checks the list after the handler.
 - Every file request runs a Convex HTTP action plus two queries and a storage read, and is billed as
   such, unlike a static request on Cloudflare. Edge cache hits for immutable paths reduce it.
 - One backend version per deployment: an old tab talks to the new backend. Convex documents this

@@ -61,7 +61,7 @@ export async function uploadTestVersion(
     const storageId = await store(t, files[path].body);
     await t.mutation(internal.lib.recordFile, { versionId, path, storageId });
   }
-  return await t.mutation(internal.lib.finishVersion, { versionId });
+  return await t.action(internal.lib.finishVersion, { versionId });
 }
 
 /** Uploads a version and activates it. */

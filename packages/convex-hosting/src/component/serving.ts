@@ -56,3 +56,19 @@ function textResponse(status: number, body: string) {
     headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" },
   });
 }
+
+/**
+ * If-None-Match uses weak comparison for GET and HEAD requests. Browsers and proxies may send a
+ * weak validator, a comma-separated list of validators, or `*`.
+ */
+export function etagMatches(ifNoneMatch: string | null, currentEtag: string): boolean {
+  if (!ifNoneMatch) return false;
+
+  const normalize = (value: string) => value.trim().replace(/^W\//, "").trim();
+  const normalizedCurrent = normalize(currentEtag);
+
+  return ifNoneMatch.split(",").some((candidate) => {
+    const normalizedCandidate = normalize(candidate);
+    return normalizedCandidate === "*" || normalizedCandidate === normalizedCurrent;
+  });
+}

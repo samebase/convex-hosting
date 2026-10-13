@@ -21,7 +21,8 @@ export default defineSchema({
     activatedAfterCodePush: v.optional(v.boolean()),
   })
     .index("by_versionId", ["versionId"])
-    .index("by_state", ["state"]),
+    .index("by_state", ["state"])
+    .index("by_codePush_liveAt", ["activatedAfterCodePush", "liveAt"]),
 
   // The manifest of a version: one row per file. `storageId` is set when the file is recorded.
   entries: defineTable({
@@ -38,9 +39,11 @@ export default defineSchema({
     .index("by_immutable_path", ["immutable", "path"])
     .index("by_storageId", ["storageId"]),
 
-  // One row: the live version and the cursor of the cleanup scan over `_storage`.
+  // One row: the live version and the cursors of the cleanup scans.
   site: defineTable({
     liveVersionId: v.optional(v.string()),
+    // The `_creationTime` of the last version that cleanup checked.
+    versionScanCursor: v.optional(v.number()),
     storageScanCursor: v.optional(v.string()),
   }),
 });

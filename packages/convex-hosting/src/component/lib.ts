@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { v, type Infer } from "convex/values";
 import { z } from "zod";
 import { Analytics } from "../workers-shared/asset-worker/src/analytics.js";
@@ -15,10 +16,12 @@ import type { Doc, Id } from "./_generated/dataModel.js";
 import {
   internalAction,
   internalMutation,
+  internalQuery,
   query,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server.js";
+import { etagMatches } from "./serving.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How long a superseded version stays, for a rollback and for the immutable fallback. */
@@ -27,8 +30,10 @@ const MAX_ENTRIES = 4000;
 const MAX_CONFIG_BYTES = 256 * 1024;
 /** Entries per `writeEntries` mutation. */
 const ENTRY_WRITE_BATCH = 500;
-/** Rows that one `cleanup` call deletes, and `_storage` objects that it scans. */
+/** Rows that one `cleanup` call deletes, and versions and `_storage` objects that it checks. */
 const CLEANUP_ROWS = 200;
+/** Entries at one immutable path that a lookup reads for a ready version. */
+const IMMUTABLE_PATH_ROWS = 8;
 /** The first date with navigation detection (`Sec-Fetch-Mode`) in the asset worker. */
 const NAVIGATION_COMPATIBILITY_DATE = "2025-04-01";
 
@@ -194,19 +199,11 @@ export const writeEntries = internalMutation({
         continue;
       }
       if (entry.immutable) {
-        for (const immutable of [true, false]) {
-          const others = ctx.db
-            .query("entries")
-            .withIndex("by_immutable_path", (q) =>
-              q.eq("immutable", immutable).eq("path", entry.path),
-            );
-          for await (const other of others) {
-            if (other.sha256 !== entry.sha256 && (await isReady(other.versionId))) {
-              throw new Error(
-                `${entry.path} is immutable, but version ${other.versionId} has different bytes at that path.`,
-              );
-            }
-          }
+        const other = await newestReadyImmutableEntry(ctx, isReady, entry.path, versionId);
+        if (other !== null && other.sha256 !== entry.sha256) {
+          throw new Error(
+            `${entry.path} is immutable, but version ${other.versionId} has different bytes at that path.`,
+          );
         }
       }
       await ctx.db.insert("entries", {
@@ -264,30 +261,118 @@ export const recordFile = internalMutation({
   },
 });
 
-/** Marks the version ready when every entry has a file, else returns the entries without one. */
-export const finishVersion = internalMutation({
+const checkEntriesResultValidator = v.object({
+  state: v.union(v.literal("uploading"), v.literal("ready")),
+  entryCount: v.number(),
+  counted: v.number(),
+  pending: v.array(pendingEntryValidator),
+  // Immutable paths with other bytes in the newest ready version that has them.
+  conflicts: v.array(v.string()),
+  continueCursor: v.string(),
+  isDone: v.boolean(),
+});
+
+/**
+ * Marks the version ready when every entry has a file and no immutable path conflicts with a ready
+ * version, else returns the entries without a file. It checks the entries in batches. Releases for
+ * one target run one at a time (the CI rule in docs/design.md, Deploy), so no other version of the
+ * target becomes ready between the batches, and they need not be one transaction.
+ */
+export const finishVersion = internalAction({
   args: { versionId: v.string() },
   returns: uploadResultValidator,
-  handler: async (ctx, { versionId }) => {
+  handler: async (ctx, { versionId }): Promise<Infer<typeof uploadResultValidator>> => {
+    let cursor: string | null = null;
+    let counted = 0;
+    let entryCount = 0;
+    const pending: Array<Infer<typeof pendingEntryValidator>> = [];
+    const conflicts: string[] = [];
+    while (true) {
+      const page: Infer<typeof checkEntriesResultValidator> = await ctx.runQuery(
+        internal.lib.checkEntries,
+        { versionId, paginationOpts: { numItems: ENTRY_WRITE_BATCH, cursor } },
+      );
+      if (page.state === "ready") return { state: "ready", pending: [] };
+      entryCount = page.entryCount;
+      counted += page.counted;
+      pending.push(...page.pending);
+      conflicts.push(...page.conflicts);
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+    if (conflicts.length > 0) {
+      throw new Error(
+        `A ready version has different bytes at these immutable paths: ${conflicts.join(", ")}`,
+      );
+    }
+    if (counted !== entryCount) {
+      throw new Error(
+        `Version ${versionId} has ${counted} of ${entryCount} entries. Run startVersion again.`,
+      );
+    }
+    if (pending.length > 0) return { state: "uploading", pending };
+    await ctx.runMutation(internal.lib.markReady, { versionId, entryCount: counted });
+    return { state: "ready", pending: [] };
+  },
+});
+
+export const checkEntries = internalQuery({
+  args: { versionId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: checkEntriesResultValidator,
+  handler: async (ctx, { versionId, paginationOpts }) => {
     const version = await getVersion(ctx, versionId);
     if (version === null) throw new Error(`Version ${versionId} does not exist.`);
     if (version.state === "deleting") throw new Error(`Version ${versionId} is deleting.`);
-    if (version.state === "ready") return { state: "ready" as const, pending: [] };
-    const entries = await ctx.db
+    if (version.state === "ready") {
+      return {
+        state: version.state,
+        entryCount: version.entryCount,
+        counted: 0,
+        pending: [],
+        conflicts: [],
+        continueCursor: "",
+        isDone: true,
+      };
+    }
+    const { page, continueCursor, isDone } = await ctx.db
       .query("entries")
       .withIndex("by_version_path", (q) => q.eq("versionId", versionId))
-      .take(MAX_ENTRIES + 1);
-    if (entries.length !== version.entryCount) {
-      throw new Error(
-        `Version ${versionId} has ${entries.length} of ${version.entryCount} entries. Run startVersion again.`,
-      );
+      .paginate(paginationOpts);
+    const isReady = readyCheck(ctx);
+    const conflicts: string[] = [];
+    for (const entry of page) {
+      if (!entry.immutable) continue;
+      const other = await newestReadyImmutableEntry(ctx, isReady, entry.path, versionId);
+      if (other !== null && other.sha256 !== entry.sha256) conflicts.push(entry.path);
     }
-    const pending = entries.flatMap((entry) =>
-      entry.storageId === undefined ? [{ path: entry.path, sha256: entry.sha256 }] : [],
-    );
-    if (pending.length > 0) return { state: "uploading" as const, pending };
-    await ctx.db.patch("versions", version._id, { state: "ready" });
-    return { state: "ready" as const, pending: [] };
+    return {
+      state: version.state,
+      entryCount: version.entryCount,
+      counted: page.length,
+      pending: page.flatMap((entry) =>
+        entry.storageId === undefined ? [{ path: entry.path, sha256: entry.sha256 }] : [],
+      ),
+      conflicts,
+      continueCursor,
+      isDone,
+    };
+  },
+});
+
+export const markReady = internalMutation({
+  args: { versionId: v.string(), entryCount: v.number() },
+  returns: v.null(),
+  handler: async (ctx, { versionId, entryCount }) => {
+    const version = await getVersion(ctx, versionId);
+    if (version === null) throw new Error(`Version ${versionId} does not exist.`);
+    if (version.state === "deleting") throw new Error(`Version ${versionId} is deleting.`);
+    if (version.entryCount !== entryCount) {
+      throw new Error(`Version ${versionId} has ${version.entryCount} entries, not ${entryCount}.`);
+    }
+    if (version.state === "uploading") {
+      await ctx.db.patch("versions", version._id, { state: "ready" });
+    }
+    return null;
   },
 });
 
@@ -443,6 +528,25 @@ export const route = query({
       response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
     }
 
+    const etag = response.headers.get("ETag");
+    if (
+      response.status === 200 &&
+      etag !== null &&
+      etagMatches(request.headers.get("If-None-Match"), etag)
+    ) {
+      // The handler compares the whole header with one ETag, so `*` and a list got a 200.
+      const cacheControl = response.headers.get("Cache-Control");
+      return {
+        handled: true as const,
+        status: 304,
+        headers: [
+          ...(cacheControl === null ? [] : [{ name: "cache-control", value: cacheControl }]),
+          { name: "etag", value: etag },
+        ],
+        body: null,
+      };
+    }
+
     let body = null;
     // A 200, or the 404 page of `not_found_handling: "404-page"`. HEAD and 304 have no body.
     if (response.body !== null && served.entry?.storageId !== undefined) {
@@ -464,9 +568,10 @@ export const route = query({
 });
 
 /**
- * Bounded cleanup, started hourly by crons.ts. It marks expired versions `deleting`, deletes their
- * entries and objects, then scans one page of `_storage` for unreferenced objects older than a day.
- * While version deletion has work left, it schedules itself again at once.
+ * Bounded cleanup, started hourly by crons.ts. It checks the next page of versions and marks the
+ * expired ones `deleting`, deletes their entries and objects, then scans a page of `_storage` for
+ * unreferenced objects older than a day. It schedules itself again at once while deletions or
+ * unchecked versions remain.
  */
 export const cleanup = internalMutation({
   args: {},
@@ -474,12 +579,28 @@ export const cleanup = internalMutation({
   handler: async (ctx): Promise<{ done: boolean }> => {
     const now = Date.now();
     const site = await ctx.db.query("site").first();
-    const versions = await ctx.db.query("versions").take(CLEANUP_ROWS);
+    // The newest activation after a code push that is more than seven days old: its renderer
+    // replaced the renderers of the versions before it.
+    const codePush = await ctx.db
+      .query("versions")
+      .withIndex("by_codePush_liveAt", (q) =>
+        q.eq("activatedAfterCodePush", true).lt("liveAt", now - RETENTION_MS),
+      )
+      .order("desc")
+      .first();
+    const versions = await ctx.db
+      .query("versions")
+      .withIndex("by_creation_time", (q) => q.gt("_creationTime", site?.versionScanCursor ?? 0))
+      .take(CLEANUP_ROWS);
     for (const version of versions) {
-      if (version.versionId !== site?.liveVersionId && isExpired(version, versions, now)) {
+      if (version.versionId !== site?.liveVersionId && isExpired(version, codePush, now)) {
         await ctx.db.patch("versions", version._id, { state: "deleting" });
       }
     }
+    // A full page means that more versions follow; a short page ends the scan, and the next one
+    // starts again at the oldest version.
+    const versionScanCursor =
+      versions.length === CLEANUP_ROWS ? versions[versions.length - 1]._creationTime : undefined;
 
     let budget = CLEANUP_ROWS;
     const deleting = await ctx.db
@@ -495,52 +616,56 @@ export const cleanup = internalMutation({
         await ctx.db.delete("entries", entry._id);
         if (entry.storageId !== undefined) await deleteUnreferencedObject(ctx, entry.storageId);
       }
-      if (entries.length === budget) {
-        await ctx.scheduler.runAfter(0, internal.lib.cleanup, {});
-        return { done: false };
-      }
       budget -= entries.length;
+      if (budget === 0) break;
       await ctx.db.delete("versions", version._id);
+      budget -= 1;
+      if (budget === 0) break;
     }
 
-    // Objects of uploads whose `recordFile` never ran, and manifests of failed starts.
-    const scan = await ctx.db.system
-      .query("_storage")
-      .paginate({ cursor: site?.storageScanCursor ?? null, numItems: budget });
-    for (const object of scan.page) {
-      if (object._creationTime < now - DAY_MS) await deleteUnreferencedObject(ctx, object._id);
+    let storageScanCursor = site?.storageScanCursor;
+    if (budget > 0) {
+      // Objects of uploads whose `recordFile` never ran, and manifests of failed starts.
+      const scan = await ctx.db.system
+        .query("_storage")
+        .paginate({ cursor: storageScanCursor ?? null, numItems: budget });
+      for (const object of scan.page) {
+        if (object._creationTime < now - DAY_MS) await deleteUnreferencedObject(ctx, object._id);
+      }
+      storageScanCursor = scan.isDone ? undefined : scan.continueCursor;
     }
-    const storageScanCursor = scan.isDone ? undefined : scan.continueCursor;
     if (site !== null) {
-      await ctx.db.patch("site", site._id, { storageScanCursor });
-    } else if (storageScanCursor !== undefined) {
-      await ctx.db.insert("site", { storageScanCursor });
+      await ctx.db.patch("site", site._id, { versionScanCursor, storageScanCursor });
+    } else if (versionScanCursor !== undefined || storageScanCursor !== undefined) {
+      await ctx.db.insert("site", { versionScanCursor, storageScanCursor });
     }
-    return { done: true };
+
+    const done = budget > 0 && versionScanCursor === undefined;
+    if (!done) await ctx.scheduler.runAfter(0, internal.lib.cleanup, {});
+    return { done };
   },
 });
 
 /**
- * An `uploading` version older than a day, a version superseded more than seven days ago, or a
- * ready version that never went live when a later version was activated after a code push more
- * than seven days ago. The last rule keeps a release whose push succeeded and whose activation
- * failed: its renderer can be live until a later release pushes code.
+ * An `uploading` version older than a day; a version activated without a code push, seven days
+ * after a later activation superseded it; and a version activated after a code push or never
+ * activated, seven days after a later activation that came after a code push. The backend runs the
+ * renderer of the last code push, so a file-only activation does not replace it, and the files of
+ * that renderer's version must stay. A never-activated version can be a release whose push
+ * succeeded and whose activation failed.
  */
-function isExpired(version: Doc<"versions">, versions: Array<Doc<"versions">>, now: number) {
+function isExpired(version: Doc<"versions">, codePush: Doc<"versions"> | null, now: number) {
   switch (version.state) {
     case "deleting":
       return false;
     case "uploading":
       return version.createdAt < now - DAY_MS;
     case "ready":
-      if (version.supersededAt !== undefined) return version.supersededAt < now - RETENTION_MS;
-      if (version.liveAt !== undefined) return false;
-      return versions.some(
-        (later) =>
-          later.activatedAfterCodePush === true &&
-          later.liveAt !== undefined &&
-          later.liveAt > version.createdAt &&
-          later.liveAt < now - RETENTION_MS,
+      if (version.activatedAfterCodePush === false) {
+        return version.supersededAt !== undefined && version.supersededAt < now - RETENTION_MS;
+      }
+      return (
+        codePush?.liveAt !== undefined && codePush.liveAt > (version.liveAt ?? version.createdAt)
       );
     default:
       return version.state satisfies never;
@@ -588,17 +713,28 @@ async function lookupEntry(
 ) {
   const own = await getEntry(ctx, versionId, path);
   if (own?.storageId !== undefined) return own;
-  const others = ctx.db
+  return await newestReadyImmutableEntry(ctx, isReady, path, versionId);
+}
+
+/**
+ * The newest immutable entry at `path` from a ready version other than `versionId`. It reads at
+ * most `IMMUTABLE_PATH_ROWS` entries at the path, newest first, and treats more as none found:
+ * entries of uploading or deleting versions come before a ready one only for a short time.
+ */
+async function newestReadyImmutableEntry(
+  ctx: QueryCtx,
+  isReady: (versionId: string) => Promise<boolean>,
+  path: string,
+  versionId: string,
+) {
+  const candidates = await ctx.db
     .query("entries")
     .withIndex("by_immutable_path", (q) => q.eq("immutable", true).eq("path", path))
-    .order("desc");
-  for await (const other of others) {
-    if (
-      other.versionId !== versionId &&
-      other.storageId !== undefined &&
-      (await isReady(other.versionId))
-    ) {
-      return other;
+    .order("desc")
+    .take(IMMUTABLE_PATH_ROWS);
+  for (const candidate of candidates) {
+    if (candidate.versionId !== versionId && (await isReady(candidate.versionId))) {
+      return candidate;
     }
   }
   return null;

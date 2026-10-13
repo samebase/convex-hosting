@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "vite-plus/test";
 import { api } from "./_generated/api.js";
+import { etagMatches } from "./serving.js";
 import { deployTestVersion, initConvexTest, testVersionId, type TestFile } from "./setup.test.js";
 
 const HTML = "text/html; charset=utf-8";
@@ -47,6 +48,34 @@ describe("the component's route", () => {
     });
     expect(revalidated.status).toBe(304);
     expect(await revalidated.text()).toBe("");
+  });
+
+  test("answers 304 for a list that contains the ETag and for *", async () => {
+    const t = await deployed();
+    const response = await t.fetch("/assets/app-1.js", { headers: script });
+    const etag = response.headers.get("ETag") ?? "";
+    for (const ifNoneMatch of [`"other", W/${etag}`, "*"]) {
+      const revalidated = await t.fetch("/assets/app-1.js", {
+        headers: { ...script, "If-None-Match": ifNoneMatch },
+      });
+      expect(revalidated.status).toBe(304);
+      expect([...revalidated.headers.keys()]).toEqual(["cache-control", "etag"]);
+      expect(revalidated.headers.get("Cache-Control")).toBe(IMMUTABLE);
+      expect(revalidated.headers.get("ETag")).toBe(etag);
+      expect(await revalidated.text()).toBe("");
+    }
+    const changed = await t.fetch("/assets/app-1.js", {
+      headers: { ...script, "If-None-Match": '"other"' },
+    });
+    expect(changed.status).toBe(200);
+  });
+
+  test("etagMatches supports weak tags, lists, and wildcard validators", () => {
+    expect(etagMatches('W/"asset-1"', '"asset-1"')).toBe(true);
+    expect(etagMatches('"other", W/"asset-1"', '"asset-1"')).toBe(true);
+    expect(etagMatches("*", '"asset-1"')).toBe(true);
+    expect(etagMatches('"other"', '"asset-1"')).toBe(false);
+    expect(etagMatches(null, '"asset-1"')).toBe(false);
   });
 
   test("answers HEAD without a body", async () => {
