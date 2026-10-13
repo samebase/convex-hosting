@@ -74,15 +74,14 @@ npx @samebase/convex-hosting deploy --dist dist/client --build-command "npm run 
    200 and carry `<meta name="convex-hosting-version" content="<id>">` with the new ID. An error
    page with the tag fails.
 
-On a first install, and on an upgrade from 0.3.x, the push runs first and the upload follows; the
-site answers 404 until the upload ends. Hashed files under `/assets/` stay reachable from the
-previous versions, so a page that was open before the release still loads its lazy scripts.
+On a first install, the push runs first and the upload follows; the site answers 404 until the
+upload ends. After a release, a page that was open before it gets 404 for hashed files that the new
+version does not have; see
+[Reload on a new version](https://github.com/samebase/convex-hosting#reload-on-a-new-version).
 
 `convexSsr()` defines `import.meta.env.CONVEX_HOSTING_VERSION_ID` from the build environment, empty
 when it is not set. When it is not empty, the server entry adds the meta tag before the first
-`</head>` of every rendered page. `deploy --skip-build` reuses the ID from
-`dist/client/.convex-hosting/version.json`, which the upload of the deploy that made the build
-wrote.
+`</head>` of every rendered page.
 
 ## Why these settings exist
 

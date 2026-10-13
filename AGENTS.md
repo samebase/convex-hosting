@@ -8,11 +8,13 @@ Changes offered back to upstream live on branches in
 
 ## Layout
 
+- `README.md`: the documentation of `@samebase/convex-hosting`. `pnpm pack` copies it into the
+  package (`prepack`); do not add `packages/convex-hosting/README.md` to git.
 - `packages/convex-hosting`: the published component and CLI.
   - `src/component`: code that runs inside the component on Convex.
-  - `src/client`: the API that apps import (`registerStaticRoutes`, `serveStaticAsset`, and more).
+  - `src/client`: the API that apps import (`registerStaticRoutes` and `serveStaticAsset`).
   - `src/cli`: the `convex-hosting` command.
-  - `src/react`: `UpdateBanner` and `useDeploymentUpdates`.
+  - `src/contract.ts`: the limits and formats that the CLI and the component share.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
   Start pages in a Convex HTTP action.
 - `examples/spa`: a Vite and React app that the component serves.

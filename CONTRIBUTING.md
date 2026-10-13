@@ -18,6 +18,14 @@ pnpm run dev
 The SSR example has its own schema, so it needs a separate Convex project. See
 [examples/tanstack-ssr/README.md](./examples/tanstack-ssr/README.md).
 
+## Documentation
+
+The root `README.md` is the documentation of `@samebase/convex-hosting`. The package's `prepack`
+script copies it into `packages/convex-hosting`, so npm shows the same text. Edit only the root
+README, and use absolute GitHub links in it: relative links break on npm.
+
+## Codegen
+
 After a change to the component's functions or schema, run `pnpm run build:codegen` in
 `packages/convex-hosting`. Against a local anonymous backend, it needs `CONVEX_SELF_HOSTED_URL` and
 `CONVEX_SELF_HOSTED_ADMIN_KEY` from the backend's config, and an empty `convex/` directory in the

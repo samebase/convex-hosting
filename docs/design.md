@@ -59,17 +59,17 @@ for the apps Samebase makes. It does not need feature parity with them.
    files between its code push and the pointer flip, and after a failed activation. Stable paths
    never fall back, and a superseded version is never served again: after a deploy, a page that was
    open before it gets 404 for hashed files that the new version does not have, as on Cloudflare
-   Workers, and the update banner prompts the reload. A rollback is a redeploy from Git.
+   Workers; the README shows how such a page reloads. A rollback is a redeploy from Git.
 5. **Cleanup is a cron** in the component. It needs no later upload to run.
 
 ## Data model
 
-| Table            | Fields                                                                                                                                                                                          | Purpose                                                   |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `versions`       | `versionId`, `state` (`uploading`, `ready`, `deleting`), `manifestSha256`, `entryCount`, `createdAt`, `liveAt?`, `supersededAt?`, `codePushAt?`. Indexes on `versionId`, `state`, `codePushAt`. | One row per upload.                                       |
-| `versionConfigs` | `versionId`, `config` (a JSON string). Index on `versionId`.                                                                                                                                    | The config of a version.                                  |
-| `entries`        | `versionId`, `path`, `sha256`, `size`, `contentType`, `immutable`, `storageId?`, `ready`. Indexes on `[versionId, path]`, `[ready, immutable, path]`, and `storageId`.                          | The manifest of a version. `storageId` is set per upload. |
-| `site`           | `liveVersionId?`, `versionScanCursor?`, `storageScanCursor?`.                                                                                                                                   | One row: the pointer and the cleanup cursors.             |
+| Table            | Fields                                                                                                                                                                         | Purpose                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| `versions`       | `versionId`, `state` (`uploading`, `ready`, `deleting`), `manifestSha256`, `entryCount`, `createdAt`, `liveAt?`, `codePushAt?`. Indexes on `versionId`, `state`, `codePushAt`. | One row per upload.                                       |
+| `versionConfigs` | `versionId`, `config` (a JSON string). Index on `versionId`.                                                                                                                   | The config of a version.                                  |
+| `entries`        | `versionId`, `path`, `sha256`, `size`, `contentType`, `immutable`, `storageId?`, `ready`. Indexes on `[versionId, path]`, `[ready, immutable, path]`, and `storageId`.         | The manifest of a version. `storageId` is set per upload. |
+| `site`           | `liveVersionId?`, `versionScanCursor?`, `storageScanCursor?`.                                                                                                                  | One row: the pointer and the cleanup cursors.             |
 
 `config` is a JSON string because Convex allows 1,024 fields per object and the parsed static
 redirects of the asset worker are keyed by path. It is at most 256 KiB. It has its own table so that
@@ -95,7 +95,7 @@ version in one transaction, and the app's HTTP action does nothing but build the
    is required. For a request that is not a navigation (`Sec-Fetch-Mode` is not `navigate`),
    `not_found_handling` is forced to `none`, so a missing script never gets the SPA page, also
    through a rewrite. Navigation detection needs the asset worker's compatibility date of 2025-04-01
-   or later, which the config carries.
+   or later, which `startVersion` requires in the config.
 3. It builds the `Request` from the method, URL, and headers it received, and runs `canFetch` and
    then `handleRequest`. `exists(path)` is a per-request map over index lookups: the version's entry
    at that path, else (for a path that some entry marks immutable) the newest entry at that path
@@ -113,11 +113,12 @@ version in one transaction, and the app's HTTP action does nothing but build the
    The handler gets the request without `If-None-Match` and `If-Modified-Since`, so a 404 page never
    becomes a 304.
 5. It returns `handled: false` when `canFetch` was false, else the status, the headers, and the
-   selected entry (storage ID, storage URL, content type) for a 200 GET.
+   selected entry (storage ID and storage URL) for a GET with a body: a 200, or the 404 page of
+   `not_found_handling: "404-page"`. The headers carry the content type.
 
 The HTTP action builds the `Response`. The body comes from `ctx.storage.get` inside the component's
-own route, or from `fetch(storageUrl)` in the app, only when the query selected an entry for a 200
-GET; a HEAD or a 304 reads no bytes.
+own route, or from `fetch(storageUrl)` in the app, only when the query returned an entry; a HEAD or
+a 304 reads no bytes.
 
 Entry points:
 
@@ -131,8 +132,9 @@ Entry points:
   rendering, APIs, auth routes). `handled: false` returns `null`, so the app continues.
 - Other methods never reach the handler. An app's own routes stay first in Convex's router.
 
-Cost: one page request makes one query and, for a 200 GET, one storage read. Measure the function
-calls and the storage egress per request before calling this a default for apps with traffic.
+Cost: one request makes one HTTP action and one route query, and a response with a body adds one
+storage read (an app's own route reads it through the storage URL). Measure the function calls and
+the storage egress per request before calling this a default for apps with traffic.
 
 ## Upload
 
@@ -168,10 +170,10 @@ calls and the storage egress per request before calling this a default for apps 
    together). Then one mutation sets `ready` on the version and on every entry (at most 4,000
    writes). Otherwise it returns the entries that still lack a file. Components cannot use
    `paginate`, so the batches use the last path as the cursor.
-6. `activate({ versionId, afterCodePush })` requires `ready`, sets the pointer, `liveAt`, and
-   `supersededAt` on the old live version, and sets `codePushAt` when a code push came before it,
-   also when the version was live already. A plain `upload` activates at once with
-   `afterCodePush: false`; `deploy` activates after the code push with `true`.
+6. `activate({ versionId, afterCodePush })` requires `ready`, sets the pointer and `liveAt`, and
+   sets `codePushAt` when a code push came before it, also when the version was live already. A
+   plain `upload` activates at once with `afterCodePush: false`; `deploy` activates after the code
+   push with `true`.
 
 The `versionId` is made before the build (`v_` plus 26 base32 characters) and saved with the
 manifest digest in `<dist>/.convex-hosting/version.json`. An upload reuses it when the digest
@@ -191,10 +193,16 @@ environment fails. The base path (default `/`) is a CLI setting, given to the bu
 | Normal release (the component answers)  | `npx convex deploy --cmd "<build> && convex-hosting upload --no-activate --version-id <id>"` (the upload runs before the push, the push replaces the functions and the renderer), then `activate`, then verify.             |
 | First install, or an upgrade from 0.3.x | `npx convex deploy --cmd "<build>"` (the push installs the component), then `convex-hosting upload` (which activates), then verify. The site answers 404 until the upload ends; a failed upload leaves it so until a rerun. |
 
-Verification fetches `--verify-path` (default `/`), relative to the base path. A static app: the
-ETag of `/index.html` equals the new manifest's hash for it. A server-rendered app: the HTML carries
-`<meta name="convex-hosting-version" content="<id>">` with the new ID, which the Vite plugin defines
-from `CONVEX_HOSTING_VERSION_ID` at build time. Then `getLiveVersion` must name the new version.
+Verification fetches from the deployment's `.convex.site` origin, which also answers for a
+deployment that has a custom domain. There are two cases:
+
+- A static build (one with `/index.html`): `index.html` under the base path answers 200 with the
+  ETag of the new manifest's entry for it. `--verify-path` is not used.
+- A server-rendered build (no `/index.html`): the `--verify-path` page (default `/`, relative to the
+  base path) answers 200 and carries `<meta name="convex-hosting-version" content="<id>">` with the
+  new ID, which the Vite plugin defines from `CONVEX_HOSTING_VERSION_ID` at build time.
+
+Then `getLiveVersion` must name the new version.
 
 Releases for one target run one at a time. The caller's CI enforces this, for example with a
 concurrency group. Convex accepts a later push from an older job, and nothing in this package can
@@ -216,14 +224,13 @@ schedules itself again at once while work remains, so a large version is gone wi
 hours:
 
 - Eligible for deletion, for a version that is not live: an `uploading` version older than one day;
-  a version that went live without a code push (no `codePushAt`), at the next run after a later
-  activation superseded it; a version with `codePushAt`, or a `ready` version that never went live,
-  when another version has a later `codePushAt` (after this version's `codePushAt`, or after its
-  `createdAt` if it never went live). The backend runs the renderer of the last code push, and
-  file-only activations, a rollback included, do not replace it. A never-activated version can be a
-  release whose push succeeded and whose activation failed, and the component cannot tell it from an
-  upload that was never activated, so both wait for a later code push. The newest `codePushAt` comes
-  from one read on its index.
+  a `ready` version that went live, at the next run after a later activation superseded it, because
+  the immutable fallback never serves it again; a `ready` version that never went live, when some
+  version has a `codePushAt` after its `createdAt`. A never-activated version can be a release whose
+  push succeeded and whose activation failed: the backend runs its renderer, and the fallback serves
+  its immutable files. The component cannot tell it from an upload that was never activated, so both
+  wait for a later code push. File-only activations do not replace the renderer, so they do not
+  count. The newest `codePushAt` comes from one read on its index.
 - Each run checks the next 200 versions after a cursor in `site` (a `_creationTime`) and starts
   again at the oldest version when the scan ends. Components cannot use `paginate`.
 - Deletion first sets `deleting` in the same transaction that checks eligibility. `activate`,
@@ -247,8 +254,9 @@ Git.
 - `If-None-Match` with the ETag, a list that contains it, or `*` gets a 304 with the headers of the
   200, `_headers` rules included. Only a 200 becomes a 304: a 404 page stays a 404 with `no-store`.
   `route` decides this itself; the asset worker compares the whole header with one ETag.
-- Every file request runs a Convex HTTP action plus one query and a storage read, and is billed as
-  such, unlike a static request on Cloudflare. Edge cache hits for immutable paths reduce it.
+- Every file request runs a Convex HTTP action plus one query, and a storage read when the response
+  has a body, and is billed as such, unlike a static request on Cloudflare. Edge cache hits for
+  immutable paths reduce it.
 - One backend version per deployment: an old tab talks to the new backend. Convex documents this
   compatibility rule for the app.
 
