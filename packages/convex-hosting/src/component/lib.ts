@@ -30,12 +30,20 @@ const COMPATIBILITY_DATE = "2025-04-01";
 const GARBAGE_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Entries that one `collect` call deletes, without their stored files. With the scan of `versions`
- * and the range of the version's entries, 1,000 entries are 2 index ranges of 4,096, 1,000
- * documents read of 32,000 besides the versions, and at most 1,002 writes of 16,000 with the
- * version and the next call. Entries below 4 KiB read at most 4 MiB, which leaves 12 MiB of the
- * 16 MiB read limit for the version documents that the call reads to find the newest live one: the
- * live versions and the versions of the last day that never became live.
+ * Versions that one `collect` call reads in its page. A version document holds its config, at
+ * most 1 MiB (the CLI keeps the config at or below 900 KiB), so a page reads at most 8 MiB, and the
+ * current live version, read through `by_live`, 1 MiB more. A page cannot hold every version:
+ * failed deploys of the last day are not deleted yet, and each one is a version.
+ */
+const VERSION_PAGE = 8;
+
+/**
+ * Entries that one `collect` call deletes, without their stored files, across the versions of its
+ * page. Entries below 4 KiB read and delete at most 4 MiB, which, with the 9 MiB of version
+ * documents, keeps a call at 13 MiB of the 16 MiB read limit and, with the 8 version rows it may
+ * delete, at 12 MiB written. Documents read: at most 1,009 of 32,000. Index ranges: `by_live`, the
+ * page, and one range of entries per version, at most 10 of 4,096. Writes: at most 1,000 entries,
+ * 8 versions, and the next call, 1,009 of 16,000.
  */
 const DELETE_BATCH = 1000;
 
@@ -241,9 +249,10 @@ export const markLive = mutation({
 /**
  * One chain of calls, one batch per call, each scheduling the next with `runAfter(0)` while work
  * remains. First the `_storage` files that no entry references and that are older than
- * `GARBAGE_AGE_MS`; then the live versions older than the newest live one, whose code is gone
- * because the newest one has served since, and the versions that are not live and older than
- * `GARBAGE_AGE_MS`, with their entries.
+ * `GARBAGE_AGE_MS`; then the versions, a page of `VERSION_PAGE` at a time in creation order: the
+ * live versions older than the current live one, whose code is gone because the current one has
+ * served since, and the versions that are not live and older than `GARBAGE_AGE_MS`, with their
+ * entries.
  *
  * A stored file is deleted when no entry references it, it is a day old, and it was already
  * unreferenced when the chain started: the files that this chain's version deletion frees wait for
@@ -254,25 +263,26 @@ export const markLive = mutation({
 export const collect = internalMutation({
   args: {
     /**
-     * The step of the chain: the file sweep, after the `_storage` file of this `_creationTime`
-     * when the previous batch read one, then the versions.
+     * The step of the chain: the file sweep, then the versions. `after` is the `_creationTime` of
+     * the last file, or of the last version, that the previous call finished.
      */
     step: v.union(
       v.object({ kind: v.literal("files"), after: v.optional(v.number()) }),
-      v.object({ kind: v.literal("versions") }),
+      v.object({ kind: v.literal("versions"), after: v.optional(v.number()) }),
     ),
   },
   returns: v.null(),
   handler: async (ctx, { step }) => {
     const garbageBefore = Date.now() - GARBAGE_AGE_MS;
+    const after = step.after;
 
     if (step.kind === "files") {
       const files = await ctx.db.system
         .query("_storage")
         .withIndex("by_creation_time", (q) =>
-          step.after === undefined
+          after === undefined
             ? q.lt("_creationTime", garbageBefore)
-            : q.gt("_creationTime", step.after).lt("_creationTime", garbageBefore),
+            : q.gt("_creationTime", after).lt("_creationTime", garbageBefore),
         )
         .take(SWEEP_BATCH);
       for (const file of files) {
@@ -291,22 +301,48 @@ export const collect = internalMutation({
       return null;
     }
 
-    const versions = await ctx.db.query("versions").collect();
-    let newestLiveAt = -Infinity;
-    for (const { state } of versions) {
-      if (state.kind === "live") newestLiveAt = Math.max(newestLiveAt, state.at);
+    const current = await ctx.db
+      .query("versions")
+      .withIndex("by_live", (q) => q.eq("state.kind", "live"))
+      .order("desc")
+      .first();
+    const currentAt = current?.state.kind === "live" ? current.state.at : undefined;
+    const page = await ctx.db
+      .query("versions")
+      .withIndex("by_creation_time", (q) =>
+        after === undefined ? q : q.gt("_creationTime", after),
+      )
+      .take(VERSION_PAGE);
+    let budget = DELETE_BATCH;
+    let finished = after;
+    for (const version of page) {
+      const garbage =
+        version.state.kind === "live"
+          ? currentAt !== undefined && version.state.at < currentAt
+          : version._creationTime < garbageBefore;
+      if (garbage) {
+        const entries = await ctx.db
+          .query("entries")
+          .withIndex("by_version_path", (q) => q.eq("versionId", version.versionId))
+          .take(budget);
+        for (const entry of entries) await ctx.db.delete("entries", entry._id);
+        if (entries.length === budget) {
+          // The version may have more entries: the next call reads it again.
+          await ctx.scheduler.runAfter(0, internal.lib.collect, {
+            step: { kind: "versions", after: finished },
+          });
+          return null;
+        }
+        budget -= entries.length;
+        await ctx.db.delete("versions", version._id);
+      }
+      finished = version._creationTime;
     }
-    const garbage = versions.find(({ state, _creationTime }) =>
-      state.kind === "live" ? state.at < newestLiveAt : _creationTime < garbageBefore,
-    );
-    if (garbage === undefined) return null;
-    const entries = await ctx.db
-      .query("entries")
-      .withIndex("by_version_path", (q) => q.eq("versionId", garbage.versionId))
-      .take(DELETE_BATCH);
-    for (const entry of entries) await ctx.db.delete("entries", entry._id);
-    if (entries.length < DELETE_BATCH) await ctx.db.delete("versions", garbage._id);
-    await ctx.scheduler.runAfter(0, internal.lib.collect, { step: { kind: "versions" } });
+    if (page.length === VERSION_PAGE) {
+      await ctx.scheduler.runAfter(0, internal.lib.collect, {
+        step: { kind: "versions", after: finished },
+      });
+    }
     return null;
   },
 });

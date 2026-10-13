@@ -162,6 +162,21 @@ describe("upload", () => {
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/** The steps of the `collect` calls that are scheduled and have not run. */
+async function pendingSteps(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) =>
+    (await ctx.db.system.query("_scheduled_functions").collect())
+      .filter((job) => job.state.kind === "pending")
+      .map((job) => job.args[0].step),
+  );
+}
+
+/** Runs the scheduled calls that are pending now, and only those. */
+async function runNext(t: ReturnType<typeof convexTest>) {
+  vi.runOnlyPendingTimers();
+  await t.finishInProgressScheduledFunctions();
+}
+
 describe("markLive", () => {
   test("marks a ready version live; a live version stays as it is", async () => {
     vi.useFakeTimers();
@@ -248,6 +263,52 @@ describe("collect", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect((await tables(t)).files).toBe(1);
     expect(await exists(young)).toBe(true);
+  });
+
+  test("walks the versions a page of 8 at a time, with a creation-time cursor", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    // Twenty abandoned versions with large configs: one call must not read them all.
+    const config: Config = {
+      headers: { version: 2, rules: { "/*": { set: { "x-pad": "x".repeat(200_000) } } } },
+    };
+    for (let i = 0; i < 20; i++) await createVersion(t, `v${i}`, config);
+    const created = await t.run(async (ctx) =>
+      (await ctx.db.query("versions").collect()).map((version) => version._creationTime),
+    );
+    vi.advanceTimersByTime(DAY + 1);
+
+    await t.mutation(internal.lib.collect, { step: { kind: "versions" } });
+    expect((await tables(t)).versions).toHaveLength(12);
+    expect(await pendingSteps(t)).toEqual([{ kind: "versions", after: created[7] }]);
+    await runNext(t);
+    expect((await tables(t)).versions).toHaveLength(4);
+    expect(await pendingSteps(t)).toEqual([{ kind: "versions", after: created[15] }]);
+    // The last page is not full, so the chain ends.
+    await runNext(t);
+    expect((await tables(t)).versions).toEqual([]);
+    expect(await pendingSteps(t)).toEqual([]);
+  });
+
+  test("deletes the entries of a large version in batches of 1,000", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await createVersion(t, "large");
+    const entry = await storedEntry(t, "/a.txt", "a");
+    await t.mutation(internal.lib.recordFiles, {
+      versionId: "large",
+      entries: Array.from({ length: 1001 }, (_, i) => ({ ...entry, path: `/${i}.txt` })),
+    });
+    vi.advanceTimersByTime(DAY + 1);
+
+    await t.mutation(internal.lib.collect, { step: { kind: "versions" } });
+    const after = await tables(t);
+    expect(after.versions).toEqual([["large", "uploading"]]);
+    expect(after.entries).toHaveLength(1);
+    // The next call reads the same version again.
+    expect(await pendingSteps(t)).toEqual([{ kind: "versions" }]);
+    await runNext(t);
+    expect(await tables(t)).toMatchObject({ versions: [], entries: [] });
   });
 
   test("deletes the versions that never became live once they are a day old", async () => {

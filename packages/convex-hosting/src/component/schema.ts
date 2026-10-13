@@ -19,7 +19,10 @@ export default defineSchema({
      * field per rule and Convex limits an object to 1,024 fields.
      */
     config: v.string(),
-  }).index("by_versionId", ["versionId"]),
+  })
+    .index("by_versionId", ["versionId"])
+    /** `collect` finds the current live version with one read: kind `live`, the newest `at`. */
+    .index("by_live", ["state.kind", "state.at"]),
 
   /** One file of a version. */
   entries: defineTable({

@@ -108,10 +108,12 @@ npx convex-hosting deploy --dev --build "vite build" --dist dist --not-found-han
 the build itself, uploads `--dist`, writes `.convex-hosting/version.js`, and pushes with
 `npx convex run --push`, which works whether or not `npx convex dev` runs. The build runs with your
 environment, so the framework reads the deployment's URL from `.env.local` (Vite reads
-`VITE_CONVEX_URL`). There is no watch mode: a build, an upload, and a push per change is not an
-inner loop, and Cloudflare's own tooling works the same way, with a local dev server and a push on
-demand. A fresh clone runs `deploy --dev` once; after that, the version file exists and
-`npx convex dev` bundles as usual.
+`VITE_CONVEX_URL`). Against an anonymous local deployment, `deploy --dev` needs `npx convex dev`
+running, because without it every Convex CLI call starts and stops its own backend and the upload's
+requests find nothing; cloud development deployments do not have this constraint. There is no watch
+mode: a build, an upload, and a push per change is not an inner loop, and Cloudflare's own tooling
+works the same way, with a local dev server and a push on demand. A fresh clone runs `deploy --dev`
+once; after that, the version file exists and `npx convex dev` bundles as usual.
 
 Two cases are transient:
 
