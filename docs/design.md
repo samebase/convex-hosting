@@ -262,6 +262,46 @@ and written, 8,192 array elements, 4,096 index ranges, argument and result sizes
 - No React code: the reload recipe is an app query.
 - No migration from 0.3.x: 0.4 is a new install. The old tables are deleted by hand.
 
+## Rejected on the way
+
+Approaches that were built or proposed during the 0.4 design and dropped, with the reason, so they
+are not proposed again.
+
+- **Deletion driven by the CLI after the push.** The order in which overlapping deploys report back
+  is not the order in which their pushes landed, so a CLI could delete the version that is live.
+- **A deploy lock in the component, with a heartbeat and a two-minute expiry, and a kill of the push
+  when a heartbeat reports the lock lost.** It grew to five mechanisms to buy one refusal message.
+  The push is not a call to the component, so a frozen process could still push after losing the
+  lock; a heartbeat before the lock existed, or after another deploy deleted the version row, had no
+  ground truth; killing `npx convex deploy` left its inner build running.
+- **An hourly pass with a grace period, and a ten-minute age rule.** A time constant decided what is
+  served, and creation order is not push order: a slower deploy created earlier and pushed later
+  would lose its version.
+- **Deleting by creation order when a version is marked live.** The same slower-deploy problem;
+  deletion now follows "was live before the current one", which creation order cannot express.
+- **A committed version file in `convex/`.** Its value is set by the deploy that pushes it, so the
+  committed value is never used by a correct deploy; it left stale ids and merge conflicts in git,
+  and a plain `npx convex deploy` from a clean checkout would push a stale id and take the site
+  down.
+- **An ignored version file with a declaration file in every app.** The declaration is shipped by
+  the package instead, so the app adds nothing.
+- **A standalone `upload` for the development deployment, relying on the `npx convex dev` watcher to
+  push.** The watcher does not look again at a module that failed to resolve, the development site
+  answered 404 between the upload and the push, and the same command with a production key would
+  have deleted production's live version. `deploy --dev` runs the whole flow itself.
+- **Marking hashed files, a one-year cache header, and a cross-version fallback for hashed paths.**
+  Cloudflare has none of them; a site writes one `_headers` rule. The fallback existed only to paper
+  over a window between the push and a pointer flip, which the design no longer has.
+- **A component HTTP mount and a second serving helper.** Two ways to serve, and a component route
+  cannot hand a request to the app's renderer, so server-rendered sites could not use the mount.
+- **Post-deploy verification through a version meta tag.** Wrangler has none; the push succeeds or
+  fails, and the tag forced a Vite plugin and a server wrapper that existed only for it.
+- **A push-time lock check through Convex's schema validation (a literal id in the schema).** The
+  live schema controls every write, so the next deploy could never write its own id into the row.
+- **A subshell so that a build command may change directory.** Shell-specific; the build runs in the
+  project directory instead.
+- **A `size` field on entries.** A matching sha256 already proves the bytes are the same.
+
 ## Repository
 
 - `packages/convex-hosting`
