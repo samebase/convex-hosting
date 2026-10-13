@@ -23,14 +23,14 @@ import {
 import { etagMatches } from "./serving.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** How long a superseded version stays, for a rollback and for the immutable fallback. */
-const RETENTION_MS = 7 * DAY_MS;
 const MAX_ENTRIES = 4000;
 const MAX_CONFIG_BYTES = 256 * 1024;
 /** Entries per `writeEntries` mutation. */
 const ENTRY_WRITE_BATCH = 500;
 /** Versions that one `cleanup` call checks for expiry. */
 const CLEANUP_ROWS = 200;
+/** Entries at one immutable path that a lookup of a version newer than live reads. */
+const NEWER_THAN_LIVE_ROWS = 8;
 /**
  * The work of one `cleanup` call, in units: deleting an entry with its object, or scanning one
  * `_storage` object, costs 1; deleting a version with its config costs 8, because a config can be
@@ -193,6 +193,7 @@ export const writeEntries = internalMutation({
       throw new Error(`writeEntries takes at most ${ENTRY_WRITE_BATCH} entries.`);
     }
     await requireState(ctx, versionId, "uploading");
+    const live = await getLive(ctx);
     const pending: Array<Infer<typeof pendingEntryValidator>> = [];
     for (const entry of entries) {
       const existing = await getEntry(ctx, versionId, entry.path);
@@ -203,8 +204,8 @@ export const writeEntries = internalMutation({
         continue;
       }
       if (entry.immutable) {
-        const other = await newestReadyImmutableEntry(ctx, entry.path);
-        if (other !== null && other.sha256 !== entry.sha256) {
+        const other = await conflictingEntry(ctx, live, entry.path, entry.sha256);
+        if (other !== null) {
           throw new Error(
             `${entry.path} is immutable, but version ${other.versionId} has different bytes at that path.`,
           );
@@ -345,11 +346,13 @@ export const checkEntries = internalQuery({
       .query("entries")
       .withIndex("by_version_path", (q) => q.eq("versionId", versionId).gt("path", afterPath))
       .take(ENTRY_WRITE_BATCH);
+    const live = await getLive(ctx);
     const conflicts: string[] = [];
     for (const entry of page) {
       if (!entry.immutable) continue;
-      const other = await newestReadyImmutableEntry(ctx, entry.path);
-      if (other !== null && other.sha256 !== entry.sha256) conflicts.push(entry.path);
+      if ((await conflictingEntry(ctx, live, entry.path, entry.sha256)) !== null) {
+        conflicts.push(entry.path);
+      }
     }
     return {
       state: version.state,
@@ -512,7 +515,7 @@ export const route = query({
     const exists = async (path: string) => {
       let entry = lookups.get(path);
       if (entry === undefined) {
-        entry = await lookupEntry(ctx, version.versionId, path);
+        entry = await lookupEntry(ctx, version, path);
         lookups.set(path, entry);
       }
       if (entry === null) return null;
@@ -602,11 +605,11 @@ export const cleanup = internalMutation({
   handler: async (ctx): Promise<{ done: boolean }> => {
     const now = Date.now();
     const site = await ctx.db.query("site").first();
-    // The newest code push that is more than seven days old: its renderer replaced the renderers
-    // of the versions before it. The lower bound skips versions without `codePushAt`.
+    // The newest code push: its renderer replaced the renderers of the versions before it. The
+    // lower bound skips versions without `codePushAt`.
     const codePush = await ctx.db
       .query("versions")
-      .withIndex("by_codePushAt", (q) => q.gt("codePushAt", 0).lt("codePushAt", now - RETENTION_MS))
+      .withIndex("by_codePushAt", (q) => q.gt("codePushAt", 0))
       .order("desc")
       .first();
     const versions = await ctx.db
@@ -682,12 +685,11 @@ export const cleanup = internalMutation({
 });
 
 /**
- * An `uploading` version older than a day; a version without a code push, seven days after a later
- * activation superseded it; and a version with a code push, or one that never went live, when a
- * later code push (`codePushAt`) is more than seven days old. The backend runs the renderer of the
- * last code push, and a file-only activation does not replace it, so the files of that renderer's
- * version must stay. A never-activated version can be a release whose push succeeded and whose
- * activation failed. `codePush` is the newest code push that is more than seven days old.
+ * Whether a version that is not live can go. An `uploading` version goes after a day. A ready
+ * version that was live without a code push goes at once: nothing serves a superseded version. A
+ * version activated after a code push, or one that never went live (a release whose push succeeded
+ * and whose activation failed), can be the version of the renderer that the backend runs, and its
+ * files go only after a later code push. `codePush` is the newest `codePushAt` of all versions.
  */
 function isExpired(version: Doc<"versions">, codePush: number | undefined, now: number) {
   switch (version.state) {
@@ -696,9 +698,7 @@ function isExpired(version: Doc<"versions">, codePush: number | undefined, now: 
     case "uploading":
       return version.createdAt < now - DAY_MS;
     case "ready":
-      if (version.codePushAt === undefined && version.liveAt !== undefined) {
-        return version.supersededAt !== undefined && version.supersededAt < now - RETENTION_MS;
-      }
+      if (version.codePushAt === undefined && version.liveAt !== undefined) return true;
       return codePush !== undefined && codePush > (version.codePushAt ?? version.createdAt);
     default:
       return version.state satisfies never;
@@ -735,31 +735,65 @@ function checkConfig(config: AssetConfig) {
 }
 
 /**
- * The version's entry at `path`; else, for an immutable path, the newest entry at `path` from
- * another ready version; else null.
+ * The live version's entry at `path`; else, for an immutable path, the newest entry at `path` of a
+ * ready version newer than live; else null.
  */
-async function lookupEntry(ctx: QueryCtx, versionId: string, path: string) {
-  const own = await getEntry(ctx, versionId, path);
+async function lookupEntry(ctx: QueryCtx, live: Doc<"versions">, path: string) {
+  const own = await getEntry(ctx, live.versionId, path);
   if (own?.storageId !== undefined) return own;
-  return await newestReadyImmutableEntry(ctx, path);
+  return await newestNewerImmutableEntry(ctx, live, path);
 }
 
 /**
- * The newest immutable entry at `path` of a ready version. Only `markReady` sets `ready` on entries,
- * so entries of uploading versions are not in the range. Entries of a `deleting` version keep it
- * until cleanup removes them, a few batches later, so they are skipped.
+ * The newest immutable entry at `path` of a ready version created after the live version went
+ * live, or of any ready version when nothing is live. Only such versions need the fallback: a
+ * release between its code push and its activation, and a release whose activation failed. A
+ * superseded version is never served again.
+ *
+ * Entries come newest first. An entry created before the live activation belongs to a version
+ * created before it, so the scan stops there. Later entries belong to newer versions, or to
+ * versions that were still uploading at the activation or that are being deleted. Releases run one
+ * at a time, so a few such entries at one path is the most to expect, and a ready entry behind
+ * `NEWER_THAN_LIVE_ROWS` of them counts as none.
  */
-async function newestReadyImmutableEntry(ctx: QueryCtx, path: string) {
-  const candidates = ctx.db
+async function newestNewerImmutableEntry(
+  ctx: QueryCtx,
+  live: Doc<"versions"> | null,
+  path: string,
+) {
+  const liveAt = live?.liveAt ?? 0;
+  const candidates = await ctx.db
     .query("entries")
     .withIndex("by_ready_immutable_path", (q) =>
       q.eq("ready", true).eq("immutable", true).eq("path", path),
     )
-    .order("desc");
-  for await (const candidate of candidates) {
-    if ((await getVersion(ctx, candidate.versionId))?.state === "ready") return candidate;
+    .order("desc")
+    .take(NEWER_THAN_LIVE_ROWS);
+  for (const candidate of candidates) {
+    if (candidate._creationTime < liveAt) return null;
+    const version = await getVersion(ctx, candidate.versionId);
+    if (version?.state === "ready" && version.createdAt > liveAt) return candidate;
   }
   return null;
+}
+
+/**
+ * An entry that a request can get at the immutable `path` with other bytes than `sha256`: the live
+ * version's immutable entry, which browsers may keep for a year, or the newest entry of a ready
+ * version newer than live.
+ */
+async function conflictingEntry(
+  ctx: QueryCtx,
+  live: Doc<"versions"> | null,
+  path: string,
+  sha256: string,
+) {
+  if (live !== null) {
+    const liveEntry = await getEntry(ctx, live.versionId, path);
+    if (liveEntry?.immutable && liveEntry.sha256 !== sha256) return liveEntry;
+  }
+  const newer = await newestNewerImmutableEntry(ctx, live, path);
+  return newer !== null && newer.sha256 !== sha256 ? newer : null;
 }
 
 async function getLive(ctx: QueryCtx) {

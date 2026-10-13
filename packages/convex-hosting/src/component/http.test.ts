@@ -119,6 +119,18 @@ describe("the component's route", () => {
     expect(missing.headers.get("Cache-Control")).toBe("no-store");
   });
 
+  test("answers 404 for a hashed file of the superseded version", async () => {
+    const t = await deployed();
+    await deployTestVersion(t, testVersionId("b"), {
+      "/index.html": { body: "<h1>Two</h1>", contentType: HTML },
+      "/assets/app-2.js": { body: "console.log(2)", contentType: JS, immutable: true },
+    });
+    const old = await t.fetch("/assets/app-1.js", { headers: script });
+    expect(old.status).toBe(404);
+    expect(old.headers.get("Cache-Control")).toBe("no-store");
+    expect((await t.fetch("/assets/app-2.js", { headers: script })).status).toBe(200);
+  });
+
   test("redirects with auto-trailing-slash", async () => {
     const t = await deployed();
     const redirects: Array<[string, string]> = [

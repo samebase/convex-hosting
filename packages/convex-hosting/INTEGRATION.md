@@ -12,7 +12,8 @@ backend by the code of Cloudflare's Workers Static Assets handler.
 - Cloudflare's routing rules: `html_handling`, `not_found_handling` (SPA or 404 page), `_headers`,
   `_redirects`, and `.assetsignore`
 - ETags and 304 answers for every file, and a one-year immutable cache for hashed files
-- Hashed files of previous versions stay reachable, so open pages keep loading their scripts
+- One live version: after a deploy, the files of the previous version are gone, as on Cloudflare
+  Workers, and the update banner prompts open pages to reload
 - Optional live-reload notifications when a new version goes live
 - Authenticated uploads via the Convex CLI (no public upload endpoint)
 
@@ -184,8 +185,9 @@ dot files are never uploaded, except `.well-known`.
 `--immutable` names the paths whose bytes never change: the presets `vite` (`/assets/**`, the
 default), `next` (`/_next/static/**`), `astro` (`/_astro/**`), and `sveltekit`
 (`/_app/immutable/**`), or a gitignore-style glob. These files get
-`Cache-Control: public, max-age=31536000, immutable` and stay reachable from the previous versions
-after a release. An upload fails when an immutable path has other bytes in a previous version.
+`Cache-Control: public, max-age=31536000, immutable`, and a server renderer finds them in a newer
+version before it goes live. An upload fails when an immutable path has other bytes in the live
+version or in a newer one.
 
 Every response with status 400 or above gets `Cache-Control: no-store`.
 

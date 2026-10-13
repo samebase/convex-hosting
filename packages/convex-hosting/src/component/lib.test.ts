@@ -264,32 +264,57 @@ describe("upload", () => {
 });
 
 describe("lookups", () => {
-  test("the live version's entry, and an immutable entry of another ready version", async () => {
+  test("nothing of a superseded version is served", async () => {
     const t = initConvexTest();
-    await uploadTestVersion(t, testVersionId("a"), {
+    await deployTestVersion(t, testVersionId("a"), {
       "/assets/old.js": { body: "old", contentType: JS, immutable: true },
-      "/old.txt": { body: "old", contentType: "text/plain" },
     });
+    vi.setSystemTime(T0 + 1000);
     await deployTestVersion(t, testVersionId("b"), files);
 
     expect(await route(t, "/assets/app-1.js")).toMatchObject({ handled: true, status: 200 });
-    const old = await route(t, "/assets/old.js");
-    expect(old).toMatchObject({ handled: true, status: 200, body: { contentType: JS } });
+    expect(await route(t, "/assets/old.js")).toEqual({ handled: false });
+  });
+
+  test("an immutable entry of a ready version newer than live", async () => {
+    const t = initConvexTest();
+    await deployTestVersion(t, testVersionId("a"), files);
+    vi.setSystemTime(T0 + 1000);
+    // Pushed but not activated yet, or its activation failed.
+    await uploadTestVersion(t, testVersionId("b"), {
+      "/assets/new.js": { body: "new", contentType: JS, immutable: true },
+      "/new.txt": { body: "new", contentType: "text/plain" },
+    });
+
+    const found = await route(t, "/assets/new.js");
+    expect(found).toMatchObject({ handled: true, status: 200, body: { contentType: JS } });
     // A mutable path never falls back to another version.
-    expect(await route(t, "/old.txt")).toEqual({ handled: false });
+    expect(await route(t, "/new.txt")).toEqual({ handled: false });
   });
 
   test("finds a ready entry behind many unfinished uploads of the same path", async () => {
     const t = initConvexTest();
-    const old = { "/assets/old.js": { body: "old", contentType: JS, immutable: true } };
-    await uploadTestVersion(t, testVersionId("a"), old);
-    for (const letter of "bcdefghij") await startTestVersion(t, testVersionId(letter), old);
     await deployTestVersion(t, testVersionId("k"), files);
+    vi.setSystemTime(T0 + 1000);
+    const next = { "/assets/next.js": { body: "next", contentType: JS, immutable: true } };
+    await uploadTestVersion(t, testVersionId("a"), next);
+    for (const letter of "bcdefghij") await startTestVersion(t, testVersionId(letter), next);
 
-    expect(await route(t, "/assets/old.js")).toMatchObject({ handled: true, status: 200 });
+    expect(await route(t, "/assets/next.js")).toMatchObject({ handled: true, status: 200 });
     await expect(
       startTestVersion(t, testVersionId("l"), {
-        "/assets/old.js": { body: "new", contentType: JS, immutable: true },
+        "/assets/next.js": { body: "other", contentType: JS, immutable: true },
+      }),
+    ).rejects.toThrow(`version ${testVersionId("a")} has different bytes`);
+  });
+
+  test("an immutable path with other bytes than the live version fails", async () => {
+    const t = initConvexTest();
+    await deployTestVersion(t, testVersionId("a"), files);
+    vi.setSystemTime(T0 + 1000);
+    await expect(
+      startTestVersion(t, testVersionId("b"), {
+        "/assets/app-1.js": { body: "console.log(2)", contentType: JS, immutable: true },
       }),
     ).rejects.toThrow(`version ${testVersionId("a")} has different bytes`);
   });
@@ -297,6 +322,7 @@ describe("lookups", () => {
   test("nothing from an uploading or deleting version", async () => {
     const t = initConvexTest();
     await deployTestVersion(t, testVersionId("a"), files);
+    vi.setSystemTime(T0 + 1000);
     const versionId = testVersionId("b");
     await startTestVersion(t, versionId, {
       "/assets/new.js": { body: "new", contentType: JS, immutable: true },
@@ -340,22 +366,14 @@ describe("cleanup", () => {
     return Object.fromEntries(versions.map((version) => [version.versionId, version.state]));
   }
 
-  test("deletes a version seven days after it was superseded and keeps the live one", async () => {
+  test("deletes a superseded file-only version at the next run and keeps the live one", async () => {
     const t = initConvexTest();
     await deployTestVersion(t, testVersionId("a"), files);
-    vi.setSystemTime(T0 + DAY);
+    vi.setSystemTime(T0 + 1000);
     await deployTestVersion(t, testVersionId("b"), {
       "/index.html": { body: "<h1>Two</h1>", contentType: HTML },
     });
 
-    vi.setSystemTime(T0 + 8 * DAY - 1);
-    expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: true });
-    expect(await versionStates(t)).toEqual({
-      [testVersionId("a")]: "ready",
-      [testVersionId("b")]: "ready",
-    });
-
-    vi.setSystemTime(T0 + 8 * DAY + 1);
     expect(await t.mutation(internal.lib.cleanup, {})).toEqual({ done: true });
     expect(await versionStates(t)).toEqual({ [testVersionId("b")]: "ready" });
     const entries = await t.run(async (ctx) => await ctx.db.query("entries").collect());
@@ -364,9 +382,31 @@ describe("cleanup", () => {
     expect(objects).toHaveLength(1);
   });
 
-  test("keeps a never-activated version until a later activation after a code push is seven days old", async () => {
+  test("keeps a superseded code-push version until a later code push and deletes it right after", async () => {
     const t = initConvexTest();
-    await deployTestVersion(t, testVersionId("a"), files);
+    await uploadTestVersion(t, testVersionId("a"), files);
+    await t.mutation(internal.lib.activate, { versionId: testVersionId("a"), afterCodePush: true });
+    vi.setSystemTime(T0 + 1000);
+    // A plain upload: the backend still runs the renderer of version a.
+    await deployTestVersion(t, testVersionId("b"), files);
+
+    await t.mutation(internal.lib.cleanup, {});
+    expect(await versionStates(t)).toEqual({
+      [testVersionId("a")]: "ready",
+      [testVersionId("b")]: "ready",
+    });
+
+    vi.setSystemTime(T0 + 2000);
+    await uploadTestVersion(t, testVersionId("c"), files);
+    await t.mutation(internal.lib.activate, { versionId: testVersionId("c"), afterCodePush: true });
+    await t.mutation(internal.lib.cleanup, {});
+    expect(await versionStates(t)).toEqual({ [testVersionId("c")]: "ready" });
+  });
+
+  test("keeps a never-live version until a later code push", async () => {
+    const t = initConvexTest();
+    await uploadTestVersion(t, testVersionId("a"), files);
+    await t.mutation(internal.lib.activate, { versionId: testVersionId("a"), afterCodePush: true });
     vi.setSystemTime(T0 + 1000);
     // Its push succeeded and its activation failed: its renderer may be live.
     await uploadTestVersion(t, testVersionId("b"), files);
@@ -374,44 +414,18 @@ describe("cleanup", () => {
     // A later file-only activation does not replace the renderer.
     await deployTestVersion(t, testVersionId("c"), files);
 
-    vi.setSystemTime(T0 + 30 * DAY);
-    await t.mutation(internal.lib.cleanup, {});
-    expect(await versionStates(t)).toEqual({
-      [testVersionId("b")]: "ready",
-      [testVersionId("c")]: "ready",
-    });
-
-    await uploadTestVersion(t, testVersionId("d"), files);
-    await t.mutation(internal.lib.activate, { versionId: testVersionId("d"), afterCodePush: true });
-    vi.setSystemTime(T0 + 37 * DAY - 1);
-    await t.mutation(internal.lib.cleanup, {});
-    expect(await versionStates(t)).toMatchObject({ [testVersionId("b")]: "ready" });
-
-    vi.setSystemTime(T0 + 37 * DAY + 1);
-    await t.mutation(internal.lib.cleanup, {});
-    expect(await versionStates(t)).toEqual({ [testVersionId("d")]: "ready" });
-  });
-
-  test("keeps a version activated after a code push while a file-only activation follows it", async () => {
-    const t = initConvexTest();
-    await uploadTestVersion(t, testVersionId("a"), files);
-    await t.mutation(internal.lib.activate, { versionId: testVersionId("a"), afterCodePush: true });
-    vi.setSystemTime(T0 + DAY);
-    // A plain upload: the backend still runs the renderer of version a.
-    await deployTestVersion(t, testVersionId("b"), files);
-
-    vi.setSystemTime(T0 + 30 * DAY);
     await t.mutation(internal.lib.cleanup, {});
     expect(await versionStates(t)).toEqual({
       [testVersionId("a")]: "ready",
       [testVersionId("b")]: "ready",
+      [testVersionId("c")]: "ready",
     });
 
-    await uploadTestVersion(t, testVersionId("c"), files);
-    await t.mutation(internal.lib.activate, { versionId: testVersionId("c"), afterCodePush: true });
-    vi.setSystemTime(T0 + 37 * DAY + 1);
+    vi.setSystemTime(T0 + 3000);
+    await uploadTestVersion(t, testVersionId("d"), files);
+    await t.mutation(internal.lib.activate, { versionId: testVersionId("d"), afterCodePush: true });
     await t.mutation(internal.lib.cleanup, {});
-    expect(await versionStates(t)).toEqual({ [testVersionId("c")]: "ready" });
+    expect(await versionStates(t)).toEqual({ [testVersionId("d")]: "ready" });
   });
 
   test("keeps a code-push version after a file-only rollback to it is superseded", async () => {

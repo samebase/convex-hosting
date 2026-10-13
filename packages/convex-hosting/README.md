@@ -20,14 +20,13 @@ This is Samebase's fork of [get-convex/static-hosting](https://github.com/get-co
   `.assetsignore` work as on Cloudflare.
 - ⚡ **Caching:** every file gets an ETag and 304 answers; hashed files get a one-year immutable
   cache.
-- 🔁 **One live version:** a deploy uploads a new version and then switches one pointer. Hashed
-  files of previous versions stay reachable, so pages that are already open still load their
-  scripts.
+- 🔁 **One live version:** a deploy uploads a new version and then switches one pointer. As on
+  Cloudflare Workers, the files of the previous version are gone after a deploy; the update banner
+  prompts open pages to reload.
 - 🔔 **Deployment update notifications:** show connected users a prompt when a new version is live.
 - 🔒 **Authenticated uploads:** uploads go through the Convex CLI's authenticated session; there's
   no public upload endpoint.
-- 🧹 **Automatic cleanup:** an hourly job deletes versions that were replaced more than seven days
-  ago, and unfinished uploads.
+- 🧹 **Automatic cleanup:** an hourly job deletes replaced versions and unfinished uploads.
 
 ## Quick Start
 
@@ -245,10 +244,11 @@ Cloudflare. Dot files and dot directories are never uploaded, except `.well-know
 
 `--immutable <preset|glob>` names the paths whose bytes never change: `vite` (`/assets/**`, the
 default), `next` (`/_next/static/**`), `astro` (`/_astro/**`), `sveltekit` (`/_app/immutable/**`),
-or a gitignore-style glob. These files get `Cache-Control: public, max-age=31536000, immutable`, and
-they stay reachable from the previous versions after a release, so a page that was open before it
-still loads its lazy scripts. Other paths never fall back. The setting is a promise: an upload fails
-when an immutable path has other bytes in a previous version.
+or a gitignore-style glob. These files get `Cache-Control: public, max-age=31536000, immutable`. The
+files of a newer version that is not live yet are reachable at these paths, so a server renderer
+finds its scripts between the backend push and the switch; the files of a replaced version are not.
+The setting is a promise: an upload fails when an immutable path has other bytes in the live version
+or in a newer one.
 
 ## Limits
 

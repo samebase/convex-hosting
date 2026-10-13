@@ -53,10 +53,13 @@ for the apps Samebase makes. It does not need feature parity with them.
    version, `getByETag(hash)` returns the bytes of the entry that `exists` selected. The handler
    provides `html_handling`, `not_found_handling`, `_headers`, `_redirects`, ETags, HEAD, and base
    paths, with its own tests.
-4. **Immutable paths resolve across versions.** Convex cannot switch code and files in one
-   operation. For paths that the upload classified as immutable, `exists` also reads the manifests
-   of other `ready` versions. A new renderer finds its hashed files before the pointer flips, and a
-   page that was open before a deploy still loads its lazy scripts. Stable paths never fall back.
+4. **Immutable paths resolve in newer versions.** Convex cannot switch code and files in one
+   operation. For paths that the upload classified as immutable, `exists` also reads the entries of
+   `ready` versions created after the live version went live, so a new renderer finds its hashed
+   files between its code push and the pointer flip, and after a failed activation. Stable paths
+   never fall back, and a superseded version is never served again: after a deploy, a page that was
+   open before it gets 404 for hashed files that the new version does not have, as on Cloudflare
+   Workers, and the update banner prompts the reload. A rollback is a redeploy from Git.
 5. **Cleanup is a cron** in the component. It needs no later upload to run.
 
 ## Data model
@@ -96,9 +99,10 @@ version in one transaction, and the app's HTTP action does nothing but build the
 3. It builds the `Request` from the method, URL, and headers it received, and runs `canFetch` and
    then `handleRequest`. `exists(path)` is a per-request map over index lookups: the version's entry
    at that path, else (for a path that some entry marks immutable) the newest entry at that path
-   from another `ready` version, else nothing. The key it returns is the entry's SHA-256 plus a
-   short hash of its content type, so identical bytes under two content types never share one key.
-   `getByETag(key)` returns that entry's content type and an empty stream that nothing reads.
+   from a `ready` version created after the live version went live, else nothing. The key it returns
+   is the entry's SHA-256 plus a short hash of its content type, so identical bytes under two
+   content types never share one key. `getByETag(key)` returns that entry's content type and an
+   empty stream that nothing reads.
 4. It post-processes the headers: a status of 400 or above loses `Cache-Control`,
    `CDN-Cache-Control`, `Cloudflare-CDN-Cache-Control`, and `Surrogate-Control` and gets
    `Cache-Control: no-store` (the front caches 404s for static extensions, and a `_headers` rule
@@ -142,9 +146,9 @@ calls and the storage egress per request before calling this a default for apps 
 2. Classify immutable paths from a setting with presets (`vite`: `/assets/**`; `next`:
    `/_next/static/**`; `astro`: `/_astro/**`; `sveltekit`: `/_app/immutable/**`) or an explicit
    glob. It is a promise by the operator, with one guard: an immutable path whose bytes differ from
-   an entry at the same path in another `ready` version fails the upload. Hashes are never guessed
-   from file names, and no header rule is generated for them: the serving step sets the immutable
-   header from the entry.
+   the live version's immutable entry at the same path, or from the newest one of a `ready` version
+   newer than live, fails the upload. Hashes are never guessed from file names, and no header rule
+   is generated for them: the serving step sets the immutable header from the entry.
 3. Compute each file's SHA-256, size, and content type (by extension, from the vendored `mime`
    table; extensionless files in `.well-known` get `application/json`). Write the manifest as one
    JSON file (`versionId`, `config`, `entries`) and its digest. Upload it through an upload URL and
@@ -160,10 +164,10 @@ calls and the storage egress per request before calling this a default for apps 
    returns a failure result (a thrown error would roll the deletion back). Only an `uploading`
    version accepts files.
 5. `finishVersion({ versionId })` checks, in batches of 500 entries, that the entry count matches,
-   every entry has a `storageId`, and no immutable path has other bytes in the newest ready version
-   that has it (two uploads can start together). Then one mutation sets `ready` on the version and
-   on every entry (at most 4,000 writes). Otherwise it returns the entries that still lack a file.
-   Components cannot use `paginate`, so the batches use the last path as the cursor.
+   every entry has a `storageId`, and the guard of step 2 still holds (two uploads can start
+   together). Then one mutation sets `ready` on the version and on every entry (at most 4,000
+   writes). Otherwise it returns the entries that still lack a file. Components cannot use
+   `paginate`, so the batches use the last path as the cursor.
 6. `activate({ versionId, afterCodePush })` requires `ready`, sets the pointer, `liveAt`, and
    `supersededAt` on the old live version, and sets `codePushAt` when a code push came before it,
    also when the version was live already. A plain `upload` activates at once with
@@ -212,14 +216,14 @@ schedules itself again at once while work remains, so a large version is gone wi
 hours:
 
 - Eligible for deletion, for a version that is not live: an `uploading` version older than one day;
-  a version without `codePushAt`, seven days after a later activation superseded it; a version with
-  `codePushAt`, or a `ready` version that never went live, when another version has a later
-  `codePushAt` (after this version's `codePushAt`, or after its `createdAt` if it never went live)
-  and that `codePushAt` is more than seven days old. The backend runs the renderer of the last code
-  push, and file-only activations, a rollback included, do not replace it, so the files of that
-  renderer's version must stay. A never-activated version can be a release whose push succeeded and
-  whose activation failed. The newest `codePushAt` that is more than seven days old comes from one
-  read on its index.
+  a version that went live without a code push (no `codePushAt`), at the next run after a later
+  activation superseded it; a version with `codePushAt`, or a `ready` version that never went live,
+  when another version has a later `codePushAt` (after this version's `codePushAt`, or after its
+  `createdAt` if it never went live). The backend runs the renderer of the last code push, and
+  file-only activations, a rollback included, do not replace it. A never-activated version can be a
+  release whose push succeeded and whose activation failed, and the component cannot tell it from an
+  upload that was never activated, so both wait for a later code push. The newest `codePushAt` comes
+  from one read on its index.
 - Each run checks the next 200 versions after a cursor in `site` (a `_creationTime`) and starts
   again at the oldest version when the scan ends. Components cannot use `paginate`.
 - Deletion first sets `deleting` in the same transaction that checks eligibility. `activate`,
@@ -229,8 +233,8 @@ hours:
   creation time from a cursor in `site`, with the `entries.storageId` index: delete them. They come
   from uploads whose `recordFile` call never ran.
 
-Static rollback: the last activated versions stay seven days, so `activate` on one of them is a
-rollback of the files. SSR rollback is a release of the older commit.
+There is no retention: a superseded version goes at the next run, and a rollback is a redeploy from
+Git.
 
 ## Limits
 
@@ -243,7 +247,7 @@ rollback of the files. SSR rollback is a release of the older commit.
 - `If-None-Match` with the ETag, a list that contains it, or `*` gets a 304 with the headers of the
   200, `_headers` rules included. Only a 200 becomes a 304: a 404 page stays a 404 with `no-store`.
   `route` decides this itself; the asset worker compares the whole header with one ETag.
-- Every file request runs a Convex HTTP action plus two queries and a storage read, and is billed as
+- Every file request runs a Convex HTTP action plus one query and a storage read, and is billed as
   such, unlike a static request on Cloudflare. Edge cache hits for immutable paths reduce it.
 - One backend version per deployment: an old tab talks to the new backend. Convex documents this
   compatibility rule for the app.

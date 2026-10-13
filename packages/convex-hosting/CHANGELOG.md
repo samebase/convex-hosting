@@ -5,10 +5,10 @@
 A rewrite of the component and the CLI around one live version per deployment, served by the code of
 Cloudflare's Workers Static Assets handler.
 
-**0.4.0 is a new install.** The component's tables are new (`versions`, `entries`, and `site`), so
-the upgrade starts with no live version: the first `deploy` pushes the backend, then uploads, and
-the site answers 404 until the upload ends. The old tables (`staticAssets`, `stagedAssets`,
-`retiredAssets`, `pendingStorageCleanup`, `pendingBlobCleanup`, `cleanupState`, and
+**0.4.0 is a new install.** The component's tables are new (`versions`, `versionConfigs`, `entries`,
+and `site`), so the upgrade starts with no live version: the first `deploy` pushes the backend, then
+uploads, and the site answers 404 until the upload ends. The old tables (`staticAssets`,
+`stagedAssets`, `retiredAssets`, `pendingStorageCleanup`, `pendingBlobCleanup`, `cleanupState`, and
 `deploymentInfo`) stay with their documents until you delete them by hand in the Convex dashboard.
 The hourly cleanup deletes the 0.3.x files from the component's storage, because no 0.4 version
 refers to them. There is no in-place migration. See "Upgrading to 0.4" in the README.
@@ -27,9 +27,11 @@ Breaking changes:
   `api.hosting.getLiveVersion` and take a `getLiveVersion` reference.
 - `_headers` and `_redirects` at the root of the build output are now the version's header and
   redirect rules, with Cloudflare's syntax and limits, not only files that the upload skips.
-- Retention follows the version: hashed files (`--immutable`, default `/assets/**`) of previous
-  versions stay reachable, other paths do not. A version replaced more than seven days ago is
-  deleted by an hourly job, not by a later upload.
+- No retention: the files of a replaced version are deleted by an hourly job, so after a deploy a
+  page that was open before it gets 404 for hashed files that the new version does not have, as on
+  Cloudflare Workers, and the update banner prompts the reload. A rollback is a redeploy from Git.
+  Hashed files (`--immutable`, default `/assets/**`) of a newer, not yet live version are reachable
+  for the server renderer between the code push and the switch.
 - `upload` and `deploy`: `--prod`, `--build`, `--no-spa`, and `--cdn` are gone. `deploy` needs
   `CONVEX_DEPLOY_KEY` or `--preview-name`. `--preview-name` needs a project's preview deploy key or
   a login, and fails next to the deploy key of one deployment (production, development, or one
