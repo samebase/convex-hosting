@@ -23,7 +23,11 @@ export default defineSchema({
      * base64 of Convex's `_storage` happens in `recordFiles`.
      */
     sha256: v.string(),
-    /** Absent when the `mime` package has no type for the file name. */
+    /**
+     * The type belongs to the path, not to the bytes: paths with identical bytes share one stored
+     * file but keep their own types, and `route` serves without reading `_storage`. Absent when
+     * the `mime` package has no type for the file name.
+     */
     contentType: v.optional(v.string()),
     storageId: v.id("_storage"),
   })
