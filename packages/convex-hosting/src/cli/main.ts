@@ -4,6 +4,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
+import { internal } from "../component/_generated/api.js";
+import type { Id } from "../component/_generated/dataModel.js";
 import { AssetConfigSchema } from "../workers-shared/utils/types.js";
 import {
   deploymentFlags,
@@ -183,7 +185,13 @@ async function deploy(cli: Cli, options: Options, build: string) {
     // the component does not exist and this call fails too; the deploy has failed either way.
     if (!firstInstall) {
       try {
-        await runComponent(cli, target, "lib:finishDeploy", { versionId, pushed: false }, z.null());
+        await runComponent(
+          cli,
+          target,
+          internal.lib.finishDeploy,
+          { versionId, pushed: false },
+          z.null(),
+        );
       } catch (error) {
         cli.log(`Could not release the deploy lock: ${String(error)}`);
       }
@@ -191,7 +199,7 @@ async function deploy(cli: Cli, options: Options, build: string) {
     throw new Error(`npx convex deploy failed with exit code ${exitCode}.`);
   }
   if (firstInstall) await upload(cli, options, versionId, "afterPush");
-  await runComponent(cli, target, "lib:finishDeploy", { versionId, pushed: true }, z.null());
+  await runComponent(cli, target, internal.lib.finishDeploy, { versionId, pushed: true }, z.null());
   cli.log(`Deployed version ${versionId}.`);
 }
 
@@ -224,10 +232,14 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
   };
   const dist = resolve(cli.cwd, options.dist);
   const { manifest, files } = await readDist(dist, options, cli.log);
-  const run = <T>(functionName: string, args: Record<string, unknown>, result: z.ZodType<T>) =>
-    runComponent(cli, target, functionName, args, result);
   const generateUploadUrls = (count: number) =>
-    run("lib:generateUploadUrls", { count }, z.array(z.string()).length(count));
+    runComponent(
+      cli,
+      target,
+      internal.lib.generateUploadUrls,
+      { count },
+      z.array(z.string()).length(count),
+    );
 
   if (!(await hasComponent(cli, target))) {
     const missing = `The component "${options.component}" is not installed`;
@@ -252,14 +264,16 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
   cli.log(`Uploading version ${versionId}: ${manifest.entries.length} files.`);
   const [manifestUrl] = await generateUploadUrls(1);
   const manifestId = await store(cli, manifestUrl, JSON.stringify(manifest), "application/json");
-  await run("lib:startVersion", { versionId, manifestId }, z.null());
+  await runComponent(cli, target, internal.lib.startVersion, { versionId, manifestId }, z.null());
 
   // A page of uploads can take longer than the lock lives without a call.
   const contentTypes = new Map(manifest.entries.map((entry) => [entry.path, entry.contentType]));
   await withHeartbeat(cli, target, versionId, async () => {
     for (;;) {
-      const missing = await run(
-        "lib:missingEntries",
+      const missing = await runComponent(
+        cli,
+        target,
+        internal.lib.missingEntries,
         { versionId },
         z.array(z.object({ path: z.string(), sha256: z.string() })),
       );
@@ -271,7 +285,7 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
       }
       const groups = [...pathsBySha256.values()];
       const urls = await generateUploadUrls(groups.length);
-      const records: { path: string; storageId: string }[] = [];
+      const records: { path: string; storageId: Id<"_storage"> }[] = [];
       let next = 0;
       const worker = async () => {
         while (next < groups.length) {
@@ -290,17 +304,31 @@ async function upload(cli: Cli, options: Options, versionId: string, mode: Uploa
       };
       await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
       for (const chunk of chunkByLength(records)) {
-        await run("lib:recordFiles", { versionId, files: chunk }, z.null());
+        await runComponent(
+          cli,
+          target,
+          internal.lib.recordFiles,
+          { versionId, files: chunk },
+          z.null(),
+        );
       }
     }
-    if (!(await run("lib:finishVersion", { versionId }, z.boolean()))) {
+    if (
+      !(await runComponent(cli, target, internal.lib.finishVersion, { versionId }, z.boolean()))
+    ) {
       throw new Error(`Version ${versionId} still has files that are not uploaded.`);
     }
   });
   writeVersionFile(cli, versionId);
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
   if (mode === "user") {
-    await run("lib:finishDeploy", { versionId, pushed: true }, z.null());
+    await runComponent(
+      cli,
+      target,
+      internal.lib.finishDeploy,
+      { versionId, pushed: true },
+      z.null(),
+    );
   }
 }
 
@@ -318,7 +346,7 @@ async function withHeartbeat<T>(
 ): Promise<T> {
   let heartbeat: Promise<void> | undefined;
   const timer = setInterval(() => {
-    heartbeat ??= runComponent(cli, target, "lib:heartbeat", { versionId }, z.null()).then(
+    heartbeat ??= runComponent(cli, target, internal.lib.heartbeat, { versionId }, z.null()).then(
       () => (heartbeat = undefined),
       () => (heartbeat = undefined),
     );
@@ -351,7 +379,7 @@ async function store(
   url: string,
   body: string | Uint8Array<ArrayBuffer>,
   contentType: string | undefined,
-): Promise<string> {
+): Promise<Id<"_storage">> {
   const response = await cli.fetch(url, {
     method: "POST",
     headers: contentType === undefined ? {} : { "Content-Type": contentType },
@@ -360,8 +388,16 @@ async function store(
   if (!response.ok) {
     throw new Error(`Storing a file failed with ${response.status}: ${await response.text()}`);
   }
-  return z.object({ storageId: z.string() }).parse(await response.json()).storageId;
+  return z.object({ storageId: storageIdSchema }).parse(await response.json()).storageId;
 }
+
+/**
+ * The storage id that an upload URL answers with, the documented source of an `Id<"_storage">`.
+ * At runtime an id is a string, and its table exists only in its type, so the narrowest honest
+ * check here is that it is a string; the `v.id("_storage")` validators of `startVersion` and
+ * `recordFiles` check the table on the server.
+ */
+const storageIdSchema = z.custom<Id<"_storage">>((value) => typeof value === "string");
 
 function chunkByLength<T>(items: T[]): T[][] {
   const chunks: T[][] = [];

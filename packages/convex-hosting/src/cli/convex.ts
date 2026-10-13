@@ -3,6 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { parseEnv } from "node:util";
+import {
+  getFunctionName,
+  type FunctionArgs,
+  type FunctionReference,
+  type FunctionReturnType,
+  type FunctionType,
+} from "convex/server";
 import type { z } from "zod";
 
 /** The processes and network calls of the CLI. Tests pass fakes. */
@@ -128,15 +135,17 @@ export async function hasComponent(cli: Cli, target: Target): Promise<boolean> {
 
 /**
  * Runs a function of the component with `npx convex run` and validates its result. The Convex CLI
- * prints the result as JSON, and nothing for `null`.
+ * prints the result as JSON from another process, so `result` checks it at runtime; its type makes
+ * the schema agree with the function's declared return. The CLI prints nothing for `null`.
  */
-export async function runComponent<T>(
+export async function runComponent<Ref extends FunctionReference<FunctionType, "internal">>(
   cli: Cli,
   target: Target,
-  functionName: string,
-  args: Record<string, unknown>,
-  result: z.ZodType<T>,
-): Promise<T> {
+  ref: Ref,
+  args: FunctionArgs<Ref>,
+  result: z.ZodType<FunctionReturnType<Ref>>,
+): Promise<FunctionReturnType<Ref>> {
+  const functionName = getFunctionName(ref);
   const { exitCode, stdout, stderr } = await cli.convex([
     "run",
     "--component",
