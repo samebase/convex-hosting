@@ -149,7 +149,7 @@ afterEach(() => {
 });
 
 describe("dev", () => {
-  test("builds, uploads, writes the version file, pushes with npx convex dev --once, then finishDeploy", async () => {
+  test("builds, uploads, writes the version file, pushes with npx convex run --push, then finishDeploy", async () => {
     const cwd = app(site);
     let pushedVersionId: string | undefined;
     const { cli, events, builds, pushes, runs, callArgs } = fake(cwd, {
@@ -170,10 +170,11 @@ describe("dev", () => {
       "lib:generateUploadUrls",
       "lib:recordFiles",
       "lib:finishVersion",
-      "push: dev",
+      "push: run",
       "lib:finishDeploy",
     ]);
-    expect(pushes).toEqual([["dev", "--once"]]);
+    // An inline query at the app's root, which exists before a first install.
+    expect(pushes).toEqual([["run", "--push", "--inline-query", "null"]]);
     // The development deployment is the default of every Convex command.
     expect(runs.flat().filter((arg) => arg === "--prod" || arg === "--preview-name")).toEqual([]);
     const versionId = writtenVersionId(cwd);
@@ -197,7 +198,7 @@ describe("dev", () => {
     expect(events.slice(0, 5)).toEqual([
       "build",
       "probe",
-      "push: dev",
+      "push: run",
       "probe",
       "lib:generateUploadUrls",
     ]);
@@ -221,7 +222,7 @@ describe("dev", () => {
     expect(await main(DEV, cli)).toBe(1);
     expect(callArgs("lib:releaseLock")).toEqual([{ versionId: writtenVersionId(cwd) }]);
     expect(callArgs("lib:finishDeploy")).toEqual([]);
-    expect(logs[logs.length - 1]).toBe("npx convex dev --once failed with exit code 1.");
+    expect(logs[logs.length - 1]).toBe("npx convex run --push failed with exit code 1.");
   });
 
   test("calls heartbeat every 30 seconds while a long page of files uploads", async () => {
@@ -435,7 +436,7 @@ describe("deploy", () => {
     expect(callArgs("lib:finishDeploy")).toEqual([{ versionId }]);
   });
 
-  test("a heartbeat that reports a lost lock kills the push, once the lock was held", async () => {
+  test("a heartbeat that reports a lost lock kills the push and fails the deploy", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const lost = "The deploy of version v1 lost its lock: a deploy of version v2 holds it.";
     let killedAfter = 0;
@@ -448,22 +449,16 @@ describe("deploy", () => {
             reject(signal.reason);
           }),
         );
-        void vi.advanceTimersByTimeAsync(90_000);
+        void vi.advanceTimersByTimeAsync(30_000);
         return killedPush;
       },
     });
-    // Before the upload's `createVersion`, the lock is not this deploy's yet, and a heartbeat gets
-    // the same answer. It counts only after a heartbeat succeeded.
-    answerHeartbeats(cli, [
-      lostLockError("The deploy of version v1 lost its lock."),
-      null,
-      lostLockError(lost),
-    ]);
+    answerHeartbeats(cli, [lostLockError(lost)]);
     expect(await main(DEPLOY, cli)).toBe(1);
-    expect(killedAfter).toBe(3);
+    expect(killedAfter).toBe(1);
     expect(logs[logs.length - 1]).toBe(lost);
     // Nothing is deleted; the lock is not this deploy's to release.
-    expect(calls()).toEqual(["lib:heartbeat", "lib:heartbeat", "lib:heartbeat", "lib:releaseLock"]);
+    expect(calls()).toEqual(["lib:heartbeat", "lib:releaseLock"]);
   });
 
   test("other heartbeat errors are ignored", async () => {

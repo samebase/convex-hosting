@@ -245,11 +245,16 @@ export const finishVersion = internalMutation({
   },
 });
 
-/** Refreshes the lock. The CLI calls it every 30 seconds while it uploads and while it pushes. */
+/**
+ * Refreshes the lock. The CLI calls it every 30 seconds from the build to the end of the push. A
+ * lock can be lost only after it was taken, and `createVersion` takes it when it creates the
+ * version: before that, there is nothing to refresh, and the call does nothing.
+ */
 export const heartbeat = internalMutation({
   args: { versionId: v.string() },
   returns: v.null(),
   handler: async (ctx, { versionId }) => {
+    if ((await getVersion(ctx, versionId)) === null) return null;
     await holdLock(ctx, versionId);
     return null;
   },

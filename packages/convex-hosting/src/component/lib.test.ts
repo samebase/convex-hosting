@@ -186,13 +186,17 @@ describe("lock", () => {
     await expect(createVersion(t, "v2")).rejects.toThrow("A deploy of version v1 is in progress");
   });
 
+  test("a heartbeat before createVersion does nothing: the lock is not taken yet", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.lib.heartbeat, { versionId: "v1" });
+    await createVersion(t, "v2");
+    await t.mutation(internal.lib.heartbeat, { versionId: "v1" });
+    expect((await tables(t)).lock).toEqual(["v2"]);
+  });
+
   test("a deploy that lost its lock fails; releaseLock has nothing to release", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
-    await expect(t.mutation(internal.lib.heartbeat, { versionId: "v1" })).rejects.toThrow(
-      "The deploy of version v1 lost its lock.",
-    );
-
     await createVersion(t, "v1");
     vi.advanceTimersByTime(2 * 60 * 1000 + 1);
     await createVersion(t, "v2");

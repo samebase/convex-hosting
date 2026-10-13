@@ -146,7 +146,9 @@ function quote(arg: string): string {
  * `deploy` for the development deployment, the one that `npx convex dev` and `npx convex run` pick
  * by default, so no Convex command gets a selector. The build runs as a child of this process in
  * the project directory: the framework reads the deployment's URL from `.env.local` itself (Vite
- * reads `VITE_CONVEX_URL`). Then the upload runs here, and `npx convex dev --once` pushes.
+ * reads `VITE_CONVEX_URL`). Then the upload runs here, and `npx convex run --push` pushes.
+ * `npx convex dev --once` cannot push here: it refuses while `npx convex dev` runs a local
+ * deployment's backend, which the upload needs.
  */
 async function dev(cli: Cli, options: Options, build: string) {
   const target: Target = { component: options.component, flags: [] };
@@ -156,8 +158,10 @@ async function dev(cli: Cli, options: Options, build: string) {
     if (buildExitCode !== 0) throw new Error(`The build failed with exit code ${buildExitCode}.`);
     progress.firstInstall = !(await upload(cli, options, target, versionId));
     if (progress.firstInstall) cli.log(notInstalledYet(options.component));
-    const exitCode = await cli.convexInherited(["dev", "--once"], signal);
-    if (exitCode !== 0) throw new Error(`npx convex dev --once failed with exit code ${exitCode}.`);
+    // The smallest command that pushes: an inline query at the app's root, which exists before the
+    // push installs the component.
+    const exitCode = await cli.convexInherited(["run", "--push", "--inline-query", "null"], signal);
+    if (exitCode !== 0) throw new Error(`npx convex run --push failed with exit code ${exitCode}.`);
     if (progress.firstInstall) await uploadAfterPush(cli, options, target, versionId);
   });
 }
@@ -355,10 +359,8 @@ async function upload(
 /**
  * Runs `work` and calls `heartbeat` every 30 seconds meanwhile, so the lock means that the process
  * is alive. When a heartbeat answers that the deploy lost its lock, it aborts `work`'s signal,
- * which kills the build or the push, and fails with the component's message. That answer counts
- * only after a heartbeat succeeded: before the upload's `createVersion` takes the lock, a heartbeat
- * gets the same answer. Other heartbeat errors are ignored; on a first install, a heartbeat fails
- * until the push installs the component.
+ * which kills the build or the push, and fails with the component's message. Other heartbeat
+ * errors are ignored; on a first install, a heartbeat fails until the push installs the component.
  */
 async function withHeartbeat(
   cli: Cli,
@@ -367,20 +369,16 @@ async function withHeartbeat(
   work: (signal: AbortSignal) => Promise<void>,
 ): Promise<void> {
   const controller = new AbortController();
-  let held = false;
   let lostLock: Error | undefined;
   let heartbeat: Promise<void> | undefined;
   const timer = setInterval(() => {
     heartbeat ??= runComponent(cli, target, internal.lib.heartbeat, { versionId }, z.null()).then(
-      () => {
-        held = true;
-        heartbeat = undefined;
-      },
+      () => (heartbeat = undefined),
       (error: unknown) => {
         heartbeat = undefined;
         // The ConvexError of the component's `holdLock`.
         const message = /The deploy of version \S+ lost its lock[^\n]*/.exec(String(error))?.[0];
-        if (held && message !== undefined) {
+        if (message !== undefined) {
           lostLock = new Error(message);
           controller.abort(lostLock);
         }

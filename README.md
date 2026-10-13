@@ -107,7 +107,7 @@ npx convex-hosting dev --build "vite build" --dist dist --not-found-handling sin
 ```
 
 `dev` does for the development deployment what `deploy` does for production: it runs the build,
-uploads `--dist`, writes `.convex-hosting/version.js`, pushes with `npx convex dev --once`, and
+uploads `--dist`, writes `.convex-hosting/version.js`, pushes with `npx convex run --push`, and
 deletes the earlier versions. On a new deployment, it pushes the component first, then uploads. The
 build runs with your environment, so the framework reads the deployment's URL from `.env.local`
 (Vite reads `VITE_CONVEX_URL`). There is no watch mode: a build, an upload, and a push per change is
