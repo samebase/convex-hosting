@@ -256,26 +256,18 @@ export const heartbeat = internalMutation({
 });
 
 /**
- * Ends the deploy of `versionId`, only while it holds the lock. With `pushed`, deletes the other
+ * Ends the deploy of `versionId` after its push, only while it holds the lock: deletes the other
  * versions with their entries and the stored files no remaining entry uses, then every `_storage`
  * file that no entry references, one batch per call, and releases the lock after the last batch.
- * Without `pushed`, releases the lock and keeps the version, so a retry reuses its files; when the
- * lock is no longer its own, there is nothing to release.
  */
 export const finishDeploy = internalMutation({
   args: {
     versionId: v.string(),
-    pushed: v.boolean(),
     /** The `_creationTime` of the last `_storage` file that the previous batch read. */
     storageCursor: v.optional(v.number()),
   },
   returns: v.null(),
-  handler: async (ctx, { versionId, pushed, storageCursor }) => {
-    if (!pushed) {
-      const lock = await ctx.db.query("deploy").first();
-      if (lock !== null && lock.versionId === versionId) await ctx.db.delete("deploy", lock._id);
-      return null;
-    }
+  handler: async (ctx, { versionId, storageCursor }) => {
     const lock = await holdLock(ctx, versionId);
 
     if (storageCursor === undefined) {
@@ -299,7 +291,7 @@ export const finishDeploy = internalMutation({
           }
         }
         if (entries.length < DELETE_BATCH) await ctx.db.delete("versions", other._id);
-        await ctx.scheduler.runAfter(0, internal.lib.finishDeploy, { versionId, pushed: true });
+        await ctx.scheduler.runAfter(0, internal.lib.finishDeploy, { versionId });
         return null;
       }
     }
@@ -317,12 +309,25 @@ export const finishDeploy = internalMutation({
     if (files.length === SWEEP_BATCH) {
       await ctx.scheduler.runAfter(0, internal.lib.finishDeploy, {
         versionId,
-        pushed: true,
         storageCursor: files[files.length - 1]._creationTime,
       });
       return null;
     }
     await ctx.db.delete("deploy", lock._id);
+    return null;
+  },
+});
+
+/**
+ * Releases the lock of `versionId` after a failed deploy. The version stays, so a retry reuses its
+ * files. When the lock is no longer its own, there is nothing to release.
+ */
+export const releaseLock = internalMutation({
+  args: { versionId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { versionId }) => {
+    const lock = await ctx.db.query("deploy").first();
+    if (lock !== null && lock.versionId === versionId) await ctx.db.delete("deploy", lock._id);
     return null;
   },
 });

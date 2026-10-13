@@ -29,7 +29,7 @@ async function setup() {
     entries: [{ path: entry.path, sha256, contentType: "text/html", storageId }],
   });
   await t.mutation(internal.lib.finishVersion, { versionId: "v1" });
-  await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: false });
+  await t.mutation(internal.lib.releaseLock, { versionId: "v1" });
   await createVersion("v2");
   // `t.run` returns Convex values, so the response comes back as its parts.
   return (path: string, versionId = "v1") =>

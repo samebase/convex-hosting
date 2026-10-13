@@ -54,9 +54,9 @@ export default http;
 ```
 
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
-Wrangler's `.wrangler/`. Every upload and deploy writes the version to `.convex-hosting/version.js`.
-The folder has its own `.gitignore`, so git ignores it. One committed declaration,
-`convex/convex-hosting.d.ts`, types the module before the first upload:
+Wrangler's `.wrangler/`. `dev` and `deploy` write the version to `.convex-hosting/version.js`. The
+folder has its own `.gitignore`, so git ignores it. One committed declaration,
+`convex/convex-hosting.d.ts`, types the module before the first `dev` or `deploy`:
 
 ```ts
 declare module "*/.convex-hosting/version.js" {
@@ -79,9 +79,10 @@ The build command runs in the project directory. Do not change directory in it.
 pushed code names the version it was built with, so the push switches the site. After the push,
 `deploy` deletes the earlier versions and their files.
 
-The deployment is the one that `npx convex deploy` selects: the deployment of `CONVEX_DEPLOY_KEY`
-(from the environment or `.env.local`), the preview named by `--preview-name` (with a login or a
-project's preview deploy key), or else production.
+`deploy` goes to the preview named by `--preview-name` (with a login or a project's preview deploy
+key; always pass the name with that key), or else to production. A deploy key in `CONVEX_DEPLOY_KEY`
+or `CONVEX_DEPLOYMENT_TOKEN` (from the environment or `.env.local`) selects its own deployment
+instead, and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment.
 
 The first deploy to a deployment pushes the component, then uploads the files. Until that upload
 ends, the site answers 404. The deploy lock does not protect this first deploy, because the
@@ -89,34 +90,38 @@ component does not exist yet: run the first deploy of a deployment once, alone.
 
 Two deploys at once: the second one stops with
 `A deploy of version <id> is in progress: it refreshed the lock <n> seconds ago.` Try again when the
-first one ends. A deploy that stopped frees its lock 2 minutes after its last refresh. There is no
-cancel command.
+first one ends. A deploy that stopped frees its lock 2 minutes after its last refresh. If it resumes
+after another deploy took the lock, for example on a laptop that slept, it kills its push at its
+next refresh and fails with `The deploy of version <id> lost its lock`. There is no cancel command.
 
-## Development deployment
+## Development
 
-With `npx convex dev` running, build and upload:
+The inner loop is your framework's dev server, such as Vite's, which serves the frontend locally
+with hot reload against the development deployment's URL from `.env.local`, plus `npx convex dev`,
+which pushes your function changes.
+
+When the development deployment should serve the current build, run the one-shot command:
 
 ```sh
-vite build && npx convex-hosting upload --dist dist --not-found-handling single-page-application
+npx convex-hosting dev --build "vite build" --dist dist --not-found-handling single-page-application
 ```
 
-`upload` writes `.convex-hosting/version.js`, and `npx convex dev` pushes it within seconds. Until
-then, the development site answers 404.
-
-On a fresh clone, run `convex-hosting upload` before `npx convex dev`. `upload` writes
-`.convex-hosting/version.js` and waits up to 2 minutes for the push that `npx convex dev` makes once
-you start it. If `npx convex dev` was already running and reported the missing module, restart it
-after `upload` wrote the file, because Convex's watcher does not look again at a module that failed
-to resolve.
+`dev` does for the development deployment what `deploy` does for production: it runs the build,
+uploads `--dist`, writes `.convex-hosting/version.js`, pushes with `npx convex dev --once`, and
+deletes the earlier versions. On a new deployment, it pushes the component first, then uploads. The
+build runs with your environment, so the framework reads the deployment's URL from `.env.local`
+(Vite reads `VITE_CONVEX_URL`). There is no watch mode: a build, an upload, and a push per change is
+not an inner loop, and Cloudflare's own tooling works the same way, with a local dev server and a
+push on demand.
 
 Two cases are transient:
 
-- A server-rendered app imports `dist/server` in `convex/http.ts`, so `npx convex dev` pushes after
-  the build, before `upload` writes the new version. Until the upload ends, the new pages refer to
-  files that answer 404.
-- A production deploy writes production's version to the version file, and `npx convex dev` pushes
-  it to the development deployment, where that version does not exist, until the next `upload`. Run
-  production deploys in CI or in a separate checkout.
+- A server-rendered app imports `dist/server` in `convex/http.ts`, so a running `npx convex dev`
+  pushes after the build, before `dev` writes the new version. Until `dev` ends, the new pages refer
+  to files that answer 404.
+- A production deploy writes production's version to the version file, and a running
+  `npx convex dev` pushes it to the development deployment, where that version does not exist, until
+  the next `convex-hosting dev`. Run production deploys in CI or in a separate checkout.
 
 ## Options
 

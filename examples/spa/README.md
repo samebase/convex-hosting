@@ -6,8 +6,9 @@ A Vite and React app that `@samebase/convex-hosting` serves with
 
 From `examples/spa`:
 
+- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal.
 - `pnpm run build`: build the site into `dist`.
-- `pnpm run upload`: upload `dist` to the development deployment that `npx convex dev` pushes.
+- `pnpm run deploy:dev`: build, upload, and push to the development deployment.
 - `pnpm run deploy`: build, upload, and push to production.
 
-For the order of the first start and everything else, see the [README](../../README.md).
+For everything else, see the [README](../../README.md).

@@ -8,9 +8,10 @@ example has its own schema, so it needs its own Convex project.
 
 From `examples/tanstack-ssr`:
 
+- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. It renders the pages
+  in Vite's own server; the Convex HTTP action renders them only on the deployed site.
 - `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`.
-- `pnpm run upload`: upload `dist/client` to the development deployment that `npx convex dev`
-  pushes.
+- `pnpm run deploy:dev`: build, upload, and push to the development deployment.
 - `pnpm run deploy`: build, upload, and push to production.
 
-For the order of the first start and everything else, see the [README](../../README.md).
+For everything else, see the [README](../../README.md).

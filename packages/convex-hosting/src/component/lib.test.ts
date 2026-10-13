@@ -112,7 +112,7 @@ describe("upload", () => {
   test("knownFiles returns the stored files that entries of any version have", async () => {
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
-    await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: false });
+    await t.mutation(internal.lib.releaseLock, { versionId: "v1" });
     const index = await t.run(
       async (ctx) =>
         (
@@ -186,7 +186,7 @@ describe("lock", () => {
     await expect(createVersion(t, "v2")).rejects.toThrow("A deploy of version v1 is in progress");
   });
 
-  test("a deploy that lost its lock fails; finishDeploy without pushed has nothing to release", async () => {
+  test("a deploy that lost its lock fails; releaseLock has nothing to release", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await expect(t.mutation(internal.lib.heartbeat, { versionId: "v1" })).rejects.toThrow(
@@ -203,21 +203,19 @@ describe("lock", () => {
     ).rejects.toThrow(lost);
     await expect(t.mutation(internal.lib.finishVersion, { versionId: "v1" })).rejects.toThrow(lost);
     await expect(t.mutation(internal.lib.heartbeat, { versionId: "v1" })).rejects.toThrow(lost);
-    await expect(
-      t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: true }),
-    ).rejects.toThrow(lost);
+    await expect(t.mutation(internal.lib.finishDeploy, { versionId: "v1" })).rejects.toThrow(lost);
 
-    await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: false });
+    await t.mutation(internal.lib.releaseLock, { versionId: "v1" });
     expect((await tables(t)).lock).toEqual(["v2"]);
   });
 });
 
 describe("finishDeploy", () => {
-  test("with pushed, deletes the other versions and unreferenced files, then releases", async () => {
+  test("deletes the other versions and the unreferenced files, then releases", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
-    await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: true });
+    await t.mutation(internal.lib.finishDeploy, { versionId: "v1" });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     // The config file is gone; the three files stay.
     expect((await tables(t)).files).toBe(3);
@@ -229,7 +227,7 @@ describe("finishDeploy", () => {
     });
     // A stored file that no entry references, such as an upload that was never recorded.
     await t.run((ctx) => ctx.storage.store(new Blob(["orphan"])));
-    await t.mutation(internal.lib.finishDeploy, { versionId: "v2", pushed: true });
+    await t.mutation(internal.lib.finishDeploy, { versionId: "v2" });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
 
     expect(await tables(t)).toEqual({
@@ -240,10 +238,10 @@ describe("finishDeploy", () => {
     });
   });
 
-  test("without pushed, releases the lock and keeps the version", async () => {
+  test("releaseLock releases the lock and keeps the version", async () => {
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
-    await t.mutation(internal.lib.finishDeploy, { versionId: "v1", pushed: false });
+    await t.mutation(internal.lib.releaseLock, { versionId: "v1" });
     const after = await tables(t);
     expect(after.versions).toEqual([["v1", "ready"]]);
     expect(after.lock).toEqual([]);

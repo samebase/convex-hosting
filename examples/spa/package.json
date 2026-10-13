@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "vp build",
-    "upload": "convex-hosting upload --dist dist --not-found-handling single-page-application",
+    "dev": "vp dev",
+    "deploy:dev": "convex-hosting dev --build \"pnpm run build\" --dist dist --not-found-handling single-page-application",
     "deploy": "convex-hosting deploy --build \"pnpm run build\" --dist dist --not-found-handling single-page-application",
     "typecheck": "tsc -p . && tsc -p convex"
   },

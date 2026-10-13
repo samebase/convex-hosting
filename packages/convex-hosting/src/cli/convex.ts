@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -20,8 +20,16 @@ export interface Cli {
   env: Record<string, string | undefined>;
   /** Runs the app's `convex` CLI and captures its output. */
   convex: (args: string[]) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
-  /** Runs the app's `convex` CLI with this process's standard streams; resolves with its exit code. */
-  convexInherited: (args: string[]) => Promise<number>;
+  /**
+   * Runs the app's `convex` CLI with this process's standard streams; resolves with its exit code.
+   * Aborting `signal` kills it.
+   */
+  convexInherited: (args: string[], signal: AbortSignal) => Promise<number>;
+  /**
+   * Runs a shell command in `cwd` with this process's environment and standard streams; resolves
+   * with its exit code. Aborting `signal` kills it.
+   */
+  shell: (command: string, signal: AbortSignal) => Promise<number>;
   fetch: typeof fetch;
   /** Writes a line to standard error. */
   log: (message: string) => void;
@@ -48,15 +56,21 @@ export const nodeCli: Cli = {
         },
       );
     }),
-  convexInherited: (args) =>
-    new Promise((resolve, reject) => {
-      spawn(process.execPath, [convexBin(process.cwd()), ...args], { stdio: "inherit" })
-        .on("error", reject)
-        .on("close", (code) => resolve(code ?? 1));
-    }),
+  convexInherited: (args, signal) =>
+    exitCode(
+      spawn(process.execPath, [convexBin(process.cwd()), ...args], { stdio: "inherit", signal }),
+    ),
+  shell: (command, signal) => exitCode(spawn(command, { shell: true, stdio: "inherit", signal })),
   fetch: (input, init) => fetch(input, init),
   log: (message) => console.error(message),
 };
+
+/** The exit code of `child`, or its spawn error. */
+function exitCode(child: ChildProcess): Promise<number> {
+  return new Promise((resolve, reject) => {
+    child.on("error", reject).on("close", (code) => resolve(code ?? 1));
+  });
+}
 
 /**
  * The variables that the Convex CLI reads to select a deployment, in its order: the process
@@ -71,50 +85,14 @@ function readConvexEnv(cli: Cli): Record<string, string | undefined> {
 }
 
 /**
- * The deploy key that the Convex CLI uses: `CONVEX_DEPLOY_KEY`, else its alias
- * `CONVEX_DEPLOYMENT_TOKEN`. It treats the value `<ignore_deploy_key>` as no key.
+ * The deployment selector of `deploy`'s `npx convex run` calls: `--preview-name <name>` when
+ * given, else `--prod`, because `npx convex deploy` goes to production by default while
+ * `npx convex run` goes to development. A deploy key in the environment wins over the selector in
+ * both commands. A self-hosted deployment takes no selector.
  */
-export function readDeployKey(cli: Cli): string | undefined {
-  const env = readConvexEnv(cli);
-  const deployKey = env.CONVEX_DEPLOY_KEY || env.CONVEX_DEPLOYMENT_TOKEN;
-  return deployKey && deployKey !== "<ignore_deploy_key>" ? deployKey : undefined;
-}
-
-/**
- * The `npx convex run` flags that reach the deployment that `npx convex deploy` reaches.
- *
- * A deployment's own deploy key (`prod:`, `dev:`, or `preview:<deployment>`) selects it for both
- * commands, and the Convex CLI ignores `--preview-name` next to it. A project's preview deploy key
- * (`preview:<team>:<project>`) needs `--preview-name`: `npx convex deploy` could otherwise pick the
- * Git branch, which `npx convex run` does not. Without a deploy key (a login, or a `project:` key),
- * `npx convex deploy` goes to production and `npx convex run` to development, so a deploy's calls
- * get `--prod`.
- */
-export function deploymentFlags(cli: Cli, previewName: string | undefined): string[] {
-  const deployKey = readDeployKey(cli);
-  if (deployKey) {
-    const prefix = deployKey.split("|")[0].split(":");
-    const hasSecret = deployKey.includes("|");
-    if (hasSecret && prefix[0] === "preview" && prefix.length === 3) {
-      if (previewName === undefined) {
-        throw new Error(
-          "CONVEX_DEPLOY_KEY is a project's preview deploy key: pass --preview-name <name>.",
-        );
-      }
-      return ["--preview-name", previewName];
-    }
-    if (!(hasSecret && prefix[0] === "project")) {
-      if (previewName !== undefined) {
-        throw new Error(
-          "CONVEX_DEPLOY_KEY is the deploy key of one deployment, and the Convex CLI ignores " +
-            "--preview-name next to it. Use a project's preview deploy key, or remove --preview-name.",
-        );
-      }
-      return [];
-    }
-  }
-  if (previewName !== undefined) return ["--preview-name", previewName];
-  return ["--prod"];
+export function deploymentSelector(cli: Cli, previewName: string | undefined): string[] {
+  if (readConvexEnv(cli).CONVEX_SELF_HOSTED_URL) return [];
+  return previewName === undefined ? ["--prod"] : ["--preview-name", previewName];
 }
 
 /** The component instance and the deployment that every call of one command reaches. */
