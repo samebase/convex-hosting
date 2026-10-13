@@ -22,10 +22,10 @@ for the apps Samebase makes. It does not need feature parity with them.
 - The "missing scripts" problem that started this package's retention work had two parts
   ([get-convex/static-hosting PR 41](https://github.com/get-convex/static-hosting/pull/41)): the
   deploy order (the backend push before the file upload), and pages that were already open and lost
-  their lazy scripts. Hosts handle the second part differently: Cloudflare Workers answers 404 after
-  a full deploy and keeps old versions reachable only during a gradual deployment; Cloudflare Pages
-  keeps cached assets after a deploy without a guarantee; Netlify and Vercel pin a whole old
-  deployment by its ID.
+  their lazy scripts. Hosts handle the second part differently, on the production hostname:
+  Cloudflare Workers answers 404 after a full deploy and keeps old versions reachable only during a
+  gradual deployment or on separate version URLs; Cloudflare Pages keeps cached assets after a
+  deploy without a guarantee; Netlify and Vercel pin a whole old deployment by its ID.
 - Cloudflare's production code for Workers Static Assets is open source (MIT or Apache-2.0):
   `packages/workers-shared/asset-worker` in
   [cloudflare/workers-sdk](https://github.com/cloudflare/workers-sdk/tree/main/packages/workers-shared).
