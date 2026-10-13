@@ -81,6 +81,16 @@ async function getEntry(ctx: QueryCtx, versionId: string, path: string) {
     .unique();
 }
 
+/** The `at` of the newest live version, or `null` when no version is live. */
+async function getNewestLiveAt(ctx: QueryCtx) {
+  const newest = await ctx.db
+    .query("versions")
+    .withIndex("by_live", (q) => q.eq("state.kind", "live"))
+    .order("desc")
+    .first();
+  return newest?.state.kind === "live" ? newest.state.at : null;
+}
+
 async function getVersionOrThrow(ctx: QueryCtx, versionId: string) {
   const version = await getVersion(ctx, versionId);
   if (version === null) throw new ConvexError(`Version ${versionId} does not exist.`);
@@ -228,18 +238,23 @@ export const finishVersion = internalMutation({
 
 /**
  * Marks a `ready` version `live` and schedules `collect`. `serveAsset` calls it at the first
- * request that the version's pushed code serves; a version that is already live stays as it is, so
- * concurrent first requests are fine.
+ * request that the version's pushed code serves, with the `at` of the newest live version that
+ * `route` saw for that request. A mark succeeds only when the state it was based on is still the
+ * state: when the newest live version changed between the request's lookup and this mark, it does
+ * nothing, so a request whose code was replaced between its lookup and its mark cannot make its
+ * version newest. A version that is already live stays as it is, so concurrent first requests are
+ * fine.
  */
 export const markLive = mutation({
-  args: { versionId: v.string() },
+  args: { versionId: v.string(), expectedNewestLiveAt: v.union(v.number(), v.null()) },
   returns: v.null(),
-  handler: async (ctx, { versionId }) => {
+  handler: async (ctx, { versionId, expectedNewestLiveAt }) => {
     const version = await getVersionOrThrow(ctx, versionId);
     if (version.state.kind === "live") return null;
     if (version.state.kind === "uploading") {
       throw new ConvexError(`Version ${versionId} is still uploading.`);
     }
+    if ((await getNewestLiveAt(ctx)) !== expectedNewestLiveAt) return null;
     await ctx.db.patch("versions", version._id, { state: { kind: "live", at: Date.now() } });
     await ctx.scheduler.runAfter(0, internal.lib.collect, { step: { kind: "files" } });
     return null;
@@ -301,12 +316,7 @@ export const collect = internalMutation({
       return null;
     }
 
-    const current = await ctx.db
-      .query("versions")
-      .withIndex("by_live", (q) => q.eq("state.kind", "live"))
-      .order("desc")
-      .first();
-    const currentAt = current?.state.kind === "live" ? current.state.at : undefined;
+    const currentAt = await getNewestLiveAt(ctx);
     const page = await ctx.db
       .query("versions")
       .withIndex("by_creation_time", (q) =>
@@ -318,7 +328,7 @@ export const collect = internalMutation({
     for (const version of page) {
       const garbage =
         version.state.kind === "live"
-          ? currentAt !== undefined && version.state.at < currentAt
+          ? currentAt !== null && version.state.at < currentAt
           : version._creationTime < garbageBefore;
       if (garbage) {
         const entries = await ctx.db
@@ -351,13 +361,16 @@ const routeHeaders = v.record(v.string(), v.string());
 
 /**
  * Runs Cloudflare's asset handler for one request against one version. `state` is the kind of the
- * version's state, or `null` when the version does not exist. `asset` is `null` when the version
- * is still uploading or does not exist, or when no asset answers.
+ * version's state, or `null` when the version does not exist. `newestLiveAt` is, for a `ready`
+ * version, the `at` of the newest live version that this query saw, which `serveAsset` passes to
+ * `markLive`; otherwise `null`, and a live version's requests read nothing more. `asset` is
+ * `null` when the version is still uploading or does not exist, or when no asset answers.
  */
 export const route = query({
   args: { versionId: v.string(), method: v.string(), url: v.string(), headers: routeHeaders },
   returns: v.object({
     state: v.union(v.literal("uploading"), v.literal("ready"), v.literal("live"), v.null()),
+    newestLiveAt: v.union(v.number(), v.null()),
     asset: v.union(
       v.null(),
       v.object({
@@ -370,9 +383,10 @@ export const route = query({
   }),
   handler: async (ctx, { versionId, method, url, headers }) => {
     const version = await getVersion(ctx, versionId);
-    if (version === null) return { state: null, asset: null };
+    if (version === null) return { state: null, newestLiveAt: null, asset: null };
     const state = version.state.kind;
-    if (state === "uploading") return { state, asset: null };
+    if (state === "uploading") return { state, newestLiveAt: null, asset: null };
+    const newestLiveAt = state === "ready" ? await getNewestLiveAt(ctx) : null;
 
     const configuration = normalizeConfiguration({
       ...AssetConfigSchema.parse(JSON.parse(version.config)),
@@ -403,7 +417,7 @@ export const route = query({
     };
 
     if (!(await canFetch(request, env, configuration, exists))) {
-      return { state, asset: null };
+      return { state, newestLiveAt, asset: null };
     }
     const response = await handleRequest(
       request,
@@ -424,12 +438,14 @@ export const route = query({
       if (bodyUrl === null) {
         return {
           state,
+          newestLiveAt,
           asset: { status: 404, headers: [{ name: "cache-control", value: "no-store" }], bodyUrl },
         };
       }
     }
     return {
       state,
+      newestLiveAt,
       asset: {
         status: response.status,
         headers: [...response.headers].map(([name, value]) => ({ name, value })),

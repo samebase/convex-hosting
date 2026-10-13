@@ -15,7 +15,7 @@ export async function serveAsset(
   request: Request,
   versionId: string,
 ): Promise<Response | null> {
-  const { state, asset } = await ctx.runQuery(component.lib.route, {
+  const { state, newestLiveAt, asset } = await ctx.runQuery(component.lib.route, {
     versionId,
     method: request.method,
     url: request.url,
@@ -29,7 +29,12 @@ export async function serveAsset(
     });
   }
   // Only the pushed code knows which version the deployment runs, so its first request reports it.
-  if (state === "ready") await ctx.runMutation(component.lib.markLive, { versionId });
+  if (state === "ready") {
+    await ctx.runMutation(component.lib.markLive, {
+      versionId,
+      expectedNewestLiveAt: newestLiveAt,
+    });
+  }
   if (asset === null) return null;
 
   const headers = new Headers();

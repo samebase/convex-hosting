@@ -27,7 +27,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       markLive: FunctionReference<
         "mutation",
         "internal",
-        { versionId: string },
+        { expectedNewestLiveAt: number | null; versionId: string },
         null,
         Name
       >;
@@ -46,6 +46,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             headers: Array<{ name: string; value: string }>;
             status: number;
           };
+          newestLiveAt: number | null;
           state: "uploading" | "ready" | "live" | null;
         },
         Name

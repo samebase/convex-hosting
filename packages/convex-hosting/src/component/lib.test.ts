@@ -85,6 +85,24 @@ function route(
   });
 }
 
+/** Marks `versionId` live the way `serveAsset` does: with the newest live `at` that `route` saw. */
+async function markLive(t: ReturnType<typeof convexTest>, versionId: string) {
+  const { newestLiveAt } = await route(t, versionId, "/");
+  await t.mutation(api.lib.markLive, { versionId, expectedNewestLiveAt: newestLiveAt });
+}
+
+/** The kind of each version's state, and the number of `collect` chains that `markLive` started. */
+async function liveness(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) => ({
+    versions: Object.fromEntries(
+      (await ctx.db.query("versions").collect()).map((v) => [v.versionId, v.state.kind]),
+    ),
+    collects: (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+      (job) => job.args[0].step.kind === "files" && job.args[0].step.after === undefined,
+    ).length,
+  }));
+}
+
 function header(asset: { headers: { name: string; value: string }[] } | null, name: string) {
   return asset?.headers.find((h) => h.name === name)?.value;
 }
@@ -182,7 +200,7 @@ describe("markLive", () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
-    await t.mutation(api.lib.markLive, { versionId: "v1" });
+    await markLive(t, "v1");
     const state = async () =>
       await t.run(
         async (ctx) =>
@@ -196,7 +214,7 @@ describe("markLive", () => {
     const live = await state();
     expect(live).toEqual({ kind: "live", at: Date.now() });
     vi.advanceTimersByTime(1000);
-    await t.mutation(api.lib.markLive, { versionId: "v1" });
+    await markLive(t, "v1");
     expect(await state()).toEqual(live);
     expect((await route(t, "v1", "/")).state).toBe("live");
   });
@@ -204,12 +222,61 @@ describe("markLive", () => {
   test("refuses a version that is uploading or does not exist", async () => {
     const t = convexTest(schema, modules);
     await createVersion(t, "v1");
-    await expect(t.mutation(api.lib.markLive, { versionId: "v1" })).rejects.toThrow(
-      "Version v1 is still uploading.",
-    );
-    await expect(t.mutation(api.lib.markLive, { versionId: "v2" })).rejects.toThrow(
-      "Version v2 does not exist.",
-    );
+    const mark = (versionId: string) =>
+      t.mutation(api.lib.markLive, { versionId, expectedNewestLiveAt: null });
+    await expect(mark("v1")).rejects.toThrow("Version v1 is still uploading.");
+    await expect(mark("v2")).rejects.toThrow("Version v2 does not exist.");
+  });
+
+  test("a stale mark is refused: a request read the state before another version became live", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    await uploadVersion(t, "b", site);
+    // A request of A's code reads that no version is live, then B's code replaces A's and serves.
+    const { newestLiveAt } = await route(t, "a", "/");
+    expect(newestLiveAt).toBeNull();
+    vi.advanceTimersByTime(1000);
+    await markLive(t, "b");
+    expect(await liveness(t)).toEqual({ versions: { a: "ready", b: "live" }, collects: 1 });
+    // A's mark, based on that read, does nothing and schedules nothing.
+    vi.advanceTimersByTime(1000);
+    await t.mutation(api.lib.markLive, { versionId: "a", expectedNewestLiveAt: newestLiveAt });
+    expect(await liveness(t)).toEqual({ versions: { a: "ready", b: "live" }, collects: 1 });
+  });
+
+  test("a late push of another version marks it live and supersedes the live one", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    await uploadVersion(t, "b", site);
+    await markLive(t, "b");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // A's code is pushed after B's: its request reads B's `at`, and its mark succeeds.
+    vi.advanceTimersByTime(1000);
+    const { newestLiveAt } = await route(t, "a", "/");
+    expect(newestLiveAt).toEqual(expect.any(Number));
+    await t.mutation(api.lib.markLive, { versionId: "a", expectedNewestLiveAt: newestLiveAt });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await liveness(t)).versions).toEqual({ a: "live" });
+  });
+
+  test("two first requests of one version mark it live once", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    const first = await route(t, "a", "/");
+    const second = await route(t, "a", "/");
+    await t.mutation(api.lib.markLive, {
+      versionId: "a",
+      expectedNewestLiveAt: first.newestLiveAt,
+    });
+    vi.advanceTimersByTime(1000);
+    await t.mutation(api.lib.markLive, {
+      versionId: "a",
+      expectedNewestLiveAt: second.newestLiveAt,
+    });
+    expect(await liveness(t)).toEqual({ versions: { a: "live" }, collects: 1 });
   });
 });
 
@@ -218,7 +285,7 @@ describe("collect", () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
-    await t.mutation(api.lib.markLive, { versionId: "v1" });
+    await markLive(t, "v1");
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     // Three files and the config file.
     expect((await tables(t)).files).toBe(4);
@@ -229,7 +296,7 @@ describe("collect", () => {
       "/index.html": site["/index.html"],
       "/assets/app-b2.js": { body: "console.log(2)", contentType: "text/javascript" },
     });
-    await t.mutation(api.lib.markLive, { versionId: "v2" });
+    await markLive(t, "v2");
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     // Every stored file survives: the shared index.html, and the files that no entry references
     // any more, which are younger than a day.
@@ -321,7 +388,7 @@ describe("collect", () => {
     // A deploy that is about to push.
     await uploadVersion(t, "young", { "/b.txt": { body: "b" } });
     await uploadVersion(t, "v3", site);
-    await t.mutation(api.lib.markLive, { versionId: "v3" });
+    await markLive(t, "v3");
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect((await tables(t)).versions).toEqual([
       ["young", "ready"],
@@ -369,7 +436,11 @@ describe("route", () => {
     expect(navigation.asset?.status).toBe(200);
     expect(header(navigation.asset, "etag")).toBe(header(index.asset, "etag"));
 
-    expect(await route(t, "v1", "/settings/profile")).toEqual({ state: "ready", asset: null });
+    expect(await route(t, "v1", "/settings/profile")).toEqual({
+      state: "ready",
+      newestLiveAt: null,
+      asset: null,
+    });
   });
 
   test("the custom 404 page answers with its body", async () => {
@@ -392,6 +463,7 @@ describe("route", () => {
     });
     expect(await route(t, "v1", "/")).toEqual({
       state: "ready",
+      newestLiveAt: null,
       asset: {
         status: 404,
         headers: [{ name: "cache-control", value: "no-store" }],
@@ -430,7 +502,11 @@ describe("route", () => {
   test("a version that is uploading or does not exist reports its state", async () => {
     const t = convexTest(schema, modules);
     await createVersion(t, "v1");
-    expect(await route(t, "v1", "/")).toEqual({ state: "uploading", asset: null });
-    expect(await route(t, "v2", "/")).toEqual({ state: null, asset: null });
+    expect(await route(t, "v1", "/")).toEqual({
+      state: "uploading",
+      newestLiveAt: null,
+      asset: null,
+    });
+    expect(await route(t, "v2", "/")).toEqual({ state: null, newestLiveAt: null, asset: null });
   });
 });
