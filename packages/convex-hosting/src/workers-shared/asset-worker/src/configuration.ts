@@ -1,7 +1,7 @@
-import { normalizeBasePath } from "../../utils/base-path";
-import { resolveCompatibilityOptions } from "./compatibility-flags";
-import type { AssetConfig } from "../../utils/types";
-import type { NormalizedAssetConfig } from "./types";
+import { normalizeBasePath } from "../../utils/base-path.js";
+import { resolveCompatibilityOptions } from "./compatibility-flags.js";
+import type { AssetConfig } from "../../utils/types.js";
+import type { NormalizedAssetConfig } from "./types.js";
 
 export const normalizeConfiguration = (
 	configuration?: AssetConfig

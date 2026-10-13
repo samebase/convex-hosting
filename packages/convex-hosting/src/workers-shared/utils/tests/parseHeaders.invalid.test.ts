@@ -1,5 +1,5 @@
 import { test } from "vite-plus/test";
-import { parseHeaders } from "../configuration/parseHeaders";
+import { parseHeaders } from "../configuration/parseHeaders.js";
 
 test("parseHeaders should reject malformed initial lines", ({ expect }) => {
 	const input = `

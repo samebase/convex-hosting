@@ -1,5 +1,5 @@
-import { MAX_ROUTES_RULE_LENGTH, MAX_ROUTES_RULES } from "./constants";
-import type { StaticRouting } from "../types";
+import { MAX_ROUTES_RULE_LENGTH, MAX_ROUTES_RULES } from "./constants.js";
+import type { StaticRouting } from "../types.js";
 
 const MAX_REPORTED_DUPLICATED_RULES = 5;
 

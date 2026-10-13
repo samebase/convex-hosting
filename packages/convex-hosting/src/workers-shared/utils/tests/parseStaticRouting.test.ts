@@ -1,6 +1,6 @@
 import { describe, it } from "vite-plus/test";
-import { MAX_ROUTES_RULES } from "../configuration/constants";
-import { parseStaticRouting } from "../configuration/parseStaticRouting";
+import { MAX_ROUTES_RULES } from "../configuration/constants.js";
+import { parseStaticRouting } from "../configuration/parseStaticRouting.js";
 
 describe("parseStaticRouting", () => {
 	it("throws when given empty rules", ({ expect }) => {

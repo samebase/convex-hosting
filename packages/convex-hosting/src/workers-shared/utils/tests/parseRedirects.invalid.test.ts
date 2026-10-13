@@ -1,5 +1,5 @@
 import { test } from "vite-plus/test";
-import { parseRedirects } from "../configuration/parseRedirects";
+import { parseRedirects } from "../configuration/parseRedirects.js";
 
 // Snapshot values
 const maxDynamicRedirectRules = 100;
