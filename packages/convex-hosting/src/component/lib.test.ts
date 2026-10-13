@@ -225,23 +225,29 @@ describe("collect", () => {
     });
   });
 
-  test("deletes a stored file when no entry references it and it is a day old", async () => {
+  test("deletes a stored file when no entry references it, it is a day old, and it was unreferenced when the chain started", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
+    // A deploy whose push failed: v1 never becomes live.
     await uploadVersion(t, "v1", site);
-    await t.mutation(api.lib.markLive, { versionId: "v1" });
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
     const old = await t.run((ctx) => ctx.storage.store(new Blob(["old"])));
     vi.advanceTimersByTime(DAY + 1);
     const young = await t.run((ctx) => ctx.storage.store(new Blob(["young"])));
-    await t.mutation(internal.lib.collect, {});
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
     const exists = (storageId: Id<"_storage">) =>
       t.run(async (ctx) => (await ctx.db.system.get("_storage", storageId)) !== null);
+
+    await t.mutation(internal.lib.collect, { step: { kind: "files" } });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await exists(old)).toBe(false);
     expect(await exists(young)).toBe(true);
-    // The three files of the live v1 and the young file; the day-old config file of v1 is gone.
-    expect((await tables(t)).files).toBe(4);
+    // The chain deleted v1 and its day-old config file, and kept the three files that v1 used.
+    expect(await tables(t)).toEqual({ versions: [], entries: [], files: 4 });
+
+    // A later chain deletes them.
+    await t.mutation(internal.lib.collect, { step: { kind: "files" } });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await tables(t)).files).toBe(1);
+    expect(await exists(young)).toBe(true);
   });
 
   test("deletes the versions that never became live once they are a day old", async () => {

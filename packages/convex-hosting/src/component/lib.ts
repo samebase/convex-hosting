@@ -233,73 +233,80 @@ export const markLive = mutation({
       throw new ConvexError(`Version ${versionId} is still uploading.`);
     }
     await ctx.db.patch("versions", version._id, { state: { kind: "live", at: Date.now() } });
-    await ctx.scheduler.runAfter(0, internal.lib.collect, {});
+    await ctx.scheduler.runAfter(0, internal.lib.collect, { step: { kind: "files" } });
     return null;
   },
 });
 
 /**
- * Deletes, one batch per call, scheduling itself with `runAfter(0)` while work remains: the live
- * versions older than the newest live one, whose code is gone because the newest one has served
- * since, and the versions that are not live and older than `GARBAGE_AGE_MS`, with their entries;
- * then the `_storage` files that no entry references and that are older than `GARBAGE_AGE_MS`.
+ * One chain of calls, one batch per call, each scheduling the next with `runAfter(0)` while work
+ * remains. First the `_storage` files that no entry references and that are older than
+ * `GARBAGE_AGE_MS`; then the live versions older than the newest live one, whose code is gone
+ * because the newest one has served since, and the versions that are not live and older than
+ * `GARBAGE_AGE_MS`, with their entries.
  *
- * Stored files go only by that last rule, never with a version: an upload in progress may have
- * taken a stored file from `knownFiles` seconds ago and not recorded its entry yet. The age is the
- * file's own, so a file older than a day that only a version deleted in this pass used can still
- * go before such an upload records it; `recordFiles` then says that the file is gone, and the
- * deploy runs again.
+ * A stored file is deleted when no entry references it, it is a day old, and it was already
+ * unreferenced when the chain started: the files that this chain's version deletion frees wait for
+ * a later chain, at a later switch. An upload in progress may have taken a stored file from
+ * `knownFiles` and not recorded its entry yet; it therefore fails only if two switches happen
+ * during that one upload, and a retry works.
  */
 export const collect = internalMutation({
   args: {
-    /** The `_creationTime` of the last `_storage` file that the previous batch read. */
-    storageCursor: v.optional(v.number()),
+    /**
+     * The step of the chain: the file sweep, after the `_storage` file of this `_creationTime`
+     * when the previous batch read one, then the versions.
+     */
+    step: v.union(
+      v.object({ kind: v.literal("files"), after: v.optional(v.number()) }),
+      v.object({ kind: v.literal("versions") }),
+    ),
   },
   returns: v.null(),
-  handler: async (ctx, { storageCursor }) => {
+  handler: async (ctx, { step }) => {
     const garbageBefore = Date.now() - GARBAGE_AGE_MS;
 
-    if (storageCursor === undefined) {
-      const versions = await ctx.db.query("versions").collect();
-      let newestLiveAt = -Infinity;
-      for (const { state } of versions) {
-        if (state.kind === "live") newestLiveAt = Math.max(newestLiveAt, state.at);
-      }
-      const garbage = versions.find(({ state, _creationTime }) =>
-        state.kind === "live" ? state.at < newestLiveAt : _creationTime < garbageBefore,
-      );
-      if (garbage !== undefined) {
-        const entries = await ctx.db
+    if (step.kind === "files") {
+      const files = await ctx.db.system
+        .query("_storage")
+        .withIndex("by_creation_time", (q) =>
+          step.after === undefined
+            ? q.lt("_creationTime", garbageBefore)
+            : q.gt("_creationTime", step.after).lt("_creationTime", garbageBefore),
+        )
+        .take(SWEEP_BATCH);
+      for (const file of files) {
+        const entry = await ctx.db
           .query("entries")
-          .withIndex("by_version_path", (q) => q.eq("versionId", garbage.versionId))
-          .take(DELETE_BATCH);
-        for (const entry of entries) await ctx.db.delete("entries", entry._id);
-        if (entries.length < DELETE_BATCH) await ctx.db.delete("versions", garbage._id);
-        await ctx.scheduler.runAfter(0, internal.lib.collect, {});
-        return null;
+          .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
+          .first();
+        if (entry === null) await ctx.storage.delete(file._id);
       }
+      await ctx.scheduler.runAfter(0, internal.lib.collect, {
+        step:
+          files.length === SWEEP_BATCH
+            ? { kind: "files", after: files[files.length - 1]._creationTime }
+            : { kind: "versions" },
+      });
+      return null;
     }
 
-    const files = await ctx.db.system
-      .query("_storage")
-      .withIndex("by_creation_time", (q) =>
-        storageCursor === undefined
-          ? q.lt("_creationTime", garbageBefore)
-          : q.gt("_creationTime", storageCursor).lt("_creationTime", garbageBefore),
-      )
-      .take(SWEEP_BATCH);
-    for (const file of files) {
-      const entry = await ctx.db
-        .query("entries")
-        .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
-        .first();
-      if (entry === null) await ctx.storage.delete(file._id);
+    const versions = await ctx.db.query("versions").collect();
+    let newestLiveAt = -Infinity;
+    for (const { state } of versions) {
+      if (state.kind === "live") newestLiveAt = Math.max(newestLiveAt, state.at);
     }
-    if (files.length === SWEEP_BATCH) {
-      await ctx.scheduler.runAfter(0, internal.lib.collect, {
-        storageCursor: files[files.length - 1]._creationTime,
-      });
-    }
+    const garbage = versions.find(({ state, _creationTime }) =>
+      state.kind === "live" ? state.at < newestLiveAt : _creationTime < garbageBefore,
+    );
+    if (garbage === undefined) return null;
+    const entries = await ctx.db
+      .query("entries")
+      .withIndex("by_version_path", (q) => q.eq("versionId", garbage.versionId))
+      .take(DELETE_BATCH);
+    for (const entry of entries) await ctx.db.delete("entries", entry._id);
+    if (entries.length < DELETE_BATCH) await ctx.db.delete("versions", garbage._id);
+    await ctx.scheduler.runAfter(0, internal.lib.collect, { step: { kind: "versions" } });
     return null;
   },
 });
