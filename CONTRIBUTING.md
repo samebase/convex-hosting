@@ -18,6 +18,11 @@ pnpm run dev
 The SSR example has its own schema, so it needs a separate Convex project. See
 [examples/tanstack-ssr/README.md](./examples/tanstack-ssr/README.md).
 
+After a change to the component's functions or schema, run `pnpm run build:codegen` in
+`packages/convex-hosting`. Against a local anonymous backend, it needs `CONVEX_SELF_HOSTED_URL` and
+`CONVEX_SELF_HOSTED_ADMIN_KEY` from the backend's config, and an empty `convex/` directory in the
+package so that esbuild can resolve `convex/server`.
+
 ## Releasing
 
 1. In a PR, bump `version` in the package's `package.json` and add a `CHANGELOG.md` entry for
