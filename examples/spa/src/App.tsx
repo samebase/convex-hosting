@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { UpdateBanner } from "@samebase/convex-hosting/react";
 import "./App.css";
 
 function App() {
@@ -7,9 +6,6 @@ function App() {
 
   return (
     <div className="app">
-      {/* Resolves convex/hosting.ts:getCurrentDeployment by default. */}
-      <UpdateBanner message="🚀 New version deployed!" buttonText="Refresh" />
-
       <header className="header">
         <h1>🚀 Convex Hosting</h1>
         <p className="subtitle">Static-hosted React app on Convex</p>
@@ -35,20 +31,17 @@ function App() {
             <span className="icon">📦</span>
             <h3>Simple Upload</h3>
             <p>
-              Run <code>npm run deploy:static</code> to upload your built files to Convex storage
+              Run <code>pnpm run deploy</code> to build, upload, and push in one command
             </p>
           </div>
 
           <div className="feature">
-            <span className="icon">🔄</span>
-            <h3>Live Reload</h3>
-            <p>Connected clients are notified when you deploy - with a prompt to reload</p>
-          </div>
-
-          <div className="feature">
             <span className="icon">⚡</span>
-            <h3>Smart Caching</h3>
-            <p>Hashed assets get long-term caching, while HTML is always fresh</p>
+            <h3>Cloudflare's rules</h3>
+            <p>
+              <code>_headers</code> gives hashed assets long-term caching, while HTML is always
+              fresh
+            </p>
           </div>
         </div>
 
@@ -56,7 +49,7 @@ function App() {
           <h3>How it works</h3>
           <ol>
             <li>Build your app with Vite or your bundler of choice</li>
-            <li>Upload the dist/ folder using the provided script</li>
+            <li>Upload the dist/ folder and push the backend with one command</li>
             <li>
               Access your app at <code>your-deployment.convex.site</code>
             </li>

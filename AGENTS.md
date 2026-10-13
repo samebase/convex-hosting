@@ -10,9 +10,10 @@ Changes offered back to upstream live on branches in
 
 - `packages/convex-hosting`: the published component and CLI.
   - `src/component`: code that runs inside the component on Convex.
-  - `src/client`: the API that apps import (`registerStaticRoutes`, `serveStaticAsset`, and more).
-  - `src/cli`: the `convex-hosting` command.
-  - `src/react`: `UpdateBanner` and `useDeploymentUpdates`.
+  - `src/client`: `serveAsset`, which apps call from their `convex/http.ts`.
+  - `src/cli`: the `convex-hosting` command: `deploy` and `upload`.
+  - `src/workers-shared`: Cloudflare's asset worker, copied by `scripts/sync-workers-shared.ts`.
+    Never edit it by hand.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
   Start pages in a Convex HTTP action.
 - `examples/spa`: a Vite and React app that the component serves.
@@ -35,10 +36,10 @@ Run from the repository root with pnpm 11 and the Node version in `.node-version
   add ESLint, Prettier, or a separate Vitest config.
 - Keep the `tsc` build for the component. Convex addresses component functions by file path, so the
   package ships one output file per source module.
-- Functions in `src/component` are internal to the component. Client APIs in `src/client` use the
-  `*Generic` helpers such as `httpActionGeneric` and `internalMutationGeneric`.
+- Client APIs in `src/client` use the `*Generic` types such as `GenericActionCtx`.
 - Give every Convex function argument and return validators. Use `internalQuery`,
-  `internalMutation`, and `internalAction` for functions that apps must not call directly.
+  `internalMutation`, and `internalAction` for functions that apps must not call directly; an app
+  can call only a component's public functions.
 - Shared dependency versions live in the `catalog` in `pnpm-workspace.yaml`.
 - Releases: a version bump on `main` makes `release.yml` stage the package on npm; a maintainer
   approves it with 2FA. See `CONTRIBUTING.md`.

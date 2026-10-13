@@ -3,33 +3,29 @@
 Renders TanStack Start pages inside a Convex HTTP action. The first HTML response already contains a
 count from a Convex query, and after React hydrates, the count stays live.
 
-## How it works
-
-- `convex/http.ts` has one catch-all route. It serves uploaded files with `serveStaticAsset`,
-  returns 404 for missing `/assets/` files, and renders every other path with the TanStack Start
-  server bundle.
+- `convex/http.ts` serves the browser files with `serveAsset` and renders every other path with the
+  TanStack Start server bundle.
 - `src/router.tsx` sets up Convex's TanStack Query integration, so data from
   `useSuspenseQuery(convexQuery(...))` is in the first HTML and stays live.
 - [`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start) makes
   TanStack Start run in the Convex runtime: `vite.config.ts` adds its `convexSsr()` plugin, and
   `src/server.ts` re-exports its server entry.
-- `public/index.html` exists only because the uploader requires an `index.html`.
 
-## Run
+## Development deployment
 
-This example has its own schema, so use a separate Convex project. From the repository root:
+This example has its own schema, so use a separate Convex project. From `examples/tanstack-ssr`,
+with `npx convex dev` running in another terminal:
 
 ```bash
-pnpm install
-cd examples/tanstack-ssr
-pnpm run dev
+pnpm run build
+pnpm run upload
 ```
 
-The first run asks you to choose a Convex project. `pnpm run dev` then keeps the dev deployment in
-sync: each change rebuilds the page bundles, pushes the backend, and uploads the browser files. Open
-the `.convex.site` URL it prints. The page source contains the count and the render time. Open the
-page in two tabs: a click in one updates both.
+`convex/http.ts` imports `dist/server`, so `npx convex dev` pushes after each build, before the
+upload writes the new version: until the upload ends, the new pages refer to files that answer 404.
 
-Backend pushes and file uploads are separate steps, so right after a change a page can briefly refer
-to scripts that are not uploaded yet. Both bundles contain the deployment URL, so rebuild before
-pushing to another deployment.
+## Production
+
+```bash
+pnpm run deploy
+```
