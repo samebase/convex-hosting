@@ -25,11 +25,14 @@ moment when new code serves old files.
 Only the pushed code knows which version a deployment runs, so the serving code reports it: the
 first request that new code serves finds its version in state `ready` and marks it `live`. Marking a
 version live deletes the versions that were live before it, because their code is gone by
-definition. A version that never becomes live, from a push that failed, is garbage, not a
-correctness problem; it is deleted when it is a day old, at a later switch. That day is the only
-time constant in the design and it bounds garbage only. Two deploys that overlap both complete, the
-last push wins, and no overlap can break the site: a version is deleted only after another version
-has served in its place.
+definition. Nothing is deleted by the clock alone: deletion runs only at a switch, when a new
+version becomes live, so a deployment that gets no request deletes nothing and keeps its version
+intact for its first request, whenever it comes. At a switch, a version that never became live is
+dead too, from a push that failed, with one exception: a slower deploy whose push has not landed
+yet. So a never-live version is deleted at a switch only when it is more than a day old; the day
+bounds how late a push may follow its upload, and it is the only time constant in the design. Two
+deploys that overlap both complete, the last push wins, and no overlap can break the site: a version
+is deleted only after another version has served in its place.
 
 ## Deploy
 
