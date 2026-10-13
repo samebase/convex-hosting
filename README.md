@@ -138,7 +138,9 @@ Put them at the root of `--dist`, as for Cloudflare:
 [`_headers`](https://developers.cloudflare.com/workers/static-assets/headers/),
 [`_redirects`](https://developers.cloudflare.com/workers/static-assets/redirects/), and
 [`.assetsignore`](https://developers.cloudflare.com/workers/static-assets/binding/#ignoring-assets).
-They are not served.
+They are not served. Symbolic links in `--dist` are followed, as Wrangler follows them, also when
+they point outside the folder; a link to nothing, or back into a folder already included, is skipped
+with a message. `.assetsignore` excludes what a link should not publish.
 
 Every asset has `Cache-Control: public, max-age=0, must-revalidate` and an `ETag`. To cache hashed
 files for a year, add a `_headers` rule:

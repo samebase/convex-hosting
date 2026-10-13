@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { Config } from "../component/lib.js";
 import {
@@ -50,6 +50,9 @@ export async function readDist(
   const { assetsIgnoreFunction } = await createAssetsIgnoreFunction(dist);
   const entries: DistEntry[] = [];
 
+  // The real paths of the folders already walked. A link to a folder that is already included, for
+  // example a link to `dist` itself, would otherwise be walked without end.
+  const walked = new Set([realpathSync(dist)]);
   const walk = (directory: string) => {
     for (const name of readdirSync(directory)) {
       const file = join(directory, name);
@@ -63,6 +66,12 @@ export async function readDist(
       // `ignore` takes paths relative to `dist` with `/`, and a directory with a trailing `/`.
       const ignorePath = relative(dist, file).replaceAll("\\", "/");
       if (stats.isDirectory()) {
+        const real = realpathSync(file);
+        if (walked.has(real)) {
+          log(`Skipped ${file}: a link to a folder that is already included.`);
+          continue;
+        }
+        walked.add(real);
         // An ignored directory is not walked: gitignore rules cannot re-include a file in it.
         if (!assetsIgnoreFunction(`${ignorePath}/`)) walk(file);
       } else if (stats.isFile() && !assetsIgnoreFunction(ignorePath)) {
