@@ -74,10 +74,11 @@ deployment (`CONVEX_SELF_HOSTED_URL`) takes no selector. The CLI parses no crede
    6. writes `.convex-hosting/version.js` with the id, in the CLI's state folder at the project
       root, like Wrangler's `.wrangler/`; the folder carries its own `.gitignore`, so nothing of it
       reaches git and no tool writes into `convex/`. The file is a build artifact that `http.ts`
-      imports, as a server-rendered app's `http.ts` already imports its server build; one committed
-      declaration line in `convex/` gives TypeScript its shape on a fresh clone. Then, still inside
-      `npx convex deploy`, Convex bundles `convex/` with the new id and pushes. The push is the
-      switch, and the command ends.
+      imports, as a server-rendered app's `http.ts` already imports its server build; the package
+      ships the declaration of that module (an ambient wildcard module in a script `.d.ts` that the
+      package's types entry references), so a fresh clone typechecks with nothing added. Then, still
+      inside `npx convex deploy`, Convex bundles `convex/` with the new id and pushes. The push is
+      the switch, and the command ends.
 3. `--dev`: the same steps, in one process: the CLI runs the build itself (Vite reads the
    deployment's URL from `.env.local`, so no nesting is needed), uploads, writes the version file,
    and pushes with `npx convex run --push`.
@@ -246,7 +247,7 @@ and written, 8,192 array elements, 4,096 index ranges, argument and result sizes
 
 - `packages/convex-hosting`
   - `src/component`: `schema.ts`, `lib.ts`, `convex.config.ts`, and its generated files.
-  - `src/client`: `serveAsset`.
+  - `src/client`: `serveAsset`, and the shipped declaration of the version module.
   - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, the inner step that
     `npx convex deploy --cmd` has to call as a program.
   - `src/workers-shared`: Cloudflare's asset worker and its tests, copied by
@@ -260,4 +261,5 @@ and written, 8,192 array elements, 4,096 index ranges, argument and result sizes
 - `examples/spa`: a Vite app served with `--not-found-handling single-page-application`.
 - `examples/tanstack-ssr`: pages rendered in the app's HTTP action after `serveAsset`.
 - One `README.md` at the repository root, copied into the package at `prepack`.
-- An app has `.convex-hosting/` (ignored, written by the CLI) and one declaration line in `convex/`.
+- An app has `.convex-hosting/` (ignored, written by the CLI) and nothing else of ours outside
+  `convex/convex.config.ts` and `convex/http.ts`.

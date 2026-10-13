@@ -55,17 +55,8 @@ export default http;
 
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
 Wrangler's `.wrangler/`. Every deploy writes the version to `.convex-hosting/version.js`. The folder
-has its own `.gitignore`, so git ignores it. One committed declaration,
-`convex/convex-hosting.d.ts`, types the module before the first deploy:
-
-```ts
-declare module "*/.convex-hosting/version.js" {
-  export const versionId: string;
-}
-```
-
-A `tsconfig.json` that typechecks `convex/http.ts` through `convex/_generated/api`, such as the
-frontend's, also needs this file in its `include`.
+has its own `.gitignore`, so git ignores it. The package declares the module's type, so a fresh
+clone typechecks before its first deploy; nothing to add.
 
 ## Deploy
 
