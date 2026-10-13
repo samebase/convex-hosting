@@ -1,9 +1,12 @@
 # Convex Hosting SPA example
 
-This example demonstrates how to use the `@samebase/convex-hosting` component to host a React/Vite
-app directly on Convex.
+A Vite and React page that the `@samebase/convex-hosting` component serves from a Convex deployment.
+The counter shows that the served script runs.
 
-## Running the Example
+- `convex/convex.config.ts` installs the component and mounts its HTTP route at `/`.
+- `src/` is the page.
+
+## Run
 
 From the root of the repository:
 
@@ -13,32 +16,18 @@ cd examples/spa
 pnpm run dev
 ```
 
-This starts:
+This starts the Convex development backend, the Vite development server, and a TypeScript watcher
+that rebuilds the component when its source changes.
 
-- The Convex backend development server
-- The Vite frontend development server
-- A TypeScript watcher that rebuilds the component when its source changes
+## Upload and deploy
 
-## Deploying Static Files
-
-With `CONVEX_DEPLOY_KEY` set to a production deploy key, the CLI builds with the right
-`VITE_CONVEX_URL`, uploads `dist/`, pushes the backend, and then makes the new files live:
+To serve a build from the development deployment, at `https://<deployment>.convex.site`:
 
 ```bash
-# From examples/spa
-pnpm run deploy
+pnpm run build && pnpm run upload
 ```
 
-Your app will then be available at `https://your-deployment.convex.site`.
-
-## Files
-
-- `convex/convex.config.ts` - Imports and uses the hosting component
-- `convex/hosting.ts` - Exposes the deployment query for `<UpdateBanner />`
-- `src/` - Example React application
-
-## How It Works
-
-1. The component stores static files in its own Convex file storage
-2. The component's HTTP routes serve files with proper Content-Type and caching
-3. Each upload is a version with its own ID; `deploy` makes it live after the backend push
+With `CONVEX_DEPLOY_KEY` set to a production deploy key, `pnpm run deploy` builds, uploads `dist/`
+as a new version before the backend push, makes the version live after it, and checks that
+`/index.html` is the new one. The first deploy to a deployment pushes the backend first, so the site
+answers 404 until the upload ends.

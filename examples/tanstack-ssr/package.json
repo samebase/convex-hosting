@@ -4,8 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "vp build",
-    "dev": "pnpm run build && convex dev --start \"pnpm run dev:assets\"",
-    "dev:assets": "node scripts/dev-assets.ts",
+    "dev": "pnpm run build && convex dev --start \"vp dev\"",
     "upload": "convex-hosting upload --dist ./dist/client",
     "deploy": "convex-hosting deploy --dist ./dist/client --build-command \"pnpm run build\"",
     "typecheck": "tsc -p . && tsc -p convex"

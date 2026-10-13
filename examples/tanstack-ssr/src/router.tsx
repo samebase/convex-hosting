@@ -20,7 +20,6 @@ export function getRouter() {
   const router = createRouter({
     routeTree,
     context: { queryClient },
-    scrollRestoration: true,
     Wrap: ({ children }) => (
       <ConvexProvider client={convexQueryClient.convexClient}>{children}</ConvexProvider>
     ),

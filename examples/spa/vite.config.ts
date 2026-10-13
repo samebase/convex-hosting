@@ -5,7 +5,4 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   base: process.env.CONVEX_HOSTING_BASE_PATH ?? "/",
   plugins: [react()],
-  resolve: {
-    conditions: ["@convex-dev/component-source"],
-  },
 });

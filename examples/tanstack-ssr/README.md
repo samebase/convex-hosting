@@ -23,14 +23,20 @@ cd examples/tanstack-ssr
 pnpm run dev
 ```
 
-The first run asks you to choose a Convex project. `pnpm run dev` then keeps the dev deployment in
-sync: each change rebuilds the page bundles, pushes the backend, and uploads the browser files. Open
-the `.convex.site` URL it prints. The page source contains the count and the render time. Open the
-page in two tabs: a click in one updates both.
+The first run asks you to choose a Convex project. `pnpm run dev` builds the renderer once, because
+`convex/http.ts` imports it, then runs `convex dev` with the Vite development server. Open the URL
+that Vite prints. The page source contains the count and the render time. Open the page in two tabs:
+a click in one updates both.
 
-In development, backend pushes and file uploads are separate steps, so right after a change a page
-can briefly refer to scripts that are not uploaded yet. Both bundles contain the deployment URL, so
-rebuild before pushing to another deployment.
+To check the hosted site on the development deployment while `pnpm run dev` runs:
+
+```bash
+pnpm run build && pnpm run upload
+```
+
+`convex dev` pushes the rebuilt renderer, and the upload makes the browser files live. Open
+`https://<deployment>.convex.site`. Both bundles contain the deployment URL, so rebuild before you
+push to another deployment.
 
 ## Deploy
 
