@@ -1,6 +1,5 @@
 // @vitest-environment node
 // The CLI runs in Node; the edge-runtime environment of the other tests has no `process.execPath`.
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -282,38 +281,13 @@ describe("deploy", () => {
     expect(pushes[0][2]).toMatch(
       /^\(vite build\) && '.+' '.+' 'upload' '--dist' '[^']+' '--version-id' '/,
     );
-    expect(pushes[0][2]).toContain(`'--dist' '${join(cwd, "dist")}'`);
+    expect(pushes[0][2]).toContain("'--dist' 'dist'");
     // Without a deploy key, `npx convex deploy` goes to production, so every run gets --prod.
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
     const versionId = writtenVersionId(cwd);
     expect(callArgs("lib:startVersion")[0].versionId).toBe(versionId);
     expect(callArgs("lib:finishDeploy")).toEqual([{ versionId, pushed: true }]);
   });
-
-  test.skipIf(process.platform === "win32")(
-    "a build that changes directory does not move the upload",
-    async () => {
-      const cwd = app(site);
-      const { cli, callArgs } = fake(cwd, {
-        push: async (cli, args) => {
-          // The shell runs the build, then the upload in the directory where the build left it.
-          const command = args[args.indexOf("--cmd") + 1];
-          const build = command.slice(0, command.lastIndexOf("&&"));
-          const shellCwd = execFileSync("/bin/sh", ["-c", `${build} && pwd`], {
-            cwd,
-            encoding: "utf8",
-          }).trim();
-          return await innerUpload({ ...cli, cwd: shellCwd }, args);
-        },
-      });
-      expect(await main(["deploy", "--build", "cd dist", "--dist", "dist"], cli)).toBe(0);
-      expect(callArgs("lib:startVersion")).toHaveLength(1);
-      expect(existsSync(join(cwd, "dist", VERSION_FILE))).toBe(false);
-      expect(callArgs("lib:finishDeploy")).toEqual([
-        { versionId: writtenVersionId(cwd), pushed: true },
-      ]);
-    },
-  );
 
   test("on a first install, uploads after the push", async () => {
     const cwd = app(site);

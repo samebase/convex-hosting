@@ -72,6 +72,8 @@ frontend's, also needs this file in its `include`.
 npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling single-page-application
 ```
 
+The build command runs in the project directory. Do not change directory in it.
+
 `deploy` runs `npx convex deploy` with your build and the upload of `--dist` as its `--cmd`. The
 pushed code names the version it was built with, so the push switches the site. After the push,
 `deploy` deletes the earlier versions and their files.

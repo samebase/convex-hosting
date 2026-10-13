@@ -156,7 +156,7 @@ async function deploy(cli: Cli, options: Options, build: string) {
     fileURLToPath(new URL("./index.js", import.meta.url)),
     "upload",
     "--dist",
-    resolve(cli.cwd, options.dist),
+    options.dist,
     "--version-id",
     versionId,
     "--html-handling",
@@ -170,11 +170,10 @@ async function deploy(cli: Cli, options: Options, build: string) {
     .map(quote)
     .join(" ");
 
-  // The build runs in a subshell, so a `cd` inside it does not move the upload.
-  const subshell = process.platform === "win32" ? `cmd /c "${build}"` : `(${build})`;
+  // The build and the upload run in the project directory; a build must not change directory.
   // The lock stays alive through the build and the push, when no other call refreshes it.
   const exitCode = await withHeartbeat(cli, target, versionId, () =>
-    cli.convexInherited(["deploy", "--cmd", `${subshell} && ${innerUpload}`, ...previewFlags]),
+    cli.convexInherited(["deploy", "--cmd", `${build} && ${innerUpload}`, ...previewFlags]),
   );
 
   const firstInstall = existsSync(marker);

@@ -53,10 +53,10 @@ name.
    overwrite the id that the first one pushes. A typecheck of `convex/` before the file exists
    passes through the committed declaration.
 2. It runs
-   `npx convex deploy --cmd "(<command>) && convex-hosting upload --dist <absolute dir> --version-id <id> ..."`.
-   The build runs in a subshell, so a `cd` inside it does not move the upload. Convex gives the
-   build the deployment's URL in `CONVEX_URL` and in one framework variable such as
-   `VITE_CONVEX_URL`, as it documents for frontends. Inside the command, `upload`:
+   `npx convex deploy --cmd "<command> && convex-hosting upload --dist <dir> --version-id <id> ..."`.
+   Both run in the project directory; a build must not change directory. Convex gives the build the
+   deployment's URL in `CONVEX_URL` and in one framework variable such as `VITE_CONVEX_URL`, as it
+   documents for frontends. Inside the command, `upload`:
    1. collects the files of `<dir>`, honoring `.assetsignore`, and computes each file's sha256,
       size, and content type; reads `_headers` and `_redirects` with Cloudflare's parsers into the
       version's config;
