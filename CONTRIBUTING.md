@@ -8,15 +8,31 @@ pnpm run build
 pnpm run check
 ```
 
-To run the SPA example against your own Convex dev deployment:
+To run the SPA example, start `npx convex dev` in `examples/spa`, then in a second terminal:
 
 ```sh
 cd examples/spa
-pnpm run dev
+pnpm run build
+pnpm run upload
 ```
 
 The SSR example has its own schema, so it needs a separate Convex project. See
 [examples/tanstack-ssr/README.md](./examples/tanstack-ssr/README.md).
+
+## Component codegen
+
+`src/component/_generated` comes from the Convex code generator, which needs a deployment. After a
+change to the component's functions or schema, from `packages/convex-hosting`:
+
+```sh
+CONVEX_AGENT_MODE=anonymous npx convex dev --once
+pnpm run build:codegen
+```
+
+The first command creates an anonymous local deployment and writes `.env.local`, `.convex/`, and an
+empty app in `convex/`; git ignores all of them. The second runs
+`npx convex codegen --component-dir ./src/component` against that deployment and builds the package.
+Do not edit the generated files.
 
 ## Releasing
 
