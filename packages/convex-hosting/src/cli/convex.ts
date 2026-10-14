@@ -79,7 +79,7 @@ function readConvexEnv(cli: Cli): Record<string, string | undefined> {
   return { ...fromFile(".env"), ...fromFile(".env.local"), ...cli.env };
 }
 
-/** The deployment of a deploy: production by default, `--preview <name>`, or `--dev`. */
+/** The deployment of a deploy: production by default, `--preview-name <name>`, or `--dev`. */
 export type Destination =
   | { kind: "production" }
   | { kind: "preview"; name: string }

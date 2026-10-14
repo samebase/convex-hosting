@@ -222,11 +222,11 @@ describe("deploy --dev", () => {
     expect(logs[logs.length - 1]).toBe("npx convex run --push failed with exit code 1.");
   });
 
-  test("refuses --dev with --preview", async () => {
+  test("refuses --dev with --preview-name", async () => {
     const { cli, events, logs } = fake(app(site));
-    expect(await main([...DEV, "--preview", "pr-7"], cli)).toBe(1);
+    expect(await main([...DEV, "--preview-name", "pr-7"], cli)).toBe(1);
     expect(events).toEqual([]);
-    expect(logs[logs.length - 1]).toBe("--dev and --preview exclude each other.");
+    expect(logs[logs.length - 1]).toBe("--dev and --preview-name exclude each other.");
   });
 });
 
@@ -283,11 +283,11 @@ describe("deploy", () => {
     expect(logs[logs.length - 1]).toBe("npx convex deploy failed with exit code 1.");
   });
 
-  test("--preview passes --preview-name to npx convex deploy and to every run", async () => {
+  test("--preview-name goes to npx convex deploy and to every run", async () => {
     const { cli, pushes, runs } = fake(app(site), { push: innerUpload });
-    expect(await main([...DEPLOY, "--preview", "pr-7"], cli)).toBe(0);
+    expect(await main([...DEPLOY, "--preview-name", "pr-7"], cli)).toBe(0);
     expect(pushes[0].slice(-2)).toEqual(["--preview-name", "pr-7"]);
-    expect(pushes[0][2]).toContain("'--preview' 'pr-7'");
+    expect(pushes[0][2]).toContain("'--preview-name' 'pr-7'");
     expect(runs.every((args) => args.slice(-2).join(" ") === "--preview-name pr-7")).toBe(true);
   });
 
@@ -302,7 +302,7 @@ describe("deploy", () => {
   test("passes no selector to a self-hosted deployment", async () => {
     const env = { CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:3210" };
     const { cli, pushes, runs } = fake(app(site), { env, push: innerUpload });
-    expect(await main([...DEPLOY, "--preview", "pr-7"], cli)).toBe(0);
+    expect(await main([...DEPLOY, "--preview-name", "pr-7"], cli)).toBe(0);
     expect(pushes[0]).toHaveLength(3);
     expect(selectors(runs)).toEqual([]);
   });

@@ -22,7 +22,7 @@ const USAGE = `Usage:
 
 Options:
   --dev                         the development deployment of this checkout, instead of production
-  --preview <name>              the preview deployment with this name, instead of production
+  --preview-name <name>         the preview deployment with this name, instead of production
   --html-handling <value>       auto-trailing-slash (default), force-trailing-slash,
                                 drop-trailing-slash, or none
   --not-found-handling <value>  none (default), single-page-application, or 404-page
@@ -83,7 +83,7 @@ function parseCommand(args: string[]): Command {
       build: { type: "string" },
       dist: { type: "string" },
       dev: { type: "boolean", default: false },
-      preview: { type: "string" },
+      "preview-name": { type: "string" },
       "html-handling": { type: "string", default: "auto-trailing-slash" },
       "not-found-handling": { type: "string", default: "none" },
       component: { type: "string", default: "hosting" },
@@ -95,8 +95,8 @@ function parseCommand(args: string[]): Command {
   const [name, ...rest] = positionals;
   if ((name !== "deploy" && name !== "upload") || rest.length > 0) throw new Error(USAGE);
   if (values.dist === undefined) throw new Error(`--dist is required.\n\n${USAGE}`);
-  if (values.dev && values.preview !== undefined) {
-    throw new Error("--dev and --preview exclude each other.");
+  if (values.dev && values["preview-name"] !== undefined) {
+    throw new Error("--dev and --preview-name exclude each other.");
   }
   const htmlHandling = htmlHandlingSchema.safeParse(values["html-handling"]);
   if (!htmlHandling.success) {
@@ -115,9 +115,9 @@ function parseCommand(args: string[]): Command {
     component: values.component,
     destination: values.dev
       ? { kind: "dev" }
-      : values.preview === undefined
+      : values["preview-name"] === undefined
         ? { kind: "production" }
-        : { kind: "preview", name: values.preview },
+        : { kind: "preview", name: values["preview-name"] },
   };
   // `upload` is the step that `deploy` runs inside `npx convex deploy --cmd`, after the build.
   if (name === "upload") {
@@ -209,7 +209,7 @@ async function deployWithConvexDeploy(
   // `npx convex deploy` goes to production by default and has no `--prod` flag.
   const deployFlags = target.flags.filter((flag) => flag !== "--prod");
   const previewFlags =
-    options.destination.kind === "preview" ? ["--preview", options.destination.name] : [];
+    options.destination.kind === "preview" ? ["--preview-name", options.destination.name] : [];
   const innerUpload = [
     process.execPath,
     fileURLToPath(new URL("./index.js", import.meta.url)),

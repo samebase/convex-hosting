@@ -72,7 +72,7 @@ ends. The first request that the new code serves marks its version live, which d
 that were live before it. A version that never becomes live, from a deploy that failed, is deleted
 when it is a day old, with the stored files that no version uses.
 
-`deploy` goes to production. `--preview <name>` sends it to that preview (with a login or a
+`deploy` goes to production. `--preview-name <name>` sends it to that preview (with a login or a
 project's preview deploy key; always pass the name with that key), and `--dev` to the development
 deployment (see [Development](#development)). A deploy key in `CONVEX_DEPLOY_KEY` or
 `CONVEX_DEPLOYMENT_TOKEN` (from the environment or `.env.local`) selects its own deployment instead,
@@ -120,7 +120,7 @@ Two cases are transient:
 | Option                         | Values                                                                                 |
 | ------------------------------ | -------------------------------------------------------------------------------------- |
 | `--dev`                        | The development deployment of this checkout, instead of production                     |
-| `--preview <name>`             | The preview deployment with this name, instead of production                           |
+| `--preview-name <name>`        | The preview deployment with this name, instead of production                           |
 | `--html-handling <value>`      | `auto-trailing-slash` (default), `force-trailing-slash`, `drop-trailing-slash`, `none` |
 | `--not-found-handling <value>` | `none` (default), `single-page-application`, `404-page`                                |
 | `--component <name>`           | The component instance, `hosting` by default                                           |
