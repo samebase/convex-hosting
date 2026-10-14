@@ -73,6 +73,9 @@ Requires `convex` 1.46 or later.
    npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling single-page-application
    ```
 
+An app set up this way: the
+[SPA example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa).
+
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
 Wrangler's `.wrangler/`. The folder has its own `.gitignore`, so git ignores it. The package
 declares the type of `.convex-hosting/version.js`, so the app typechecks without it.
