@@ -4,7 +4,7 @@ import { serveSite } from "@samebase/convex-hosting";
 import { api, components } from "./_generated/api.js";
 import { env, httpAction } from "./_generated/server.js";
 import { versionId } from "../.convex-hosting/version.js";
-import server from "../dist/server/server.js";
+import server from "../.convex-hosting/server.js";
 
 const http = httpRouter();
 
