@@ -37,18 +37,19 @@ is deleted only after another version has served in its place.
 ## Deploy
 
 ```
-convex-hosting deploy --build "<command>" --dist <dir> [--dev | --preview <name>] [--html-handling ...] [--not-found-handling ...] [--component <name>]
+convex-hosting deploy --build "<command>" --dist <dir> [--dev | --preview-name <name>] [--html-handling ...] [--not-found-handling ...] [--component <name>]
 ```
 
 One command for every target. Without a flag, production: `npx convex deploy` pushes there by
 default, and every `npx convex run` of the deploy gets `--prod`, because `run` goes to development
-by default. `--preview <name>`: both commands get `--preview-name <name>`. `--dev`: the development
-deployment this checkout is bound to, the one `npx convex dev` and `npx convex run` pick from
-`.env.local`; no selector is passed, and the push is `npx convex run --push` (which pushes the whole
-`convex/` like `npx convex dev --once` does, typecheck included, and works whether or not
-`npx convex dev` is running). A deploy key in the environment (`CONVEX_DEPLOY_KEY` or its alias
-`CONVEX_DEPLOYMENT_TOKEN`) wins over the selector in both commands, the same way. A self-hosted
-deployment (`CONVEX_SELF_HOSTED_URL`) takes no selector. The CLI parses no credential.
+by default. `--preview-name <name>`, the Convex CLI's own flag name, is passed to both commands as
+is. `--dev`: the development deployment this checkout is bound to, the one `npx convex dev` and
+`npx convex run` pick from `.env.local`; no selector is passed, and the push is
+`npx convex run --push` (which pushes the whole `convex/` like `npx convex dev --once` does,
+typecheck included, and works whether or not `npx convex dev` is running). A deploy key in the
+environment (`CONVEX_DEPLOY_KEY` or its alias `CONVEX_DEPLOYMENT_TOKEN`) wins over the selector in
+both commands, the same way. A self-hosted deployment (`CONVEX_SELF_HOSTED_URL`) takes no selector.
+The CLI parses no credential.
 
 1. The CLI chooses a random version id.
 2. Production and preview: it runs
