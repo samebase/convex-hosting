@@ -145,15 +145,17 @@ through the `GET` handler and drops the body. Other methods are the app's own ro
 Cloudflare a `POST` goes to the Worker.
 
 ```ts
-import { serveAsset } from "@samebase/convex-hosting";
+import { serveSite } from "@samebase/convex-hosting";
 import { versionId } from "../.convex-hosting/version.js";
 
-const asset = await serveAsset(ctx, components.hosting, request, versionId);
-if (asset) return asset;
-// A static site: 404 with `Cache-Control: no-store`. A server-rendered site: render the page,
-// also with `no-store`, because the deployment's Cloudflare front caches answers on static-looking
-// paths.
+return serveSite(ctx, components.hosting, request, versionId, render);
 ```
+
+`serveSite` answers with the file when one matches. Otherwise it answers with the page that the
+optional `render(request)` returns, else 404, both with `Cache-Control: no-store`, because the
+deployment's Cloudflare front caches answers on static-looking paths; the page keeps every other
+header, several `Set-Cookie` included. `serveAsset` is its first step, exported for a route that
+does something else on a miss: it returns `null` when no file matches.
 
 `serveAsset` calls the component query `route` with the method, the URL, and the four request
 headers that Cloudflare's handler reads (`If-None-Match`, `Sec-Fetch-Mode`, and the presence of
@@ -346,12 +348,36 @@ are not proposed again.
 - **A subshell so that a build command may change directory.** Shell-specific; the build runs in the
   project directory instead.
 - **A `size` field on entries.** A matching sha256 already proves the bytes are the same.
+- **Wrapping the Convex Auth session lines in this package.** The hosting package must not depend on
+  Convex Auth, and the lines are Convex Auth's own API; a helper for HTTP actions belongs upstream.
+
+## What an app writes
+
+One row per piece of a TanStack Start app with Convex Auth cookie sessions on this host, with its
+owner since `@samebase/convex-hosting` 0.5 and `@samebase/convex-hosting-tanstack-start` 0.2.
+
+| Piece                                                     | Owner                                                                                                 | Why                                                                           |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| File serving, and `no-store` on rendered pages and misses | Hosting package: `serveSite`                                                                          | The Cloudflare front caches answers on static-looking paths of every site     |
+| The server entry import and `fetch(request, { context })` | App, in `serveSite`'s `render`; the adapter types `fetch`                                             | Convex bundles what `http.ts` imports, and the path is the app's build output |
+| The `server-build` types                                  | Adapter: the `server-build` types entry, listed in the app's `tsconfig.json` files                    | Vite emits the server entry without declarations                              |
+| `src/server.ts`                                           | App: one line that re-exports the adapter's `server`                                                  | Start builds its server entry from a file in the app's `src/`                 |
+| `convexSsr()`                                             | Adapter, added to the app's `vite.config.ts`                                                          | The Vite config is the app's; the settings are the adapter's                  |
+| The `requestContext` type                                 | Adapter `convex-auth`                                                                                 | The token is the Convex Auth session's                                        |
+| `expectAuth`                                              | App, in `getRouter`                                                                                   | The app creates the Convex client                                             |
+| The root `beforeLoad`                                     | Adapter `convex-auth`: `sessionBeforeLoad`                                                            | The same lines in every app with this session                                 |
+| The provider, plus the release of `expectAuth`            | Adapter `convex-auth`: `SessionProvider`                                                              | Convex's provider never releases `expectAuth` for a signed-out visitor        |
+| The gate                                                  | Adapter `convex-auth`: `redirectWithoutSession` and `RedirectWithoutSession`; the app names the paths | Only the server render has the cookie; the browser follows the provider       |
+| The cookie session lines in `http.ts`                     | Convex Auth's own API, written in the app                                                             | A helper for HTTP actions belongs upstream                                    |
+| The `/auth/*` routes                                      | Convex Auth's own API (`setupConvexAuthServer`), registered by the app                                | The handlers are Convex Auth's; the paths are the app's                       |
+| The Convex Auth setup files                               | App, with Convex Auth's own API                                                                       | The providers and the users table are the app's                               |
+| Deploy and preview commands                               | Hosting package: `convex-hosting deploy`, in the app's scripts and CI                                 | The upload must run between the build and the push                            |
 
 ## Repository
 
 - `packages/convex-hosting`
   - `src/component`: `schema.ts`, `lib.ts`, `convex.config.ts`, and its generated files.
-  - `src/client`: `serveAsset`, and the shipped declaration of the version module.
+  - `src/client`: `serveSite`, `serveAsset`, and the shipped declaration of the version module.
   - `src/cli`: the `convex-hosting` command: `init`, `deploy`, and `upload`, the inner step that
     `npx convex deploy --cmd` has to call as a program.
   - `src/workers-shared`: Cloudflare's asset worker and its tests, copied by
@@ -361,9 +387,10 @@ are not proposed again.
     local deployment, and nothing more; `CONTRIBUTING.md` says what that is. No example is involved.
 - `packages/convex-hosting-tanstack-start`: the Vite settings and the server entry that make
   TanStack Start's server build run inside a Convex HTTP action (Convex cannot bundle `node:stream`,
-  so pages render with React's Web Stream renderer). It knows nothing about versions.
+  so pages render with React's Web Stream renderer), the server entry's type, and the `convex-auth`
+  session helpers. It knows nothing about versions.
 - `examples/spa`: a Vite app served with `--not-found-handling single-page-application`.
-- `examples/tanstack-ssr`: pages rendered in the app's HTTP action after `serveAsset`.
+- `examples/tanstack-ssr`: pages rendered in the `render` of `serveSite`.
 - One `README.md` at the repository root, copied into the package at `prepack`.
 - An app has `.convex-hosting/` (ignored, written by the CLI) and nothing else of ours outside
   `convex/convex.config.ts` and `convex/http.ts`.
