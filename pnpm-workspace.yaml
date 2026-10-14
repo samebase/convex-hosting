@@ -16,7 +16,7 @@ catalog:
   convex-test: 0.0.40
   react: 19.2.3
   react-dom: 19.2.3
-  typescript: 5.9.3
+  typescript: 7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@0.3.3
   vite-plus: 0.3.3
   vitest: 4.1.11
