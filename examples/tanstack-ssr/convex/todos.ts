@@ -5,7 +5,7 @@ import { mutation, query } from "./_generated/server.js";
 export const count = query({
   args: {},
   returns: v.number(),
-  handler: async (ctx) => (await ctx.db.query("todos").collect()).length,
+  handler: async (ctx) => (await ctx.db.query("stats").first())?.todos ?? 0,
 });
 
 export const list = query({
@@ -28,6 +28,9 @@ export const add = mutation({
   handler: async (ctx, { text }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Sign in to add a todo.");
+    const stats = await ctx.db.query("stats").first();
+    if (stats === null) await ctx.db.insert("stats", { todos: 1 });
+    else await ctx.db.patch("stats", stats._id, { todos: stats.todos + 1 });
     return await ctx.db.insert("todos", { userId, text });
   },
 });
