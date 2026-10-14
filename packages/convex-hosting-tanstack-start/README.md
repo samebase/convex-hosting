@@ -1,8 +1,8 @@
 # @samebase/convex-hosting-tanstack-start
 
 Renders TanStack Start pages inside a Convex HTTP action, so the app needs no separate server host.
-The package has a Vite plugin, a server entry with its type, and helpers for Convex Auth cookie
-sessions. It owns no tables and needs no `app.use(...)`. The hosting component in
+The package has a Vite plugin, a server entry, and helpers for Convex Auth cookie sessions. It owns
+no tables and needs no `app.use(...)`. The hosting component in
 [samebase/convex-hosting](https://github.com/samebase/convex-hosting) serves the browser files.
 
 ## Use
@@ -23,23 +23,17 @@ Create `src/server.ts`, which Vite builds as the server entry:
 export { default } from "@samebase/convex-hosting-tanstack-start/server";
 ```
 
-Vite emits the server entry without TypeScript declarations, so the package ships its type. Add it
-to `convex/tsconfig.json`, and to any other `tsconfig.json` whose files import
-`convex/_generated/api`, which reaches `convex/http.ts`:
-
-```json
-{
-  "compilerOptions": {
-    "types": ["@samebase/convex-hosting-tanstack-start/server-build"]
-  }
-}
-```
+After each server build, the plugin writes `.convex-hosting/server.js`, which re-exports the build's
+server entry, `dist/server/server.js`. Before the first build, `convex-hosting init` of
+`@samebase/convex-hosting` 0.5.1 or later writes a placeholder there, so `npx convex dev` bundles
+`convex/http.ts` on a fresh clone. That package also declares the file's type. Leave `allowJs` out
+of `convex/tsconfig.json`: with it, tsc reads the placeholder or the build instead of the type.
 
 In `convex/http.ts`, `serveSite` serves the uploaded files and renders every other path with the
-server entry of the build:
+server entry:
 
 ```ts
-import server from "../dist/server/server.js";
+import server from "../.convex-hosting/server.js";
 
 http.route({
   pathPrefix: "/",
@@ -66,8 +60,8 @@ With [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOn
 `server.fetch(request, { context: { token } })`, as the
 [TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
 does. `@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and importing it declares
-`requestContext` as `{ token: string | null }`. The app creates its Convex client with
-`expectAuth: true`.
+`requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`. The app
+creates its Convex client with `expectAuth: true`.
 
 The root route gives the token to the server render's Convex client and wraps the document in the
 session provider:
@@ -96,7 +90,8 @@ function Root() {
 }
 ```
 
-A pathless layout route gates the pages under it:
+A pathless layout route gates the pages under it. This one sends the visitor to `/signin` with the
+page in `next`, which `/signin` validates before it navigates there:
 
 ```tsx
 import {
@@ -105,22 +100,33 @@ import {
 } from "@samebase/convex-hosting-tanstack-start/convex-auth";
 
 export const Route = createFileRoute("/_authed")({
-  beforeLoad: ({ serverContext }) => redirectWithoutSession(serverContext, "/signin"),
+  beforeLoad: ({ serverContext, location }) =>
+    redirectWithoutSession(serverContext, { to: "/signin", search: { next: location.href } }),
   component: () => (
-    <RedirectWithoutSession to="/signin">
+    <RedirectWithoutSession to={(next) => ({ to: "/signin", search: { next } })}>
       <Outlet />
     </RedirectWithoutSession>
   ),
 });
 ```
 
+Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signin" })` and
+`<RedirectWithoutSession to="/signin">`.
+
 - `sessionBeforeLoad`: on the server, the render's Convex HTTP client queries with the token, so
   loaders run as the user. It puts `token` in the route context.
 - `SessionProvider`: Convex Auth's provider, started from the token of the server render. It also
   releases `expectAuth` for a visitor without a session, which Convex's provider never does.
-- `redirectWithoutSession`: a server render without a session redirects. Only the server render has
-  the cookie; a browser navigation has no `serverContext`.
-- `RedirectWithoutSession`: navigates when the session ends, in this tab or in another one.
+- `redirectWithoutSession`: a server render without a session throws `redirect(options)`, with the
+  options of TanStack's `redirect()`. Only the server render has the cookie; a browser navigation
+  has no `serverContext`.
+- `RedirectWithoutSession`: when the session ends, in this tab or in another one, renders nothing
+  and navigates to `to`, a path or the options that `to` builds from `next`, the page that was open.
+  The navigation replaces the history entry.
+- `useSignedIn()`: `true`, `false`, or `undefined` while unknown. Convex's provider reports loading
+  during the server render and the hydration, so the token that `SessionProvider` was given decides
+  until it settles, and both renders agree. `SignedIn` and `SignedOut` render their children by it,
+  where Convex's `Authenticated` and `Unauthenticated` render nothing on the server.
 
 `@convex-dev/auth` is an optional peer dependency: an app with another auth provider uses only the
 plugin and the server entry.

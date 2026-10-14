@@ -15,8 +15,7 @@ code remains.
   - `src/workers-shared`: Cloudflare's asset worker, copied by `scripts/sync-workers-shared.ts`.
     Never edit it by hand.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
-  Start pages in a Convex HTTP action, the server entry's type, and the `convex-auth` session
-  helpers.
+  Start pages in a Convex HTTP action, and the `convex-auth` session helpers.
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with the single-page-application
   fallback.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
