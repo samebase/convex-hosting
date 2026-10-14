@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
-import { api } from "../../convex/_generated/api.js";
+import { api } from "../../../convex/_generated/api.js";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_authed/")({
   // Runs on the server for the first request.
   loader: () => ({ renderedAt: new Date().toISOString().slice(11, 19) }),
   component: Home,

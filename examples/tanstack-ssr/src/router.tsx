@@ -5,8 +5,10 @@ import { ConvexQueryClient } from "@convex-dev/react-query";
 import { routeTree } from "./routeTree.gen.js";
 
 export function getRouter() {
-  // Start calls this for each server request, so clients are never shared. `expectAuth` holds the
-  // browser client's queries until the auth provider decides on a token (see __root.tsx).
+  // Start calls this for each server request, so clients are never shared. The private pages are
+  // rendered on the server as the user, and `expectAuth` makes the browser client wait for the
+  // provider's token before its first subscription, so the first live answer is the user's too.
+  // Convex's Better Auth guide requires the same for a seamless SSR render.
   const convexQueryClient = new ConvexQueryClient(import.meta.env.VITE_CONVEX_URL, {
     expectAuth: true,
   });
