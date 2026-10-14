@@ -39,13 +39,13 @@ In `convex/http.ts`, `serveSite` serves the uploaded files and renders every oth
 server entry of the build:
 
 ```ts
+import server from "../dist/server/server.js";
+
 http.route({
   pathPrefix: "/",
   method: "GET",
   handler: httpAction((ctx, request) =>
     serveSite(ctx, components.hosting, request, versionId, async () => {
-      // Loading the renderer here keeps file requests fast.
-      const { default: server } = await import("../dist/server/server.js");
       return server.fetch(request);
     }),
   ),
