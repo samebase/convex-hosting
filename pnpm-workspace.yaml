@@ -17,8 +17,8 @@ catalog:
   react: 19.2.3
   react-dom: 19.2.3
   typescript: 5.9.3
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.3
-  vite-plus: 0.3.3
+  vite: npm:@voidzero-dev/vite-plus-core@1.1.0
+  vite-plus: 1.1.0
   vitest: 4.1.11
   zod: 4.6.5
 
