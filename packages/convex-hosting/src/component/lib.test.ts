@@ -361,17 +361,21 @@ describe("collect", () => {
       headers: { version: 2, rules: { "/*": { set: { "x-pad": "x".repeat(200_000) } } } },
     };
     for (let i = 0; i < 20; i++) await createVersion(t, `v${i}`, config);
-    const created = await t.run(async (ctx) =>
-      (await ctx.db.query("versions").collect()).map((version) => version._creationTime),
+    // The cursor after each version: its creation time, and it as the one version seen then.
+    const cursors = await t.run(async (ctx) =>
+      (await ctx.db.query("versions").collect()).map(({ _creationTime, _id }) => ({
+        at: _creationTime,
+        seen: [_id],
+      })),
     );
     vi.advanceTimersByTime(DAY + 1);
 
     await t.mutation(internal.lib.collect, { step: { kind: "versions" } });
     expect((await tables(t)).versions).toHaveLength(12);
-    expect(await pendingSteps(t)).toEqual([{ kind: "versions", after: created[7] }]);
+    expect(await pendingSteps(t)).toEqual([{ kind: "versions", after: cursors[7] }]);
     await runNext(t);
     expect((await tables(t)).versions).toHaveLength(4);
-    expect(await pendingSteps(t)).toEqual([{ kind: "versions", after: created[15] }]);
+    expect(await pendingSteps(t)).toEqual([{ kind: "versions", after: cursors[15] }]);
     // The last page is not full, so the chain ends.
     await runNext(t);
     expect((await tables(t)).versions).toEqual([]);
@@ -407,6 +411,56 @@ describe("collect", () => {
     expect(await pendingSteps(t)).toEqual([{ kind: "versions" }]);
     await runNext(t);
     expect(await tables(t)).toMatchObject({ versions: [], entries: [] });
+  });
+
+  // convex-test gives every document its own creation time, so these tests resume at a cursor on
+  // a shared time: the documents at that time that `seen` does not hold are handled, the others not.
+  test("resumes the versions at the cursor's time, skipping only the versions it has seen", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    for (const id of ["a", "b", "c"]) await createVersion(t, id);
+    const versions = await t.run((ctx) => ctx.db.query("versions").collect());
+    vi.advanceTimersByTime(DAY + 1);
+    // A cursor at b's time that has seen a, a version of that same time in a real deployment.
+    const at = versions[1]._creationTime;
+    await t.mutation(internal.lib.collect, {
+      step: { kind: "versions", after: { at, seen: [versions[0]._id] } },
+    });
+    expect((await tables(t)).versions).toEqual([["a", "uploading"]]);
+
+    // A cursor that has seen b at its time skips only b.
+    const t2 = convexTest(schema, modules);
+    for (const id of ["a", "b", "c"]) await createVersion(t2, id);
+    const versions2 = await t2.run((ctx) => ctx.db.query("versions").collect());
+    vi.advanceTimersByTime(DAY + 1);
+    await t2.mutation(internal.lib.collect, {
+      step: {
+        kind: "versions",
+        after: { at: versions2[1]._creationTime, seen: [versions2[1]._id] },
+      },
+    });
+    expect((await tables(t2)).versions).toEqual([
+      ["a", "uploading"],
+      ["b", "uploading"],
+    ]);
+  });
+
+  test("resumes the file sweep at the cursor's time, skipping only the files it has seen", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    for (const body of ["a", "b", "c"]) {
+      await t.run((ctx) => ctx.storage.store(new Blob([body])));
+    }
+    const files = await t.run((ctx) => ctx.db.system.query("_storage").collect());
+    vi.advanceTimersByTime(DAY + 1);
+    // A cursor at b's time that has seen a, a file of that same time in a real deployment.
+    await t.mutation(internal.lib.collect, {
+      step: { kind: "files", after: { at: files[1]._creationTime, seen: [files[0]._id] } },
+    });
+    const left = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_storage").collect()).map((file) => file._id),
+    );
+    expect(left).toEqual([files[0]._id]);
   });
 
   test("deletes the versions that never became live once they are a day old", async () => {

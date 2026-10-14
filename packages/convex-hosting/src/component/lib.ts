@@ -31,9 +31,10 @@ const GARBAGE_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Versions that one `collect` call reads in its page. A version document holds its config, at
- * most 1 MiB (the CLI keeps the config at or below 900 KiB), so a page reads at most 8 MiB, and the
- * current live version, read through `by_live`, 1 MiB more. A page cannot hold every version:
- * failed deploys of the last day are not deleted yet, and each one is a version.
+ * most 1 MiB (the CLI keeps the config at or below 900 KiB), so a page reads at most 8 MiB besides
+ * the versions its cursor has already seen at its time (normally none), and the current live
+ * version, read through `by_live`, 1 MiB more. A page cannot hold every version: failed deploys of
+ * the last day are not deleted yet, and each one is a version.
  */
 const VERSION_PAGE = 8;
 
@@ -280,55 +281,75 @@ export const markLive = mutation({
  * a later chain, at a later switch. An upload in progress may have taken a stored file from
  * `knownFiles` and not recorded its entry yet; it therefore fails only if two switches happen
  * during that one upload, and a retry works.
+ *
+ * Both steps walk `by_creation_time` with a cursor: the creation time of the last document handled
+ * and the ids already handled at that time. Convex gives every document of one transaction the
+ * same creation time, and creation times are not unique across transactions either, so a cursor of
+ * a time alone would skip the other documents at the boundary. The next call reads from that time
+ * on and skips the ids in `seen`, which hold the documents of one time, normally one; it reads
+ * that many more documents, so a page still holds a full batch of new ones when they exist, and it
+ * keeps at most a batch, because a seen document may be gone.
  */
 export const collect = internalMutation({
   args: {
-    /**
-     * The step of the chain: the file sweep, then the versions. `after` is the `_creationTime` of
-     * the last file, or of the last version, that the previous call finished.
-     */
+    /** The step of the chain: the file sweep, then the versions, each after its cursor. */
     step: v.union(
-      v.object({ kind: v.literal("files"), after: v.optional(v.number()) }),
-      v.object({ kind: v.literal("versions"), after: v.optional(v.number()) }),
+      v.object({
+        kind: v.literal("files"),
+        after: v.optional(v.object({ at: v.number(), seen: v.array(v.id("_storage")) })),
+      }),
+      v.object({
+        kind: v.literal("versions"),
+        after: v.optional(v.object({ at: v.number(), seen: v.array(v.id("versions")) })),
+      }),
     ),
   },
   returns: v.null(),
   handler: async (ctx, { step }) => {
     const garbageBefore = Date.now() - GARBAGE_AGE_MS;
-    const after = step.after;
 
     if (step.kind === "files") {
-      const files = await ctx.db.system
-        .query("_storage")
-        .withIndex("by_creation_time", (q) =>
-          after === undefined
-            ? q.lt("_creationTime", garbageBefore)
-            : q.gt("_creationTime", after).lt("_creationTime", garbageBefore),
-        )
-        .take(SWEEP_BATCH);
+      const after = step.after;
+      const files = (
+        await ctx.db.system
+          .query("_storage")
+          .withIndex("by_creation_time", (q) =>
+            after === undefined
+              ? q.lt("_creationTime", garbageBefore)
+              : q.gte("_creationTime", after.at).lt("_creationTime", garbageBefore),
+          )
+          .take(SWEEP_BATCH + (after?.seen.length ?? 0))
+      )
+        .filter((file) => !after?.seen.includes(file._id))
+        .slice(0, SWEEP_BATCH);
+      let finished = after;
       for (const file of files) {
         const entry = await ctx.db
           .query("entries")
           .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
           .first();
         if (entry === null) await ctx.storage.delete(file._id);
+        finished = advance(finished, file);
       }
       await ctx.scheduler.runAfter(0, internal.lib.collect, {
         step:
-          files.length === SWEEP_BATCH
-            ? { kind: "files", after: files[files.length - 1]._creationTime }
-            : { kind: "versions" },
+          files.length === SWEEP_BATCH ? { kind: "files", after: finished } : { kind: "versions" },
       });
       return null;
     }
 
+    const after = step.after;
     const currentAt = await getNewestLiveAt(ctx);
-    const page = await ctx.db
-      .query("versions")
-      .withIndex("by_creation_time", (q) =>
-        after === undefined ? q : q.gt("_creationTime", after),
-      )
-      .take(VERSION_PAGE);
+    const page = (
+      await ctx.db
+        .query("versions")
+        .withIndex("by_creation_time", (q) =>
+          after === undefined ? q : q.gte("_creationTime", after.at),
+        )
+        .take(VERSION_PAGE + (after?.seen.length ?? 0))
+    )
+      .filter((version) => !after?.seen.includes(version._id))
+      .slice(0, VERSION_PAGE);
     let budget = DELETE_BATCH;
     let finished = after;
     for (const version of page) {
@@ -358,7 +379,7 @@ export const collect = internalMutation({
         budget -= entries.length;
         await ctx.db.delete("versions", version._id);
       }
-      finished = version._creationTime;
+      finished = advance(finished, version);
     }
     if (page.length === VERSION_PAGE) {
       await ctx.scheduler.runAfter(0, internal.lib.collect, {
@@ -368,6 +389,16 @@ export const collect = internalMutation({
     return null;
   },
 });
+
+/** The cursor of `collect` after `document`: its creation time and the ids handled at that time. */
+function advance<DocumentId extends string>(
+  cursor: { at: number; seen: DocumentId[] } | undefined,
+  document: { _id: DocumentId; _creationTime: number },
+) {
+  return cursor !== undefined && cursor.at === document._creationTime
+    ? { at: cursor.at, seen: [...cursor.seen, document._id] }
+    : { at: document._creationTime, seen: [document._id] };
+}
 
 const routeHeaders = v.record(v.string(), v.string());
 

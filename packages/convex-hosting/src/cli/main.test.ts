@@ -415,6 +415,19 @@ describe("upload", () => {
     );
   });
 
+  test("an ignored link to a folder does not hide the folder it points to", async () => {
+    const cwd = app({
+      "dist/assets/app.js": "console.log(1)",
+      "dist/.assetsignore": "a-ignored/\n",
+    });
+    // `a-ignored` comes before `assets` in the listing.
+    symlinkSync(join(cwd, "dist", "assets"), join(cwd, "dist", "a-ignored"));
+    const { cli, callArgs } = fake(cwd);
+    expect(await main(upload(), cli)).toBe(0);
+    const [{ entries }] = callArgs("lib:recordFiles");
+    expect(entries.map((entry: { path: string }) => entry.path)).toEqual(["/assets/app.js"]);
+  });
+
   test("names a --dist folder that does not exist", async () => {
     const cwd = app(site);
     const { cli, logs, runs } = fake(cwd);

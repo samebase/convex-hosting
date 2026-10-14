@@ -66,14 +66,16 @@ export async function readDist(
       // `ignore` takes paths relative to `dist` with `/`, and a directory with a trailing `/`.
       const ignorePath = relative(dist, file).replaceAll("\\", "/");
       if (stats.isDirectory()) {
+        // An ignored directory is not walked: gitignore rules cannot re-include a file in it. It
+        // does not count as walked either, so an ignored link does not hide the folder it points to.
+        if (assetsIgnoreFunction(`${ignorePath}/`)) continue;
         const real = realpathSync(file);
         if (walked.has(real)) {
           log(`Skipped ${file}: a link to a folder that is already included.`);
           continue;
         }
         walked.add(real);
-        // An ignored directory is not walked: gitignore rules cannot re-include a file in it.
-        if (!assetsIgnoreFunction(`${ignorePath}/`)) walk(file);
+        walk(file);
       } else if (stats.isFile() && !assetsIgnoreFunction(ignorePath)) {
         const bytes = readFileSync(file);
         // Cloudflare's limit per asset, 25 MiB. The HTTP action that serves a file cannot answer
