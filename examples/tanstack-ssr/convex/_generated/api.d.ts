@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as counter from "../counter.js";
 import type * as http from "../http.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -18,8 +20,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   counter: typeof counter;
   http: typeof http;
+  users: typeof users;
 }>;
 
 /**
@@ -49,5 +53,7 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
+  auth: import("@convex-dev/auth/core/_generated/component.js").ComponentApi<"auth">;
+  authAnonymous: import("@convex-dev/auth/providers/anonymous/_generated/component.js").ComponentApi<"authAnonymous">;
   hosting: import("@samebase/convex-hosting/_generated/component.js").ComponentApi<"hosting">;
 };
