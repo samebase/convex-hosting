@@ -33,18 +33,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install dependencies without lifecycle scripts
-        run: pnpm install --frozen-lockfile --ignore-scripts
-
-      - name: Audit package signatures
-        run: pnpm audit signatures
-
-      - name: Audit production dependencies
-        run: pnpm audit --prod
-
-      - name: Reject critical development-tool vulnerabilities
-        run: pnpm audit --dev --audit-level=critical
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

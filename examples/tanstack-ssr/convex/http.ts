@@ -7,6 +7,9 @@ import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
+// A local backend serves plain HTTP.
+const cookieOptions = { secure: env.CONVEX_SITE_URL.startsWith("https:") };
+
 // Cookie sessions: the refresh token stays in an httpOnly cookie on the site origin, and the
 // browser holds only the short-lived access token. These are the default routes of the auth
 // provider in src/routes/__root.tsx. Exact routes win over the Convex Auth core component, which
@@ -16,8 +19,7 @@ const auth = setupConvexAuthServer({
   refreshSession: api.auth.refreshSession,
   signOut: api.auth.signOut,
   signIn: [api.auth.signInAnonymous],
-  // A local backend serves plain HTTP.
-  cookieOptions: { secure: env.CONVEX_SITE_URL.startsWith("https:") },
+  cookieOptions,
 });
 for (const [path, handler] of [
   ["/auth/signin", auth.convexProxyHandler],
@@ -42,7 +44,7 @@ http.route({
     const session = new ServerAuthSession({
       refreshSession: (refreshToken) => ctx.runMutation(api.auth.refreshSession, { refreshToken }),
       cookies,
-      cookieOptions: { secure: env.CONVEX_SITE_URL.startsWith("https:") },
+      cookieOptions,
     });
     const token = await session.getToken();
 
