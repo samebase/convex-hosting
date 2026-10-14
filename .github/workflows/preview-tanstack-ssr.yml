@@ -50,7 +50,8 @@ jobs:
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
         run: |
-          # shellcheck disable=SC2016 -- the variables expand in the shell that npx convex deploy starts
+          # The single quotes are deliberate: the variables expand in the shell that npx convex deploy starts.
+          # shellcheck disable=SC2016
           pnpm exec convex-hosting deploy --preview-name "$GITHUB_HEAD_REF" --dist dist/client \
             --build 'pnpm run build && echo "url=$VITE_CONVEX_SITE_URL" >> "$GITHUB_OUTPUT"'
 
