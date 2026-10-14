@@ -14,9 +14,9 @@
     "@convex-dev/eslint-plugin": "5.0.0",
     "@edge-runtime/vm": "catalog:",
     "@types/node": "catalog:",
-    "pkg-pr-new": "0.0.88",
+    "pkg-pr-new": "0.0.90",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
-  "packageManager": "pnpm@11.18.0"
+  "packageManager": "pnpm@11.28.5"
 }
