@@ -377,6 +377,19 @@ owner since `@samebase/convex-hosting` 0.5 and `@samebase/convex-hosting-tanstac
 | The Convex Auth setup files                               | App, with Convex Auth's own API                                                                       | The providers and the users table are the app's                               |
 | Deploy and preview commands                               | Hosting package: `convex-hosting deploy`, in the app's scripts and CI                                 | The upload must run between the build and the push                            |
 
+A vinext app (`examples/vinext-ssr`) has no adapter yet. These owners differ:
+
+- The server entry is vinext's Worker entry, `vinext/server/fetch-handler`, named in the app's
+  `vite.config.ts` through the Cloudflare Vite plugin. The app's `scripts/bundle-server.ts`
+  prebundles it for the Convex runtime, and the app's `convex/server-build.d.ts` types its
+  `fetch(request, env, ctx)`. These two files are the seed of an adapter.
+- `render` calls `fetch(request, {}, { waitUntil })` and waits for that work before it answers.
+  `http.ts` also routes `POST` to `render`, for Server Actions.
+- The session is Convex Auth's Next.js integration: `setupConvexAuthNextjs` in the app's `auth.ts`,
+  its proxy in `proxy.ts`, and `ConvexAuthNextjsServerProvider` in the root layout. `http.ts` has no
+  session lines, and there is no `requestContext`, root `beforeLoad`, or `expectAuth`.
+- The gate is the page's own `isAuthenticatedNextjs()` and `redirect()`.
+
 ## Repository
 
 - `packages/convex-hosting`
@@ -395,6 +408,7 @@ owner since `@samebase/convex-hosting` 0.5 and `@samebase/convex-hosting-tanstac
   session helpers. It knows nothing about versions.
 - `examples/spa`: a Vite app served with `--not-found-handling single-page-application`.
 - `examples/tanstack-ssr`: pages rendered in the `render` of `serveSite`.
+- `examples/vinext-ssr`: the same app with vinext, prebundled for Convex by its own script.
 - One `README.md` at the repository root, copied into the package at `prepack`.
 - An app has `.convex-hosting/` (ignored, written by the CLI) and nothing else of ours outside
   `convex/convex.config.ts` and `convex/http.ts`.
