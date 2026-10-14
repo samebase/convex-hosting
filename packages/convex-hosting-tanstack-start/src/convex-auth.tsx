@@ -149,9 +149,14 @@ export function RedirectWithoutSession<TOptions>({
   // page that a navigation inside the app left, until the gated page has rendered.
   const next = useLocation({ select: (location) => location.href });
   // Once the redirect starts, the location names its target while this gate stays mounted, and the
-  // effect runs again: a second redirect would put the sign-in page in `next`.
+  // effect runs again: a second redirect would put the sign-in page in `next`. The latch opens
+  // again when the session returns while the gate is still mounted, so a later sign-out redirects.
   const redirected = useRef(false);
   useEffect(() => {
+    if (signedIn === true) {
+      redirected.current = false;
+      return;
+    }
     if (signedIn !== false || redirected.current) return;
     redirected.current = true;
     if (typeof to === "string") {
