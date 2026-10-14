@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- `serveSite(ctx, component, request, versionId, render?)` serves the whole site from one route: the
+  file that matches, else the page that `render` returns, else 404. A page and a 404 answer
+  `Cache-Control: no-store`, so `convex/http.ts` no longer sets it. `serveAsset` stays, as its first
+  step.
+
 ## 0.4.1
 
 - `convex-hosting init` writes `.convex-hosting/version.js` with no site version when it is absent,

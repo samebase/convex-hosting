@@ -2,12 +2,33 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
 
 /**
+ * Answers `request` with the file of version `versionId`, else with the page that `render`
+ * returns, else 404. A page and a miss answer `Cache-Control: no-store`: the deployment's
+ * Cloudflare front caches answers on static-looking paths, so a 404 for a script requested before
+ * its upload ended would stay cached after the file exists.
+ */
+export async function serveSite(
+  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
+  component: ComponentApi,
+  request: Request,
+  versionId: string,
+  render?: (request: Request) => Promise<Response>,
+): Promise<Response> {
+  const asset = await serveAsset(ctx, component, request, versionId);
+  if (asset !== null) return asset;
+  if (render === undefined) return new Response(null, { status: 404, headers: NO_STORE });
+  const page = await render(request);
+  const headers = new Headers(page.headers);
+  headers.set("Cache-Control", "no-store");
+  return new Response(page.body, { status: page.status, headers });
+}
+
+/**
  * Answers `request` with the asset of version `versionId` that Cloudflare's asset handler picks.
  *
- * Returns `null` when no asset matches, so the app continues (a static site answers 404, a
- * server-rendered site renders the page). A version that does not exist, is still uploading, or
- * is being deleted answers 404, so a half-installed site does not render pages without their
- * files. The first request for a `ready` version marks it live, which deletes the versions that
+ * Returns `null` when no asset matches, so the caller continues, as `serveSite` does. A version
+ * that does not exist, is still uploading, or is being deleted answers 404, so a half-installed
+ * site does not render pages without their files. The first request for a `ready` version marks it live, which deletes the versions that
  * were live before it.
  */
 export async function serveAsset(

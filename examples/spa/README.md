@@ -1,7 +1,7 @@
 # SPA example
 
 A Vite and React app that `@samebase/convex-hosting` serves with
-`--not-found-handling single-page-application`: `convex/http.ts` serves it with `serveAsset`, and
+`--not-found-handling single-page-application`: `convex/http.ts` serves it with `serveSite`, and
 `public/_headers` caches the hashed files under `/assets/` for a year.
 
 From `examples/spa`:
