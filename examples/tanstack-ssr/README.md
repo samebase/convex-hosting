@@ -9,7 +9,9 @@ example has its own schema, so it needs its own Convex project.
 
 ## Kinds of pages
 
-The demo data is a to-do list in `convex/todos.ts`.
+The demo data is a to-do list in `convex/todos.ts`, after the one in `samebase/base`: each anonymous
+user gets a readable name when it is created, todos have an author and a done state, and a public
+site needs caps on text length and todos per user.
 
 - `/about`: a static file from the build. `vite.config.ts` has TanStack Start prerender this page
   only, into `dist/client/about/index.html`, and `serveAsset` serves it like any other file. As on
@@ -18,14 +20,15 @@ The demo data is a to-do list in `convex/todos.ts`.
   navigation inside the app renders the route in the browser like any other, so a prerendered route
   keeps no request-time data.
 - `/`: rendered per request, and needs no session. The first HTML response contains the latest
-  twenty todos of all users from `todos.latest`, and the list stays live after React hydrates.
+  twenty todos of all users with their authors from `todos.latest`, and the list stays live after
+  React hydrates.
 - `/todos`: rendered as the user. The first HTML response contains the user's todos from
-  `todos.list`, and the form adds one with `todos.add`. The page sits behind the pathless layout in
-  `src/routes/_authed.tsx`: without a session, the server redirects to `/signin`, and the browser
-  does the same when the session ends.
+  `todos.list`, the form adds one with `todos.add`, and a checkbox toggles `todos.toggle`. The page
+  sits behind the pathless layout in `src/routes/_authed.tsx`: without a session, the server
+  redirects to `/signin`, and the browser does the same when the session ends.
 - `/signin`: a button that signs in anonymously and opens `/todos`.
 - The header on every page: the root route's loader queries `users.me`, so the first HTML response
-  of a rendered page shows `Signed in as <id>` with a sign-out button, or a link to `/signin`. The
+  of a rendered page shows `Signed in as <name>` with a sign-out button, or a link to `/signin`. The
   build has no session, so on `/about` the header fills in after React hydrates.
 
 ## Sessions

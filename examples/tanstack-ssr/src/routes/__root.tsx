@@ -79,7 +79,7 @@ function SessionHeader() {
   if (me === null) return <Link to="/signin">Sign in</Link>;
   return (
     <>
-      {`Signed in as ${me.id}`}
+      {`Signed in as ${me.name}`}
       <button
         type="button"
         onClick={async () => {

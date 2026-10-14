@@ -15,13 +15,23 @@ export const Route = createFileRoute("/_authed/todos")({
 function Todos() {
   const { data: todos } = useSuspenseQuery(convexQuery(api.todos.list, {}));
   const add = useConvexMutation(api.todos.add);
+  const toggle = useConvexMutation(api.todos.toggle);
   const [text, setText] = useState("");
   return (
     <main>
       <h1>Your todos</h1>
       <ul>
         {todos.map((todo) => (
-          <li key={todo.id}>{todo.text}</li>
+          <li key={todo.id}>
+            <label>
+              <input
+                type="checkbox"
+                checked={todo.done}
+                onChange={() => void toggle({ id: todo.id })}
+              />{" "}
+              {todo.done ? <s>{todo.text}</s> : todo.text}
+            </label>
+          </li>
         ))}
       </ul>
       <form
@@ -34,6 +44,7 @@ function Todos() {
         <input
           aria-label="New todo"
           required
+          maxLength={280}
           value={text}
           onChange={(event) => setText(event.target.value)}
         />

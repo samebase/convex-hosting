@@ -25,7 +25,9 @@ function Home() {
       <h2>The latest todos of everyone</h2>
       <ul>
         {todos.map((todo) => (
-          <li key={todo.id}>{todo.text}</li>
+          <li key={todo.id}>
+            {todo.author}: {todo.done ? <s>{todo.text}</s> : todo.text}
+          </li>
         ))}
       </ul>
     </main>
