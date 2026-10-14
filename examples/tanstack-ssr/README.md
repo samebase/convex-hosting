@@ -40,9 +40,9 @@ From `examples/tanstack-ssr`, after `pnpm install` at the repository root:
    before both exist.
 2. `npx convex dev`. Its first push fails: the deployment has no `AUTH_PRIVATE_KEY` and `AUTH_JWKS`
    yet.
-3. In a second terminal, `node ./scripts/ensure-auth-keys.ts`. It generates an RS256 key pair and
-   sets both variables on the development deployment that `.env.local` names, or keeps the pair
-   already there. Save a file in `convex/` so that `npx convex dev` pushes again.
+3. In a second terminal, `npx @convex-dev/auth`. It generates an RS256 key pair, sets both variables
+   on the deployment that `.env.local` names, and leaves the files in `convex/` as they are. Save a
+   file in `convex/` so that `npx convex dev` pushes again.
 4. `pnpm run deploy:dev`, then open the site URL, `VITE_CONVEX_SITE_URL` in `.env.local`.
 
 Production needs its own key pair on the production deployment before the first `pnpm run deploy`.

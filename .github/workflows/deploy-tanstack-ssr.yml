@@ -53,12 +53,6 @@ jobs:
           pnpm --filter @samebase/convex-hosting --filter @samebase/convex-hosting-tanstack-start
           run build
 
-      - name: Ensure auth keys
-        working-directory: examples/tanstack-ssr
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: node ./scripts/ensure-auth-keys.ts
-
       - name: Deploy example
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
