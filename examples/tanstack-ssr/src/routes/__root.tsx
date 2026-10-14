@@ -1,7 +1,9 @@
 import { createRootRouteWithContext, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ConvexQueryClient } from "@convex-dev/react-query";
-import { ConvexAuthNextjsProvider } from "@convex-dev/auth/nextjs";
+import { ConvexAuthNextjsProvider, useConvexAuth } from "@convex-dev/auth/nextjs";
+import type { ConvexReactClient } from "convex/react";
+import { useEffect } from "react";
 import styleUrl from "../style.css?url";
 
 export const Route = createRootRouteWithContext<{
@@ -40,10 +42,29 @@ function Root() {
           <HeadContent />
         </head>
         <body>
+          <ReleaseWhenSignedOut client={convexQueryClient.convexClient} />
           <Outlet />
           <Scripts />
         </body>
       </html>
     </ConvexAuthNextjsProvider>
   );
+}
+
+// The browser's Convex client has `expectAuth`, so it holds its queries until it has a token.
+// Without it, the client subscribes to the queries of the server render when its WebSocket opens,
+// before the auth provider sets the token: /me showed "Not signed in" for a moment, and React
+// reported a hydration mismatch when that answer arrived during hydration. The provider sets no
+// token for a signed-out visitor, so once it knows there is no session, this lets the client run
+// without one.
+function ReleaseWhenSignedOut({ client }: { client: ConvexReactClient }) {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated)
+      client.setAuth(
+        async () => null,
+        () => {},
+      );
+  }, [client, isLoading, isAuthenticated]);
+  return null;
 }

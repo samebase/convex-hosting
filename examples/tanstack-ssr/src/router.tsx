@@ -5,8 +5,11 @@ import { ConvexQueryClient } from "@convex-dev/react-query";
 import { routeTree } from "./routeTree.gen.js";
 
 export function getRouter() {
-  // Start calls this for each server request, so clients are never shared.
-  const convexQueryClient = new ConvexQueryClient(import.meta.env.VITE_CONVEX_URL);
+  // Start calls this for each server request, so clients are never shared. `expectAuth` holds the
+  // browser client's queries until the auth provider decides on a token (see __root.tsx).
+  const convexQueryClient = new ConvexQueryClient(import.meta.env.VITE_CONVEX_URL, {
+    expectAuth: true,
+  });
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
