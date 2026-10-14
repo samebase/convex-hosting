@@ -61,6 +61,10 @@ export default defineConfig({
     // restoring `process.exit`. Threads avoid that teardown path.
     pool: "threads",
     environment: "edge-runtime",
-    include: ["packages/*/src/**/*.test.ts", "examples/*/convex/**/*.test.ts"],
+    include: [
+      "packages/*/src/**/*.test.ts",
+      "examples/*/convex/**/*.test.ts",
+      "examples/*/scripts/**/*.test.ts",
+    ],
   },
 });
