@@ -66,6 +66,20 @@ Components use `useSuspenseQuery(convexQuery(...))`; the server entry waits for 
 TanStack handles query hydration. HTTP mounts, authentication, and cache policy remain app
 decisions.
 
+To give the pages data of the request, such as the access token of a session cookie, pass it as
+`context`: `server.fetch(request, { context: { token } })`. Start gives it to each route's
+`beforeLoad` and loader on the server as `serverContext`. Declare its type in Start's `Register`:
+
+```ts
+declare module "@tanstack/react-start" {
+  interface Register {
+    server: { requestContext: { token: string | null } };
+  }
+}
+```
+
+The example signs in with Convex Auth this way.
+
 ## Why these settings exist
 
 - `worker` selects TanStack's server exports; `browser` selects Web API adapters.
