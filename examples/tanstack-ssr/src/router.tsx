@@ -5,9 +5,8 @@ import { ConvexQueryClient } from "@convex-dev/react-query";
 import { routeTree } from "./routeTree.gen.js";
 
 export function getRouter() {
-  // Start calls this for each server request, so clients are never shared. `expectAuth` makes the
-  // browser client wait for the provider's token before its first subscription, so a page rendered
-  // as the user gets the user's live answer too; Convex's Better Auth guide requires the same.
+  // Start calls this for each server request, so clients are never shared. `expectAuth` is explained
+  // at `ReleaseWhenSignedOut` in routes/__root.tsx.
   const convexQueryClient = new ConvexQueryClient(import.meta.env.VITE_CONVEX_URL, {
     expectAuth: true,
   });

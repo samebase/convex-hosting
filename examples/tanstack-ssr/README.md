@@ -13,9 +13,10 @@ The demo data is a to-do list in `convex/todos.ts`.
 
 - `/about`: a static file from the build. `vite.config.ts` has TanStack Start prerender this page
   only, into `dist/client/about/index.html`, and `serveAsset` serves it like any other file. As on
-  Cloudflare, `/about` answers 307 to `/about/`, which answers the file. Its "Built at" time comes
-  from a loader that ran in the build; links to the page reload the document, so the browser does
-  not run the loader again.
+  Cloudflare, `/about` answers 307 to `/about/`, which answers the file with an ETag and
+  `Cache-Control: public, max-age=0, must-revalidate`, where a rendered page answers `no-store`. A
+  navigation inside the app renders the route in the browser like any other, so a prerendered route
+  keeps no request-time data.
 - `/`: rendered per request, and needs no session. The first HTML response contains `todos.count`,
   the number of todos of all users, and the count stays live after React hydrates.
 - `/todos`: rendered as the user. The first HTML response contains the user's todos from
@@ -46,6 +47,23 @@ authentication, so sign-out reloads the page.
 The example signs in anonymously: each sign-in creates a user. Password or OAuth sign-in changes the
 provider in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in
 `convex/http.ts`, and the button on `/signin`. The other routes stay the same.
+
+## Where code goes
+
+TanStack Start is the renderer here, and Convex is the backend. `convex/http.ts` is the server
+entry, what Nitro or Node is on another host: it serves the files, reads the cookies, gives the
+render its request context, and returns the page.
+
+- Pages, loaders, `head`, and prerender live in `src/routes`.
+- Data and endpoints live in `convex/`. A Convex query or mutation is what a TanStack server
+  function would be, with `ctx` and the user's identity, and the browser subscribes to it live. The
+  `/auth` routes are Convex HTTP actions for the same reason.
+- Request work, such as the cookies and the token, happens in `convex/http.ts` before
+  `server.fetch`, not in TanStack middleware.
+- The example has no `createServerFn`, no `routes/api`, and no `createStart` middleware. They would
+  run inside the HTTP action and then call Convex over HTTP to do anything.
+- A loader of the server render reaches Convex through the HTTP client with the user's token: the
+  cookie is not an `Authorization` header, so the HTTP action itself has no identity.
 
 ## Set up
 

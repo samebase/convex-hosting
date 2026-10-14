@@ -1,20 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/about")({
-  // Runs when the build prerenders this page.
-  loader: () => ({ builtAt: new Date().toISOString() }),
   component: About,
 });
 
 function About() {
-  const { builtAt } = Route.useLoaderData();
   return (
     <main>
       <h1>About</h1>
-      <p>Built at {builtAt}</p>
       <p>
-        This HTML was written at build time, and <code>serveAsset</code> serves it as a file, like
-        any other file in <code>dist/client</code>.
+        This page is a file from the build. <code>vite.config.ts</code> has TanStack Start prerender
+        it into <code>dist/client/about/index.html</code>, and <code>serveAsset</code> serves it
+        like any other file: its response has an ETag and a revalidating cache header, where a
+        rendered page answers <code>no-store</code>. A navigation inside the app renders it in the
+        browser like any route.
       </p>
       <p>
         <Link to="/">Home</Link>
