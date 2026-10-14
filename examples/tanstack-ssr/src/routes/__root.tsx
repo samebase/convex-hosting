@@ -55,6 +55,11 @@ function Root() {
         <body>
           <ReleaseWhenSignedOut client={convexQueryClient.convexClient} />
           <header>
+            <nav>
+              <Link to="/">Home</Link>
+              <Link to="/about">About</Link>
+              <Link to="/todos">Todos</Link>
+            </nav>
             <SessionHeader />
           </header>
           <Outlet />

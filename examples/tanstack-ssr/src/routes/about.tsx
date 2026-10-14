@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/about")({
   component: About,
@@ -14,9 +14,6 @@ function About() {
         like any other file: its response has an ETag and a revalidating cache header, where a
         rendered page answers <code>no-store</code>. A navigation inside the app renders it in the
         browser like any route.
-      </p>
-      <p>
-        <Link to="/">Home</Link>
       </p>
     </main>
   );
