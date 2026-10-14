@@ -244,7 +244,8 @@ export function useReloadOnNewVersion() {
 
 [`@samebase/convex-hosting-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
 renders TanStack Start pages in the same route, after `serveAsset`. See the
-[TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr).
+[TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr),
+live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
 
 ## License
 
