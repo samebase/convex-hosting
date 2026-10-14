@@ -3,24 +3,17 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "../../../convex/_generated/api.js";
 
-export const Route = createFileRoute("/_authed/")({
-  // Runs on the server for the first request.
-  loader: () => ({ renderedAt: new Date().toISOString().slice(11, 19) }),
-  component: Home,
+export const Route = createFileRoute("/_authed/counter")({
+  component: Counter,
 });
 
-function Home() {
-  const { renderedAt } = Route.useLoaderData();
+function Counter() {
   // Fetched during the server render, then kept live in the browser.
   const { data: count } = useSuspenseQuery(convexQuery(api.counter.get, {}));
   const increment = useConvexMutation(api.counter.increment);
   return (
     <main>
-      <h1>TanStack Start on Convex</h1>
-      <p>
-        Rendered in a Convex HTTP action at {renderedAt} UTC. View the page source to see the HTML
-        the server sent.
-      </p>
+      <h1>The counter</h1>
       <div className="counter">
         <span className="count">{count}</span>
         <button type="button" onClick={() => void increment({})}>

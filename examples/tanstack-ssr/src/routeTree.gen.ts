@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as SigninRouteImport } from './routes/signin'
-import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
+import { Route as AuthedCounterRouteImport } from './routes/_authed/counter'
 import { Route as AuthedMeRouteImport } from './routes/_authed/me'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
   getParentRoute: () => rootRouteImport,
@@ -23,9 +29,9 @@ const SigninRoute = SigninRouteImport.update({
   path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthedIndexRoute = AuthedIndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthedCounterRoute = AuthedCounterRouteImport.update({
+  id: '/counter',
+  path: '/counter',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedMeRoute = AuthedMeRouteImport.update({
@@ -35,37 +41,54 @@ const AuthedMeRoute = AuthedMeRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthedIndexRoute
+  '/': typeof IndexRoute
   '/signin': typeof SigninRoute
+  '/counter': typeof AuthedCounterRoute
   '/me': typeof AuthedMeRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/signin': typeof SigninRoute
+  '/counter': typeof AuthedCounterRoute
   '/me': typeof AuthedMeRoute
-  '/': typeof AuthedIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
   '/signin': typeof SigninRoute
+  '/_authed/counter': typeof AuthedCounterRoute
   '/_authed/me': typeof AuthedMeRoute
-  '/_authed/': typeof AuthedIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/signin' | '/me'
+  fullPaths: '/' | '/signin' | '/counter' | '/me'
   fileRoutesByTo: FileRoutesByTo
-  to: '/signin' | '/me' | '/'
-  id: '__root__' | '/_authed' | '/signin' | '/_authed/me' | '/_authed/'
+  to: '/' | '/signin' | '/counter' | '/me'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authed'
+    | '/signin'
+    | '/_authed/counter'
+    | '/_authed/me'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   AuthedRoute: typeof AuthedRouteWithChildren
   SigninRoute: typeof SigninRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authed': {
       id: '/_authed'
       path: ''
@@ -80,11 +103,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SigninRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authed/': {
-      id: '/_authed/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof AuthedIndexRouteImport
+    '/_authed/counter': {
+      id: '/_authed/counter'
+      path: '/counter'
+      fullPath: '/counter'
+      preLoaderRoute: typeof AuthedCounterRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/me': {
@@ -98,19 +121,20 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthedRouteChildren {
+  AuthedCounterRoute: typeof AuthedCounterRoute
   AuthedMeRoute: typeof AuthedMeRoute
-  AuthedIndexRoute: typeof AuthedIndexRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedCounterRoute: AuthedCounterRoute,
   AuthedMeRoute: AuthedMeRoute,
-  AuthedIndexRoute: AuthedIndexRoute,
 }
 
 const AuthedRouteWithChildren =
   AuthedRoute._addFileChildren(AuthedRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   AuthedRoute: AuthedRouteWithChildren,
   SigninRoute: SigninRoute,
 }

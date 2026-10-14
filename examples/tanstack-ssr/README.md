@@ -9,14 +9,15 @@ example has its own schema, so it needs its own Convex project.
 
 ## Pages
 
+- `/`: a public page that explains the example. It runs no Convex query.
 - `/signin`: a button that signs in anonymously. It is public and runs no Convex query.
-- `/`: the first HTML response already contains a count from a Convex query, and the count stays
-  live after React hydrates.
+- `/counter`: the first HTML response already contains a count from a Convex query, and the count
+  stays live after React hydrates.
 - `/me`: the result of `users.me` for the session of the request, in the first HTML response:
   `Signed in as <id> since <time>` with a sign-out button.
 
-`/` and `/me` sit behind the pathless layout in `src/routes/_authed.tsx` and need a session. Without
-one, the server redirects to `/signin`; the browser does the same when the session ends.
+`/counter` and `/me` sit behind the pathless layout in `src/routes/_authed.tsx` and need a session.
+Without one, the server redirects to `/signin`; the browser does the same when the session ends.
 
 ## Sessions
 
@@ -54,8 +55,9 @@ Production needs its own key pair on the production deployment before the first 
 ## Commands
 
 - `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. It renders the pages
-  in Vite's own server without the session, so the browser moves to `/signin`; sign-in works only on
-  the deployed site, where `convex/http.ts` serves the `/auth` routes.
+  in Vite's own server without the session: `/` and `/signin` show, `/counter` and `/me` move to
+  `/signin`, and sign-in works only on the deployed site, where `convex/http.ts` serves the `/auth`
+  routes.
 - `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`.
 - `pnpm run deploy:dev`: build, upload, and push to the development deployment.
 - `pnpm run deploy`: build, upload, and push to production.

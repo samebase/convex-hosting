@@ -32,7 +32,7 @@ function Me() {
         Sign out
       </button>
       <p>
-        <Link to="/">Back to the counter</Link>
+        <Link to="/counter">Back to the counter</Link>
       </p>
     </main>
   );
