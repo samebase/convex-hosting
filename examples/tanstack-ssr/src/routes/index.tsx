@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "../../convex/_generated/api.js";
@@ -28,6 +28,9 @@ function Home() {
         </button>
       </div>
       <p>The count lives in Convex. Open this page in two tabs: a click in one updates both.</p>
+      <p>
+        <Link to="/me">Your session</Link>
+      </p>
     </main>
   );
 }

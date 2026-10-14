@@ -2,7 +2,6 @@ import { createRouter } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
 import { ConvexQueryClient } from "@convex-dev/react-query";
-import { ConvexProvider } from "convex/react";
 import { routeTree } from "./routeTree.gen.js";
 
 export function getRouter() {
@@ -19,11 +18,8 @@ export function getRouter() {
   convexQueryClient.connect(queryClient);
   const router = createRouter({
     routeTree,
-    context: { queryClient },
+    context: { queryClient, convexQueryClient },
     scrollRestoration: true,
-    Wrap: ({ children }) => (
-      <ConvexProvider client={convexQueryClient.convexClient}>{children}</ConvexProvider>
-    ),
   });
   setupRouterSsrQueryIntegration({ router, queryClient });
   return router;
@@ -32,5 +28,13 @@ export function getRouter() {
 declare module "@tanstack/react-router" {
   interface Register {
     router: ReturnType<typeof getRouter>;
+  }
+}
+
+// The request context that convex/http.ts passes to the server entry: the access token of the
+// session cookie, or null without a session.
+declare module "@tanstack/react-start" {
+  interface Register {
+    server: { requestContext: { token: string | null } };
   }
 }
