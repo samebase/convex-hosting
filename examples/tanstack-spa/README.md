@@ -1,6 +1,6 @@
 # TanStack Start SPA example
 
-Live at LIVE_URL, deployed from `main`.
+Live at [quick-fish-630.convex.site](https://quick-fish-630.convex.site), deployed from `main`.
 
 TanStack Start in SPA mode, served from Convex by `serveSite` with
 `--not-found-handling single-page-application`. It has no server entry, no adapter, and no sign-in.

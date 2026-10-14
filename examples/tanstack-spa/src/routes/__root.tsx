@@ -37,7 +37,7 @@ function Root() {
           </head>
           <body>
             {/* The shell answers every path. The route and the active link depend on the path, so
-            they render after hydration instead of failing it. */}
+            they render after hydration instead of failing it (TanStack/router#7910). */}
             <ClientOnly>
               <header>
                 <Link to="/">Home</Link>
