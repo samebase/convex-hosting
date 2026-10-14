@@ -1,45 +1,14 @@
-# Convex Hosting SPA example
+# SPA example
 
-This example demonstrates how to use the `@samebase/convex-hosting` component to host a React/Vite
-app directly on Convex.
+A Vite and React app that `@samebase/convex-hosting` serves with
+`--not-found-handling single-page-application`: `convex/http.ts` serves it with `serveAsset`, and
+`public/_headers` caches the hashed files under `/assets/` for a year.
 
-## Running the Example
+From `examples/spa`:
 
-From the root of the repository:
+- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal.
+- `pnpm run build`: build the site into `dist`.
+- `pnpm run deploy:dev`: build, upload, and push to the development deployment.
+- `pnpm run deploy`: build, upload, and push to production.
 
-```bash
-pnpm install
-cd examples/spa
-pnpm run dev
-```
-
-This starts:
-
-- The Convex backend development server
-- The Vite frontend development server
-- A TypeScript watcher that rebuilds the component when its source changes
-
-## Deploying Static Files
-
-Once you have a Convex deployment, build and upload the static files with the CLI (it builds with
-the right `VITE_CONVEX_URL`, deploys the backend, and uploads `dist/`):
-
-```bash
-# From examples/spa
-pnpm run deploy
-```
-
-Your app will then be available at `https://your-deployment.convex.site`.
-
-## Files
-
-- `convex/convex.config.ts` - Imports and uses the hosting component
-- `convex/hosting.ts` - Exposes the deployment query for `<UpdateBanner />`
-- `src/` - Example React application
-
-## How It Works
-
-1. The component stores static files in its own Convex file storage
-2. The component's HTTP routes serve files with proper Content-Type and caching
-3. SPA fallback ensures client-side routing works correctly
-4. Each deployment gets a unique ID for atomic updates and garbage collection
+For everything else, see the [README](../../README.md).

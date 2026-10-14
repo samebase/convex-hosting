@@ -8,7 +8,7 @@
  * @module
  */
 
-import type * as hosting from "../hosting.js";
+import type * as http from "../http.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +17,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  hosting: typeof hosting;
+  http: typeof http;
 }>;
 
 /**

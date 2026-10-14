@@ -2,74 +2,49 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  staticAssets: defineTable({
-    path: v.string(), // URL path, e.g., "/index.html", "/assets/main-abc123.js"
-    storageId: v.optional(v.id("_storage")), // Reference to Convex file storage (used for HTML + non-CDN assets)
-    blobId: v.optional(v.string()), // convex-fs blob ID (used for CDN-served assets)
-    contentType: v.string(), // MIME type, e.g., "text/html; charset=utf-8"
-    deploymentId: v.string(), // UUID for garbage collection
+  /** One uploaded build of the site. */
+  versions: defineTable({
+    versionId: v.string(),
+    /**
+     * `live` carries the time the first request of the version's pushed code marked it live, so a
+     * version cannot have a live time without being live.
+     */
+    state: v.union(
+      v.object({ kind: v.literal("uploading") }),
+      v.object({ kind: v.literal("ready") }),
+      v.object({ kind: v.literal("live"), at: v.number() }),
+      /** `collect` deletes its entries in pages; it never becomes live again. */
+      v.object({ kind: v.literal("deleting") }),
+    ),
+    /**
+     * The JSON of Cloudflare's `AssetConfig`. A string, because `redirects.staticRules` has one
+     * field per rule and Convex limits an object to 1,024 fields.
+     */
+    config: v.string(),
   })
-    .index("by_path", ["path"])
-    .index("by_deploymentId", ["deploymentId"])
-    .index("by_storageId", ["storageId"]),
+    .index("by_versionId", ["versionId"])
+    /** `collect` finds the current live version with one read: kind `live`, the newest `at`. */
+    .index("by_live", ["state.kind", "state.at"]),
 
-  // Publication moves replaced storage files here. Missing non-HTML paths with
-  // an extension can still resolve to these files. A later upload removes them
-  // after expiresAt, at least seven days after replacement.
-  retiredAssets: defineTable({
+  /** One file of a version. */
+  entries: defineTable({
+    versionId: v.string(),
+    /** The URL path of the file, such as `/assets/index-a1b2.js`. */
     path: v.string(),
+    /**
+     * Hex: the CLI computes it in hex and the ETag carries it in hex. The one conversion from the
+     * base64 of Convex's `_storage` happens in `recordFiles`.
+     */
+    sha256: v.string(),
+    /**
+     * The type belongs to the path, not to the bytes: paths with identical bytes share one stored
+     * file but keep their own types, and `route` serves without reading `_storage`. Absent when
+     * the `mime` package has no type for the file name.
+     */
+    contentType: v.optional(v.string()),
     storageId: v.id("_storage"),
-    contentType: v.string(),
-    deploymentId: v.string(),
-    expiresAt: v.number(),
   })
-    .index("by_path", ["path"])
-    .index("by_storageId", ["storageId"])
-    .index("by_expiresAt", ["expiresAt"]),
-
-  // Uploads stage their manifest in small chunks because the Convex CLI takes
-  // function arguments on the command line. Only publishDeployment copies a
-  // complete staged manifest into staticAssets, so partial uploads are never
-  // visible to HTTP requests.
-  stagedAssets: defineTable({
-    path: v.string(),
-    storageId: v.optional(v.id("_storage")),
-    blobId: v.optional(v.string()),
-    contentType: v.string(),
-    deploymentId: v.string(),
-  })
-    .index("by_deploymentId", ["deploymentId"])
+    .index("by_version_path", ["versionId", "path"])
+    .index("by_sha256", ["sha256"])
     .index("by_storageId", ["storageId"]),
-
-  // Old ConvexFS blobs are app-owned, so the component cannot delete them.
-  // Persist the IDs until the CLI's app-level delete function succeeds. This
-  // also makes cleanup recoverable when a publish response is lost.
-  pendingBlobCleanup: defineTable({
-    blobId: v.string(),
-  }).index("by_blobId", ["blobId"]),
-
-  // Storage IDs from the previous live manifest are queued by the atomic
-  // publish, then deleted in bounded follow-up mutations. This avoids both a
-  // large publish transaction and races with unrelated concurrent uploads.
-  pendingStorageCleanup: defineTable({
-    storageId: v.id("_storage"),
-  }).index("by_storageId", ["storageId"]),
-
-  // Cleanup may be queued before the first successful deployment exists, so
-  // its count cannot live only on deploymentInfo.
-  cleanupState: defineTable({
-    pendingBlobCleanupCount: v.number(),
-  }),
-
-  // Singleton table to track the current deployment
-  // Clients subscribe to this to know when to reload
-  deploymentInfo: defineTable({
-    currentDeploymentId: v.string(),
-    deployedAt: v.number(), // timestamp
-    // SPA fallback config for the current deployment. Set at upload time
-    // (`--no-spa` turns it off). Absent means enabled. Travels with the
-    // deploy so the serving behavior matches the code that was shipped.
-    spaFallback: v.optional(v.boolean()),
-    pendingBlobCleanupCount: v.optional(v.number()),
-  }),
 });

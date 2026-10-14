@@ -1,35 +1,17 @@
 # TanStack Start SSR example
 
-Renders TanStack Start pages inside a Convex HTTP action. The first HTML response already contains a
-count from a Convex query, and after React hydrates, the count stays live.
+TanStack Start pages rendered inside a Convex HTTP action. The first HTML response already contains
+a count from a Convex query, and the count stays live after React hydrates. `convex/http.ts` serves
+the browser files with `serveAsset` and renders every other path with the server build, through
+[`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start). The
+example has its own schema, so it needs its own Convex project.
 
-## How it works
+From `examples/tanstack-ssr`:
 
-- `convex/http.ts` has one catch-all route. It serves uploaded files with `serveStaticAsset`,
-  returns 404 for missing `/assets/` files, and renders every other path with the TanStack Start
-  server bundle.
-- `src/router.tsx` sets up Convex's TanStack Query integration, so data from
-  `useSuspenseQuery(convexQuery(...))` is in the first HTML and stays live.
-- [`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start) makes
-  TanStack Start run in the Convex runtime: `vite.config.ts` adds its `convexSsr()` plugin, and
-  `src/server.ts` re-exports its server entry.
-- `public/index.html` exists only because the uploader requires an `index.html`.
+- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. It renders the pages
+  in Vite's own server; the Convex HTTP action renders them only on the deployed site.
+- `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`.
+- `pnpm run deploy:dev`: build, upload, and push to the development deployment.
+- `pnpm run deploy`: build, upload, and push to production.
 
-## Run
-
-This example has its own schema, so use a separate Convex project. From the repository root:
-
-```bash
-pnpm install
-cd examples/tanstack-ssr
-pnpm run dev
-```
-
-The first run asks you to choose a Convex project. `pnpm run dev` then keeps the dev deployment in
-sync: each change rebuilds the page bundles, pushes the backend, and uploads the browser files. Open
-the `.convex.site` URL it prints. The page source contains the count and the render time. Open the
-page in two tabs: a click in one updates both.
-
-Backend pushes and file uploads are separate steps, so right after a change a page can briefly refer
-to scripts that are not uploaded yet. Both bundles contain the deployment URL, so rebuild before
-pushing to another deployment.
+For everything else, see the [README](../../README.md).

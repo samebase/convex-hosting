@@ -1,862 +1,522 @@
-import { v, type Infer } from "convex/values";
+import { ConvexError, v } from "convex/values";
+import { z } from "zod";
+import { Analytics } from "../workers-shared/asset-worker/src/analytics.js";
+import { normalizeConfiguration } from "../workers-shared/asset-worker/src/configuration.js";
+import { canFetch, handleRequest } from "../workers-shared/asset-worker/src/handler.js";
+import { mockJaegerBinding } from "../workers-shared/utils/tracing.js";
+import { AssetConfigSchema } from "../workers-shared/utils/types.js";
+import { internal } from "./_generated/api.js";
+import type { Doc, Id } from "./_generated/dataModel.js";
 import {
+  internalAction,
   internalMutation,
   internalQuery,
-  type MutationCtx,
+  mutation,
   query,
   type QueryCtx,
 } from "./_generated/server.js";
-import type { Id } from "./_generated/dataModel.js";
-import { hasFileExtension, isHtmlContentType } from "./serving.js";
 
-const staticAssetValidator = v.object({
-  _id: v.id("staticAssets"),
-  _creationTime: v.number(),
-  path: v.string(),
-  storageId: v.optional(v.id("_storage")),
-  blobId: v.optional(v.string()),
-  contentType: v.string(),
-  deploymentId: v.string(),
+/**
+ * The compatibility date of Cloudflare's handler. From 2025-04-01 on, Cloudflare applies
+ * `not_found_handling` to a request with `Sec-Fetch-Mode: navigate` when a Worker exists.
+ */
+const COMPATIBILITY_DATE = "2025-04-01";
+
+/**
+ * A version that never became live, and a stored file that no entry references, are garbage once
+ * they are a day old: a failed deploy leaves them, and an upload in progress is younger. This age
+ * bounds the garbage of failed deploys; it decides nothing about what is served.
+ */
+const GARBAGE_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Versions that one `collect` call reads in its page. A version document holds its config, at
+ * most 1 MiB (the CLI keeps the config at or below 900 KiB), so a page reads at most 8 MiB besides
+ * the versions its cursor has already seen at its time (normally none), and the current live
+ * version, read through `by_live`, 1 MiB more. A page cannot hold every version: failed deploys of
+ * the last day are not deleted yet, and each one is a version.
+ */
+const VERSION_PAGE = 8;
+
+/**
+ * Entries that one `collect` call deletes, without their stored files, across the versions of its
+ * page. Entries below 4 KiB read and delete at most 4 MiB, which, with the 9 MiB of version
+ * documents, keeps a call at 13 MiB of the 16 MiB read limit and, with the 8 version rows it may
+ * delete and the one it may mark `deleting`, at 13 MiB written. Documents read: at most 1,009 of
+ * 32,000. Index ranges: `by_live`, the page, and one range of entries per version, at most 10 of
+ * 4,096. Writes: at most 1,000 entries, 8 versions, and the next call, 1,009 of 16,000.
+ */
+const DELETE_BATCH = 1000;
+
+/**
+ * `_storage` documents that one `collect` call reads. Each one reads one index range
+ * (`by_storageId`) of at most one entry and may delete the file: 1,000 files are 1,000 index ranges,
+ * at most 2,000 documents read, and 1,000 writes.
+ */
+const SWEEP_BATCH = 1000;
+
+/**
+ * The file that `upload` stores and `createVersion` reads: Cloudflare's `AssetConfig` for the
+ * version, without the fields that are package code.
+ */
+const configSchema = AssetConfigSchema.pick({
+  html_handling: true,
+  not_found_handling: true,
+  headers: true,
+  redirects: true,
 });
 
-const resolvedAssetValidator = v.union(
-  staticAssetValidator,
-  staticAssetValidator.omit("_id").extend({
-    _id: v.id("retiredAssets"),
-    storageId: v.id("_storage"),
-    expiresAt: v.number(),
-  }),
-);
+export type Config = z.input<typeof configSchema>;
 
-const deploymentInfoValidator = v.object({
-  _id: v.id("deploymentInfo"),
-  _creationTime: v.number(),
-  currentDeploymentId: v.string(),
-  deployedAt: v.number(),
-  spaFallback: v.optional(v.boolean()),
-  pendingBlobCleanupCount: v.optional(v.number()),
-});
-
-const MAX_ASSETS_PER_DEPLOYMENT = 1800;
-const MAX_PUBLISH_MANIFEST_READS = 3800;
-const MAX_PUBLISH_DOCUMENT_WRITES = 15500;
-const MAX_MANIFEST_SERIALIZED_BYTES = 2 * 1024 * 1024;
-const MAINTENANCE_PAGE_LIMIT = 256;
-// The live manifest plus this scan is at most 3,800 documents. Remaining
-// staged lookups use an explicit budget below Convex's 4,096 read limit.
-const STORAGE_SCAN_LIMIT = 2000;
-const ABANDONED_UPLOAD_AGE_MS = 24 * 60 * 60 * 1000;
-const RETIRED_ASSET_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-const httpAssetValidator = v.object({
-  storageUrl: v.optional(v.string()),
-  blobId: v.optional(v.string()),
-  contentType: v.string(),
-  etag: v.optional(v.string()),
-  // TODO(remove in a future major): v1→v2 transitional only. Set when an
-  // inherited v1 row points at app-owned storage the component can't read, so
-  // the app-side `registerStaticRoutes` handler can serve it from its own
-  // storage during migration. Drop this field once v1 app-storage assets are
-  // no longer supported.
-  appStorageId: v.optional(v.string()),
-});
-
-async function resolveAssetDocument(
-  ctx: QueryCtx,
-  path: string,
-  spaFallbackOverride?: boolean,
-): Promise<Infer<typeof resolvedAssetValidator> | null> {
-  const exact = await ctx.db
-    .query("staticAssets")
-    .withIndex("by_path", (q) => q.eq("path", path))
-    .unique();
-  if (exact) return exact;
-
-  if (hasFileExtension(path)) {
-    // A file the current deployment replaced stays reachable for a while, so
-    // pages that are already open can still load their scripts. Old HTML never
-    // comes back.
-    const retired = await ctx.db
-      .query("retiredAssets")
-      .withIndex("by_path", (q) => q.eq("path", path))
-      .order("desc")
-      .first();
-    if (retired && !isHtmlContentType(retired.contentType)) return retired;
-    return null;
-  }
-
-  const info = await ctx.db.query("deploymentInfo").first();
-  const spaFallback = spaFallbackOverride ?? info?.spaFallback ?? true;
-  if (!spaFallback) return null;
-
+async function getVersion(ctx: QueryCtx, versionId: string) {
   return await ctx.db
-    .query("staticAssets")
-    .withIndex("by_path", (q) => q.eq("path", "/index.html"))
+    .query("versions")
+    .withIndex("by_versionId", (q) => q.eq("versionId", versionId))
     .unique();
 }
 
-async function deleteStorageFile(ctx: MutationCtx, storageId: Id<"_storage">) {
-  const retiredReference = await ctx.db
-    .query("retiredAssets")
-    .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
+async function getEntry(ctx: QueryCtx, versionId: string, path: string) {
+  return await ctx.db
+    .query("entries")
+    .withIndex("by_version_path", (q) => q.eq("versionId", versionId).eq("path", path))
+    .unique();
+}
+
+/** The `at` of the newest live version, or `null` when no version is live. */
+async function getNewestLiveAt(ctx: QueryCtx) {
+  const newest = await ctx.db
+    .query("versions")
+    .withIndex("by_live", (q) => q.eq("state.kind", "live"))
+    .order("desc")
     .first();
-  if (retiredReference) return false;
-  // A v2 component mounted with the old `selfHosting` name can inherit v1 rows
-  // containing app-owned storage IDs. They are deliberately invisible in the
-  // component namespace. Checking metadata avoids relying on backend error text
-  // and treats both those foreign IDs and already-deleted files as absent.
-  const metadata = await ctx.db.system.get("_storage", storageId);
-  if (metadata === null) return false;
-
-  await ctx.storage.delete(storageId);
-  return true;
+  return newest?.state.kind === "live" ? newest.state.at : null;
 }
 
-async function adjustPendingBlobCleanupCount(ctx: MutationCtx, delta: number): Promise<number> {
-  const state = await ctx.db.query("cleanupState").first();
-  if (state) {
-    const next = Math.max(0, state.pendingBlobCleanupCount + delta);
-    await ctx.db.patch("cleanupState", state._id, {
-      pendingBlobCleanupCount: next,
-    });
-    return next;
-  }
-
-  // Seed upgrades from the old denormalized field when present. On a fresh
-  // install this also works before deploymentInfo exists.
-  const info = await ctx.db.query("deploymentInfo").first();
-  const next = Math.max(0, (info?.pendingBlobCleanupCount ?? 0) + delta);
-  await ctx.db.insert("cleanupState", { pendingBlobCleanupCount: next });
-  return next;
+async function getVersionOrThrow(ctx: QueryCtx, versionId: string) {
+  const version = await getVersion(ctx, versionId);
+  if (version === null) throw new ConvexError(`Version ${versionId} does not exist.`);
+  return version;
 }
-
-export const getCurrentDeployment = query({
-  args: {},
-  returns: v.union(deploymentInfoValidator, v.null()),
-  handler: async (ctx) => {
-    const info = await ctx.db.query("deploymentInfo").first();
-    if (!info) return null;
-    const state = await ctx.db.query("cleanupState").first();
-    return {
-      ...info,
-      pendingBlobCleanupCount: state?.pendingBlobCleanupCount ?? info.pendingBlobCleanupCount,
-    };
-  },
-});
-
-// Narrow serving API used by the app-owned `registerStaticRoutes` compatibility
-// mode. The app can resolve a public asset, but all storage and deployment
-// management stays encapsulated in the component.
-export const resolveAssetForHttp = query({
-  args: {
-    path: v.string(),
-    spaFallback: v.optional(v.boolean()),
-  },
-  returns: v.union(httpAssetValidator, v.null()),
-  handler: async (ctx, { path, spaFallback }) => {
-    const asset = await resolveAssetDocument(ctx, path, spaFallback);
-    if (!asset) return null;
-
-    const storageUrl = asset.storageId ? await ctx.storage.getUrl(asset.storageId) : null;
-
-    // TODO(remove in a future major): v1→v2 transitional path. During a
-    // same-name migration, inherited v1 rows point at app-owned storage the
-    // component can't fetch (storageId present but no resolvable URL and no
-    // blob). Rather than hide them (which shows the setup page until the first
-    // v2 upload), surface the raw storage id so the app-side
-    // `registerStaticRoutes` handler can serve the file from its own storage —
-    // keeping the live site up with zero downtime and no re-upload. The
-    // component-owned HTTP handler still can't reach app storage, so it
-    // continues to show its setup page for this case. Once v1 app-storage
-    // assets are no longer supported, delete `appStorageId` and return null
-    // here instead.
-    const appStorageId =
-      asset.storageId && !storageUrl && !asset.blobId ? asset.storageId : undefined;
-
-    return {
-      ...(storageUrl ? { storageUrl } : {}),
-      ...(appStorageId ? { appStorageId } : {}),
-      ...(asset.blobId ? { blobId: asset.blobId } : {}),
-      contentType: asset.contentType,
-      ...(asset.storageId ? { etag: `"${asset.storageId}"` } : {}),
-    };
-  },
-});
-
-// Returns the deployment URLs visible to this component:
-//   siteUrl  - CONVEX_SITE_URL (includes the component's mount prefix). Used
-//              by the CLI to derive CONVEX_HOSTING_BASE_PATH and to show
-//              where the deployed app lives.
-//   cloudUrl - CONVEX_CLOUD_URL. Used by the CLI as VITE_CONVEX_URL when
-//              building the frontend.
-export const getUrls = internalQuery({
-  args: {},
-  returns: v.object({
-    siteUrl: v.string(),
-    cloudUrl: v.string(),
-  }),
-  handler: async () => ({
-    siteUrl: process.env.CONVEX_SITE_URL!,
-    cloudUrl: process.env.CONVEX_CLOUD_URL!,
-  }),
-});
-
-export const getByPath = internalQuery({
-  args: { path: v.string() },
-  returns: v.union(staticAssetValidator, v.null()),
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("staticAssets")
-      .withIndex("by_path", (q) => q.eq("path", args.path))
-      .unique();
-  },
-});
-
-// Resolves the asset the HTTP handler should serve for a request path: the
-// exact match, or, when SPA fallback is enabled for the current deployment
-// and the path looks like a client-side route (no file extension), the
-// index.html asset. Doing the fallback here keeps it to a single query.
-export const resolveAsset = internalQuery({
-  args: { path: v.string() },
-  returns: v.union(resolvedAssetValidator, v.null()),
-  handler: async (ctx, { path }) => {
-    return await resolveAssetDocument(ctx, path);
-  },
-});
-
-export const listAssets = internalQuery({
-  args: { limit: v.optional(v.number()) },
-  returns: v.array(staticAssetValidator),
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("staticAssets")
-      .order("asc")
-      .take(args.limit ?? 100);
-  },
-});
-
-export const generateUploadUrl = internalMutation({
-  args: {},
-  returns: v.string(),
-  handler: async (ctx) => {
-    return await ctx.storage.generateUploadUrl();
-  },
-});
 
 export const generateUploadUrls = internalMutation({
   args: { count: v.number() },
   returns: v.array(v.string()),
-  handler: async (ctx, { count }) => {
-    if (!Number.isInteger(count) || count < 1 || count > 100) {
-      throw new Error("Upload URL batch size must be an integer from 1 to 100");
-    }
-    const urls: string[] = [];
-    for (let i = 0; i < count; i++) {
-      urls.push(await ctx.storage.generateUploadUrl());
-    }
-    return urls;
+  handler: async (ctx, { count }) =>
+    await Promise.all(Array.from({ length: count }, () => ctx.storage.generateUploadUrl())),
+});
+
+/**
+ * Starts a version: reads its config from storage and creates the version in state `uploading`.
+ * Idempotent for the same id and config.
+ */
+export const createVersion = internalAction({
+  args: { versionId: v.string(), configId: v.id("_storage") },
+  returns: v.null(),
+  handler: async (ctx, { versionId, configId }) => {
+    const blob = await ctx.storage.get(configId);
+    if (blob === null) throw new ConvexError(`The config ${configId} is not in storage.`);
+    const config = configSchema.parse(JSON.parse(await blob.text()));
+    await ctx.runMutation(internal.lib.insertVersion, {
+      versionId,
+      config: JSON.stringify(config),
+    });
+    return null;
   },
 });
 
-export const listPendingBlobCleanup = internalQuery({
-  args: { limit: v.optional(v.number()) },
-  returns: v.array(v.string()),
-  handler: async (ctx, { limit }) => {
-    return (await ctx.db.query("pendingBlobCleanup").take(Math.min(limit ?? 250, 500))).map(
-      (entry) => entry.blobId,
-    );
+/** The write of `createVersion`: creates the version, unless it exists with the same config. */
+export const insertVersion = internalMutation({
+  args: { versionId: v.string(), config: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { versionId, config }) => {
+    const version = await getVersion(ctx, versionId);
+    if (version === null) {
+      await ctx.db.insert("versions", { versionId, state: { kind: "uploading" }, config });
+    } else if (version.config !== config) {
+      throw new ConvexError(`Version ${versionId} exists with a different config.`);
+    }
+    return null;
   },
 });
 
-export const acknowledgeBlobCleanup = internalMutation({
-  args: { blobIds: v.array(v.string()) },
-  returns: v.object({ acknowledged: v.number() }),
-  handler: async (ctx, { blobIds }) => {
-    let acknowledged = 0;
-    for (const blobId of new Set(blobIds)) {
-      const entries = await ctx.db
-        .query("pendingBlobCleanup")
-        .withIndex("by_blobId", (q) => q.eq("blobId", blobId))
-        .collect();
-      for (const entry of entries) {
-        await ctx.db.delete("pendingBlobCleanup", entry._id);
-        acknowledged++;
-      }
-    }
-
-    if (acknowledged > 0) {
-      await adjustPendingBlobCleanupCount(ctx, -acknowledged);
-    }
-    return { acknowledged };
-  },
-});
-
-export const queueBlobCleanup = internalMutation({
-  args: { blobIds: v.array(v.string()) },
-  returns: v.object({ queued: v.number() }),
-  handler: async (ctx, { blobIds }) => {
-    let queued = 0;
-    for (const blobId of new Set(blobIds)) {
-      const existing = await ctx.db
-        .query("pendingBlobCleanup")
-        .withIndex("by_blobId", (q) => q.eq("blobId", blobId))
+/**
+ * The stored file of each hash that an entry of any version already has, in the order of
+ * `sha256s`.
+ *
+ * Each hash reads one index range (`by_sha256`) of at most one document. The CLI sends at most
+ * 8,000 characters of arguments, which hold at most 119 hashes of 67 characters: 119 index ranges
+ * of 4,096 and 119 documents read of 32,000.
+ */
+export const knownFiles = internalQuery({
+  args: { sha256s: v.array(v.string()) },
+  returns: v.array(v.object({ sha256: v.string(), storageId: v.id("_storage") })),
+  handler: async (ctx, { sha256s }) => {
+    const known: { sha256: string; storageId: Id<"_storage"> }[] = [];
+    for (const sha256 of sha256s) {
+      const entry = await ctx.db
+        .query("entries")
+        .withIndex("by_sha256", (q) => q.eq("sha256", sha256))
         .first();
-      if (existing) continue;
-      await ctx.db.insert("pendingBlobCleanup", { blobId });
-      queued++;
+      if (entry !== null) known.push({ sha256, storageId: entry.storageId });
     }
-
-    if (queued > 0) await adjustPendingBlobCleanupCount(ctx, queued);
-    return { queued };
+    return known;
   },
 });
 
-export const cleanupPendingStorage = internalMutation({
-  args: { limit: v.optional(v.number()) },
-  returns: v.object({
-    processed: v.number(),
-    deleted: v.number(),
-    needsAnotherPass: v.boolean(),
-  }),
-  handler: async (ctx, { limit }) => {
-    const batchLimit = Math.min(limit ?? MAINTENANCE_PAGE_LIMIT, MAINTENANCE_PAGE_LIMIT);
-    const expired = await ctx.db
-      .query("retiredAssets")
-      .withIndex("by_expiresAt", (q) => q.lte("expiresAt", Date.now()))
-      .take(batchLimit);
-    for (const asset of expired) {
-      await ctx.db.insert("pendingStorageCleanup", {
-        storageId: asset.storageId,
-      });
-      await ctx.db.delete("retiredAssets", asset._id);
+/**
+ * Inserts complete entries into an `uploading` version, after checking that each stored file has
+ * the entry's sha256. An entry that exists with the same sha256 is skipped, so a retried batch
+ * passes; one that exists with another sha256 is refused.
+ *
+ * Each entry reads one index range (`by_version_path`) of at most one document and one `_storage`
+ * document, and writes at most one document. The CLI sends at most 8,000 characters of arguments,
+ * and an entry takes at least 135 of them (its sha256 and storage id alone are 96), so a call has
+ * at most 60 entries: 60 index ranges of 4,096, at most 121 documents read of 32,000 with the
+ * version, and 60 writes of 16,000.
+ */
+export const recordFiles = internalMutation({
+  args: {
+    versionId: v.string(),
+    entries: v.array(
+      v.object({
+        path: v.string(),
+        sha256: v.string(),
+        contentType: v.optional(v.string()),
+        storageId: v.id("_storage"),
+      }),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, { versionId, entries }) => {
+    const version = await getVersionOrThrow(ctx, versionId);
+    if (version.state.kind !== "uploading") {
+      throw new ConvexError(`Version ${versionId} is ${version.state.kind}, not uploading.`);
     }
-    const entries = await ctx.db.query("pendingStorageCleanup").take(batchLimit);
-    let deleted = 0;
     for (const entry of entries) {
-      const [liveReference, stagedReference] = await Promise.all([
-        ctx.db
-          .query("staticAssets")
-          .withIndex("by_storageId", (q) => q.eq("storageId", entry.storageId))
-          .first(),
-        ctx.db
-          .query("stagedAssets")
-          .withIndex("by_storageId", (q) => q.eq("storageId", entry.storageId))
-          .first(),
-      ]);
-      if (!liveReference && !stagedReference && (await deleteStorageFile(ctx, entry.storageId))) {
-        deleted++;
-      }
-      await ctx.db.delete("pendingStorageCleanup", entry._id);
-    }
-    return {
-      processed: entries.length,
-      deleted,
-      needsAnotherPass: entries.length === batchLimit || expired.length === batchLimit,
-    };
-  },
-});
-
-export const deleteUploadedFiles = internalMutation({
-  args: { storageIds: v.array(v.id("_storage")) },
-  returns: v.object({
-    deleted: v.number(),
-    alreadyMissing: v.number(),
-    stillReferenced: v.number(),
-  }),
-  handler: async (ctx, { storageIds }) => {
-    // A publish can commit even if the CLI loses its response. Never delete a
-    // file that the live manifest now references during failure cleanup.
-    const liveAssets = await ctx.db.query("staticAssets").collect();
-    const referencedStorageIds = new Set(
-      liveAssets.flatMap((asset) => (asset.storageId === undefined ? [] : [asset.storageId])),
-    );
-    let deleted = 0;
-    let alreadyMissing = 0;
-    let stillReferenced = 0;
-    for (const storageId of storageIds) {
-      const retiredReference = await ctx.db
-        .query("retiredAssets")
-        .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
-        .first();
-      if (referencedStorageIds.has(storageId) || retiredReference) {
-        stillReferenced++;
+      const existing = await getEntry(ctx, versionId, entry.path);
+      if (existing !== null) {
+        if (existing.sha256 !== entry.sha256) {
+          throw new ConvexError(`Version ${versionId} has other contents at ${entry.path}.`);
+        }
         continue;
       }
-      if (await deleteStorageFile(ctx, storageId)) {
-        deleted++;
-      } else {
-        alreadyMissing++;
+      const stored = await ctx.db.system.get("_storage", entry.storageId);
+      if (stored === null) {
+        throw new ConvexError(
+          `The stored file of ${entry.path} is gone, deleted by the age rule; run the deploy again.`,
+        );
       }
+      if (base64ToHex(stored.sha256) !== entry.sha256) {
+        throw new ConvexError(`The file stored for ${entry.path} does not match its sha256.`);
+      }
+      await ctx.db.insert("entries", {
+        versionId,
+        path: entry.path,
+        sha256: entry.sha256,
+        contentType: entry.contentType,
+        storageId: entry.storageId,
+      });
     }
-    return { deleted, alreadyMissing, stillReferenced };
+    return null;
   },
 });
 
-const recordAssetFields = {
-  path: v.string(),
-  storageId: v.optional(v.id("_storage")),
-  blobId: v.optional(v.string()),
-  contentType: v.string(),
-  deploymentId: v.string(),
-};
-
-function assertAssetLocation({
-  path,
-  storageId,
-  blobId,
-}: {
-  path: string;
-  storageId?: Id<"_storage">;
-  blobId?: string;
-}) {
-  if ((storageId === undefined) === (blobId === undefined)) {
-    throw new Error("Asset " + path + " must have exactly one of storageId or blobId");
-  }
-}
-
-function assertAssetManifest(
-  assets: Array<{
-    path: string;
-    storageId?: Id<"_storage">;
-    blobId?: string;
-    deploymentId: string;
-  }>,
-  deploymentId?: string,
-  requireIndex = false,
-) {
-  if (requireIndex && assets.length === 0) {
-    throw new Error("A static asset manifest cannot be empty");
-  }
-  if (requireIndex && assets.length > MAX_ASSETS_PER_DEPLOYMENT) {
-    throw new Error(
-      `A static asset manifest can contain at most ${MAX_ASSETS_PER_DEPLOYMENT} files`,
-    );
-  }
-
-  const paths = new Set<string>();
-  for (const asset of assets) {
-    assertAssetLocation(asset);
-    if (paths.has(asset.path)) {
-      throw new Error("Duplicate asset path: " + asset.path);
+/**
+ * Marks an `uploading` version `ready`. The CLI calls it after every `recordFiles` batch succeeded.
+ * A version that is already `ready` or `live` stays as it is.
+ */
+export const finishVersion = internalMutation({
+  args: { versionId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { versionId }) => {
+    const version = await getVersionOrThrow(ctx, versionId);
+    if (version.state.kind === "uploading") {
+      await ctx.db.patch("versions", version._id, { state: { kind: "ready" } });
     }
-    if (deploymentId !== undefined && asset.deploymentId !== deploymentId) {
-      throw new Error("Asset " + asset.path + " has the wrong deploymentId");
-    }
-    paths.add(asset.path);
-  }
-
-  if (requireIndex && !paths.has("/index.html")) {
-    throw new Error("A static asset manifest must include /index.html");
-  }
-}
-
-export const stageAssets = internalMutation({
-  args: { assets: v.array(v.object(recordAssetFields)) },
-  returns: v.object({ staged: v.number() }),
-  handler: async (ctx, { assets }) => {
-    if (assets.length === 0) {
-      throw new Error("Cannot stage an empty asset chunk");
-    }
-
-    // Validate locations and deployment IDs within this chunk now. Duplicate
-    // paths across chunks are checked again when the full manifest publishes.
-    const deploymentId = assets[0].deploymentId;
-    for (const asset of assets) {
-      assertAssetLocation(asset);
-      if (asset.deploymentId !== deploymentId) {
-        throw new Error("A staged asset chunk must use one deploymentId");
-      }
-      // Validate component-storage IDs while the manifest is still split into
-      // small CLI chunks. Doing this for the complete manifest during publish
-      // would exceed Convex's index-range-read limit on large deployments.
-      if (asset.storageId && (await ctx.db.system.get("_storage", asset.storageId)) === null) {
-        throw new Error(`Staged storage file is missing for ${asset.path}`);
-      }
-      await ctx.db.insert("stagedAssets", asset);
-    }
-    return { staged: assets.length };
+    return null;
   },
 });
 
-export const discardStagedDeployment = internalMutation({
-  args: { deploymentId: v.string() },
-  returns: v.object({ discarded: v.number() }),
-  handler: async (ctx, { deploymentId }) => {
-    const assets = await ctx.db
-      .query("stagedAssets")
-      .withIndex("by_deploymentId", (q) => q.eq("deploymentId", deploymentId))
-      .collect();
-    for (const asset of assets) {
-      await ctx.db.delete("stagedAssets", asset._id);
+/**
+ * Marks a `ready` version `live` and schedules `collect`. `serveAsset` calls it at the first
+ * request that the version's pushed code serves, with the `at` of the newest live version that
+ * `route` saw for that request. A mark succeeds only when the state it was based on is still the
+ * state: when the newest live version changed between the request's lookup and this mark, it does
+ * nothing, so a request whose code was replaced between its lookup and its mark cannot make its
+ * version newest. A version that is already live stays as it is, so concurrent first requests are
+ * fine.
+ */
+export const markLive = mutation({
+  args: { versionId: v.string(), expectedNewestLiveAt: v.union(v.number(), v.null()) },
+  returns: v.null(),
+  handler: async (ctx, { versionId, expectedNewestLiveAt }) => {
+    const version = await getVersionOrThrow(ctx, versionId);
+    if (version.state.kind === "live") return null;
+    if (version.state.kind === "uploading") {
+      throw new ConvexError(`Version ${versionId} is still uploading.`);
     }
-    return { discarded: assets.length };
+    if (version.state.kind === "deleting") {
+      throw new ConvexError(`Version ${versionId} is being deleted.`);
+    }
+    const newestLiveAt = await getNewestLiveAt(ctx);
+    if (newestLiveAt !== expectedNewestLiveAt) return null;
+    // Strictly newer than the newest, also within one millisecond, so that `collect` deletes it.
+    const at = newestLiveAt === null ? Date.now() : Math.max(Date.now(), newestLiveAt + 1);
+    await ctx.db.patch("versions", version._id, { state: { kind: "live", at } });
+    await ctx.scheduler.runAfter(0, internal.lib.collect, { step: { kind: "files" } });
+    return null;
   },
 });
 
-export const cleanupAbandonedStaging = internalMutation({
+/**
+ * One chain of calls, one batch per call, each scheduling the next with `runAfter(0)` while work
+ * remains. First the `_storage` files that no entry references and that are older than
+ * `GARBAGE_AGE_MS`; then the versions, a page of `VERSION_PAGE` at a time in creation order: the
+ * live versions older than the current live one, whose code is gone because the current one has
+ * served since, and the versions that are not live and older than `GARBAGE_AGE_MS`, with their
+ * entries.
+ *
+ * A stored file is deleted when no entry references it, it is a day old, and it was already
+ * unreferenced when the chain started: the files that this chain's version deletion frees wait for
+ * a later chain, at a later switch. An upload in progress may have taken a stored file from
+ * `knownFiles` and not recorded its entry yet; it therefore fails only if two switches happen
+ * during that one upload, and a retry works.
+ *
+ * Both steps walk `by_creation_time` with a cursor: the creation time of the last document handled
+ * and the ids already handled at that time. Convex gives every document of one transaction the
+ * same creation time, and creation times are not unique across transactions either, so a cursor of
+ * a time alone would skip the other documents at the boundary. The next call reads from that time
+ * on and skips the ids in `seen`, which hold the documents of one time, normally one; it reads
+ * that many more documents, so a page still holds a full batch of new ones when they exist, and it
+ * keeps at most a batch, because a seen document may be gone.
+ */
+export const collect = internalMutation({
   args: {
-    before: v.optional(v.number()),
-    limit: v.optional(v.number()),
+    /** The step of the chain: the file sweep, then the versions, each after its cursor. */
+    step: v.union(
+      v.object({
+        kind: v.literal("files"),
+        after: v.optional(v.object({ at: v.number(), seen: v.array(v.id("_storage")) })),
+      }),
+      v.object({
+        kind: v.literal("versions"),
+        after: v.optional(v.object({ at: v.number(), seen: v.array(v.id("versions")) })),
+      }),
+    ),
   },
-  returns: v.object({
-    discarded: v.number(),
-    deletedFiles: v.number(),
-    queuedBlobIds: v.number(),
-  }),
-  handler: async (ctx, { before, limit }) => {
-    const cutoff = before ?? Date.now() - ABANDONED_UPLOAD_AGE_MS;
-    const candidates = await ctx.db
-      .query("stagedAssets")
-      .order("asc")
-      .take(Math.min(limit ?? MAINTENANCE_PAGE_LIMIT, MAINTENANCE_PAGE_LIMIT));
-    const assets = candidates.filter((asset) => asset._creationTime < cutoff);
-    let deletedFiles = 0;
-    let queuedBlobIds = 0;
-    for (const asset of assets) {
-      if (asset.storageId) {
-        const liveReference = await ctx.db
-          .query("staticAssets")
-          .withIndex("by_storageId", (q) => q.eq("storageId", asset.storageId))
+  returns: v.null(),
+  handler: async (ctx, { step }) => {
+    const garbageBefore = Date.now() - GARBAGE_AGE_MS;
+
+    if (step.kind === "files") {
+      const after = step.after;
+      const files = (
+        await ctx.db.system
+          .query("_storage")
+          .withIndex("by_creation_time", (q) =>
+            after === undefined
+              ? q.lt("_creationTime", garbageBefore)
+              : q.gte("_creationTime", after.at).lt("_creationTime", garbageBefore),
+          )
+          .take(SWEEP_BATCH + (after?.seen.length ?? 0))
+      )
+        .filter((file) => !after?.seen.includes(file._id))
+        .slice(0, SWEEP_BATCH);
+      let finished = after;
+      for (const file of files) {
+        const entry = await ctx.db
+          .query("entries")
+          .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
           .first();
-        if (!liveReference && (await deleteStorageFile(ctx, asset.storageId))) {
-          deletedFiles++;
+        if (entry === null) await ctx.storage.delete(file._id);
+        finished = advance(finished, file);
+      }
+      await ctx.scheduler.runAfter(0, internal.lib.collect, {
+        step:
+          files.length === SWEEP_BATCH ? { kind: "files", after: finished } : { kind: "versions" },
+      });
+      return null;
+    }
+
+    const after = step.after;
+    const currentAt = await getNewestLiveAt(ctx);
+    const page = (
+      await ctx.db
+        .query("versions")
+        .withIndex("by_creation_time", (q) =>
+          after === undefined ? q : q.gte("_creationTime", after.at),
+        )
+        .take(VERSION_PAGE + (after?.seen.length ?? 0))
+    )
+      .filter((version) => !after?.seen.includes(version._id))
+      .slice(0, VERSION_PAGE);
+    let budget = DELETE_BATCH;
+    let finished = after;
+    for (const version of page) {
+      const { state } = version;
+      const garbage =
+        state.kind === "deleting" ||
+        (state.kind === "live"
+          ? currentAt !== null && state.at < currentAt
+          : version._creationTime < garbageBefore);
+      if (garbage) {
+        const entries = await ctx.db
+          .query("entries")
+          .withIndex("by_version_path", (q) => q.eq("versionId", version.versionId))
+          .take(budget);
+        for (const entry of entries) await ctx.db.delete("entries", entry._id);
+        if (entries.length === budget) {
+          // The version may have more entries: the next call reads it again. Until its row goes,
+          // it is `deleting`, so that no request serves it or marks it live between the pages.
+          if (state.kind !== "deleting") {
+            await ctx.db.patch("versions", version._id, { state: { kind: "deleting" } });
+          }
+          await ctx.scheduler.runAfter(0, internal.lib.collect, {
+            step: { kind: "versions", after: finished },
+          });
+          return null;
         }
+        budget -= entries.length;
+        await ctx.db.delete("versions", version._id);
       }
-      if (asset.blobId) {
-        await ctx.db.insert("pendingBlobCleanup", { blobId: asset.blobId });
-        queuedBlobIds++;
-      }
-      await ctx.db.delete("stagedAssets", asset._id);
+      finished = advance(finished, version);
     }
-
-    if (queuedBlobIds > 0) {
-      await adjustPendingBlobCleanupCount(ctx, queuedBlobIds);
+    if (page.length === VERSION_PAGE) {
+      await ctx.scheduler.runAfter(0, internal.lib.collect, {
+        step: { kind: "versions", after: finished },
+      });
     }
-    return {
-      discarded: assets.length,
-      deletedFiles,
-      queuedBlobIds,
-    };
+    return null;
   },
 });
 
-export const cleanupUnreferencedStorage = internalMutation({
-  args: {
-    before: v.optional(v.number()),
-    limit: v.optional(v.number()),
-    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
-  },
-  returns: v.object({
-    scanned: v.number(),
-    deleted: v.number(),
-    needsAnotherPass: v.boolean(),
-  }),
-  handler: async (ctx, { before, limit, order }) => {
-    const cutoff = before ?? Date.now() - ABANDONED_UPLOAD_AGE_MS;
-    const scanOrder = order ?? "asc";
-    // Read the live set once, then spend the remaining read budget checking
-    // staged references for non-live files. At the 1,800-file maximum this can
-    // inspect 2,000 storage rows while remaining below 4,096 document reads.
-    const [liveAssets, files] = await Promise.all([
-      ctx.db.query("staticAssets").collect(),
-      ctx.db.system.query("_storage").order(scanOrder).take(STORAGE_SCAN_LIMIT),
-    ]);
-    const liveStorageIds = new Set(
-      liveAssets.flatMap((asset) => (asset.storageId === undefined ? [] : [asset.storageId])),
-    );
-    const stagedLookupBudget = Math.max(0, 3900 - liveAssets.length - files.length);
-    const deleteLimit = Math.min(limit ?? MAINTENANCE_PAGE_LIMIT, MAINTENANCE_PAGE_LIMIT);
-    let deleted = 0;
-    let scanned = 0;
-    let stagedLookups = 0;
-    let stoppedForReadBudget = false;
-    for (const file of files) {
-      if (deleted >= deleteLimit) break;
-      if (file._creationTime >= cutoff) {
-        if (scanOrder === "asc") break;
-        continue;
-      }
-      scanned++;
-      if (liveStorageIds.has(file._id)) continue;
-      if (stagedLookups + 2 > stagedLookupBudget) {
-        stoppedForReadBudget = true;
-        break;
-      }
-      stagedLookups += 2;
-      const stagedReference = await ctx.db
-        .query("stagedAssets")
-        .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
-        .first();
-      const retiredReference = await ctx.db
-        .query("retiredAssets")
-        .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
-        .first();
-      if (!stagedReference && !retiredReference) {
-        await ctx.storage.delete(file._id);
-        deleted++;
-      }
-    }
-    return {
-      scanned,
-      deleted,
-      needsAnotherPass:
-        deleted === deleteLimit ||
-        // Without deletes, another pass would inspect the same protected prefix.
-        (deleted > 0 && (stoppedForReadBudget || files.length === STORAGE_SCAN_LIMIT)),
-    };
-  },
-});
-
-async function setCurrentDeployment(
-  ctx: MutationCtx,
-  currentDeploymentId: string,
-  spaFallback: boolean,
-  pendingBlobCleanupCount?: number,
+/** The cursor of `collect` after `document`: its creation time and the ids handled at that time. */
+function advance<DocumentId extends string>(
+  cursor: { at: number; seen: DocumentId[] } | undefined,
+  document: { _id: DocumentId; _creationTime: number },
 ) {
-  const existing = await ctx.db.query("deploymentInfo").first();
-  if (existing) {
-    await ctx.db.patch("deploymentInfo", existing._id, {
-      currentDeploymentId,
-      deployedAt: Date.now(),
-      spaFallback,
-      ...(pendingBlobCleanupCount === undefined ? {} : { pendingBlobCleanupCount }),
-    });
-  } else {
-    await ctx.db.insert("deploymentInfo", {
-      currentDeploymentId,
-      deployedAt: Date.now(),
-      spaFallback,
-      ...(pendingBlobCleanupCount === undefined ? {} : { pendingBlobCleanupCount }),
-    });
-  }
+  return cursor !== undefined && cursor.at === document._creationTime
+    ? { at: cursor.at, seen: [...cursor.seen, document._id] }
+    : { at: document._creationTime, seen: [document._id] };
 }
 
-export const recordAsset = internalMutation({
-  args: recordAssetFields,
-  returns: v.union(v.string(), v.null()),
-  handler: async (ctx, args) => {
-    assertAssetLocation(args);
-    const existing = await ctx.db
-      .query("staticAssets")
-      .withIndex("by_path", (q) => q.eq("path", args.path))
-      .unique();
-    if (existing) {
-      if (existing.storageId) {
-        await deleteStorageFile(ctx, existing.storageId);
-      }
-      await ctx.db.delete("staticAssets", existing._id);
-    }
-    await ctx.db.insert("staticAssets", {
-      path: args.path,
-      ...(args.storageId ? { storageId: args.storageId } : {}),
-      ...(args.blobId ? { blobId: args.blobId } : {}),
-      contentType: args.contentType,
-      deploymentId: args.deploymentId,
-    });
-    return existing?.blobId ?? null;
-  },
-});
+const routeHeaders = v.record(v.string(), v.string());
 
-export const recordAssets = internalMutation({
-  args: { assets: v.array(v.object(recordAssetFields)) },
-  returns: v.object({ blobIds: v.array(v.string()) }),
-  handler: async (ctx, { assets }) => {
-    assertAssetManifest(assets);
-
-    const blobIds: string[] = [];
-    for (const asset of assets) {
-      const existing = await ctx.db
-        .query("staticAssets")
-        .withIndex("by_path", (q) => q.eq("path", asset.path))
-        .unique();
-      if (existing) {
-        if (existing.storageId) {
-          await deleteStorageFile(ctx, existing.storageId);
-        }
-        if (existing.blobId) {
-          blobIds.push(existing.blobId);
-        }
-        await ctx.db.delete("staticAssets", existing._id);
-      }
-      await ctx.db.insert("staticAssets", {
-        path: asset.path,
-        ...(asset.storageId ? { storageId: asset.storageId } : {}),
-        ...(asset.blobId ? { blobId: asset.blobId } : {}),
-        contentType: asset.contentType,
-        deploymentId: asset.deploymentId,
-      });
-    }
-    return { blobIds };
-  },
-});
-
-// Publish the complete manifest, deployment metadata, and old-asset cleanup in
-// one mutation. Until this succeeds, the previous deployment remains wholly
-// live. Failure cleanup separately checks the live manifest before deleting
-// newly uploaded files in case this mutation committed but its response was
-// lost.
-export const publishDeployment = internalMutation({
-  args: {
-    currentDeploymentId: v.string(),
-    expectedAssetCount: v.number(),
-    spaFallback: v.optional(v.boolean()),
-  },
+/**
+ * Runs Cloudflare's asset handler for one request against one version. `state` is the kind of the
+ * version's state, or `null` when the version does not exist. `newestLiveAt` is, for a `ready`
+ * version, the `at` of the newest live version that this query saw, which `serveAsset` passes to
+ * `markLive`; otherwise `null`, and a live version's requests read nothing more. `asset` is
+ * `null` when the version is uploading, being deleted, or does not exist, or when no asset answers.
+ */
+export const route = query({
+  args: { versionId: v.string(), method: v.string(), url: v.string(), headers: routeHeaders },
   returns: v.object({
-    deleted: v.number(),
-    pendingBlobCleanup: v.number(),
+    state: v.union(
+      v.literal("uploading"),
+      v.literal("ready"),
+      v.literal("live"),
+      v.literal("deleting"),
+      v.null(),
+    ),
+    newestLiveAt: v.union(v.number(), v.null()),
+    asset: v.union(
+      v.null(),
+      v.object({
+        status: v.number(),
+        headers: v.array(v.object({ name: v.string(), value: v.string() })),
+        /** The storage URL of the body, when the response has one. */
+        bodyUrl: v.union(v.string(), v.null()),
+      }),
+    ),
   }),
-  handler: async (ctx, { currentDeploymentId, expectedAssetCount, spaFallback }) => {
-    if (
-      !Number.isInteger(expectedAssetCount) ||
-      expectedAssetCount < 1 ||
-      expectedAssetCount > MAX_ASSETS_PER_DEPLOYMENT
-    ) {
-      throw new Error(
-        `expectedAssetCount must be an integer from 1 to ${MAX_ASSETS_PER_DEPLOYMENT}`,
-      );
+  handler: async (ctx, { versionId, method, url, headers }) => {
+    const version = await getVersion(ctx, versionId);
+    if (version === null) return { state: null, newestLiveAt: null, asset: null };
+    const state = version.state.kind;
+    if (state === "uploading" || state === "deleting") {
+      return { state, newestLiveAt: null, asset: null };
     }
-    const stagedAssets = await ctx.db
-      .query("stagedAssets")
-      .withIndex("by_deploymentId", (q) => q.eq("deploymentId", currentDeploymentId))
-      .take(expectedAssetCount + 1);
-    const assets = stagedAssets.map(({ path, storageId, blobId, contentType, deploymentId }) => ({
-      path,
-      storageId,
-      blobId,
-      contentType,
-      deploymentId,
-    }));
-    if (assets.length !== expectedAssetCount) {
-      throw new Error(`Staged manifest has ${assets.length} files; expected ${expectedAssetCount}`);
-    }
-    assertAssetManifest(assets, currentDeploymentId, true);
-    const manifestBytes = new TextEncoder().encode(JSON.stringify(assets)).byteLength;
-    if (manifestBytes > MAX_MANIFEST_SERIALIZED_BYTES) {
-      throw new Error(
-        `The staged manifest is ${manifestBytes} bytes, above the safe limit of ${MAX_MANIFEST_SERIALIZED_BYTES} bytes. Shorten asset paths or reduce the number of files.`,
-      );
-    }
+    const newestLiveAt = state === "ready" ? await getNewestLiveAt(ctx) : null;
 
-    // Leave headroom below Convex's 4,096 document-read ceiling for deployment
-    // metadata and index bookkeeping. Taking one extra old row lets oversized
-    // v1-to-v2 migrations fail clearly instead of exceeding the platform limit.
-    const oldAssetReadLimit = MAX_PUBLISH_MANIFEST_READS - assets.length + 1;
-    const oldAssets = await ctx.db.query("staticAssets").take(oldAssetReadLimit);
-    if (assets.length + oldAssets.length > MAX_PUBLISH_MANIFEST_READS) {
-      throw new Error(
-        `The old and new manifests contain more than ${MAX_PUBLISH_MANIFEST_READS} rows combined. Reduce the new build or clean up the legacy manifest before migrating.`,
-      );
-    }
-    const retiredAssets = oldAssets.flatMap((asset) => {
-      if (asset.storageId !== undefined && asset.blobId === undefined) {
-        return [
-          {
-            _id: asset._id,
-            path: asset.path,
-            storageId: asset.storageId,
-            contentType: asset.contentType,
-            deploymentId: asset.deploymentId,
-          },
-        ];
-      }
-      return [];
+    const configuration = normalizeConfiguration({
+      ...AssetConfigSchema.parse(JSON.parse(version.config)),
+      compatibility_date: COMPATIBILITY_DATE,
     });
-    const retiredIds = new Set(retiredAssets.map((asset) => asset._id));
-    const blobIds: string[] = [];
-    const storageIds = new Set<Id<"_storage">>();
-    for (const asset of oldAssets) {
-      if (retiredIds.has(asset._id)) continue;
-      if (asset.blobId) blobIds.push(asset.blobId);
-      if (asset.storageId) storageIds.add(asset.storageId);
-    }
-    const plannedDocumentWrites =
-      oldAssets.length +
-      storageIds.size +
-      blobIds.length +
-      assets.length +
-      stagedAssets.length +
-      retiredAssets.length +
-      2;
-    if (plannedDocumentWrites > MAX_PUBLISH_DOCUMENT_WRITES) {
-      throw new Error(
-        `Publishing this manifest would require ${plannedDocumentWrites} document writes, above the safe limit of ${MAX_PUBLISH_DOCUMENT_WRITES}. Reduce the number of files in the deployment.`,
-      );
-    }
+    const request = new Request(url, { method, headers });
+    const env = { JAEGER: mockJaegerBinding() };
 
-    for (const asset of oldAssets) {
-      await ctx.db.delete("staticAssets", asset._id);
-    }
+    // `exists` returns an ETag; `getByETag` gets the entry back for that ETag.
+    const found = new Map<string, Doc<"entries">>();
+    const exists = async (pathname: string) => {
+      const entry = await getEntry(ctx, versionId, pathname);
+      if (entry === null) return null;
+      const eTag = entry.sha256 + (await shortHash(entry.contentType ?? ""));
+      found.set(eTag, entry);
+      return eTag;
+    };
+    let bodyEntry: Doc<"entries"> | undefined;
+    const getByETag = async (eTag: string) => {
+      bodyEntry = found.get(eTag);
+      if (bodyEntry === undefined) throw new Error(`No entry has the ETag ${eTag}.`);
+      return {
+        // `serveAsset` replaces this placeholder with the stored file.
+        readableStream: new ReadableStream(),
+        contentType: bodyEntry.contentType,
+        cacheStatus: "MISS" as const,
+      };
+    };
 
-    for (const { _id, ...asset } of retiredAssets) {
-      await ctx.db.insert("retiredAssets", {
-        ...asset,
-        expiresAt: Date.now() + RETIRED_ASSET_AGE_MS,
-      });
+    if (!(await canFetch(request, env, configuration, exists))) {
+      return { state, newestLiveAt, asset: null };
     }
+    const response = await handleRequest(
+      request,
+      env,
+      configuration,
+      exists,
+      getByETag,
+      new Analytics(),
+    );
+    // It describes Cloudflare's cache, which does not exist here.
+    response.headers.delete("CF-Cache-Status");
 
-    for (const asset of assets) {
-      await ctx.db.insert("staticAssets", {
-        path: asset.path,
-        ...(asset.storageId ? { storageId: asset.storageId } : {}),
-        ...(asset.blobId ? { blobId: asset.blobId } : {}),
-        contentType: asset.contentType,
-        deploymentId: asset.deploymentId,
-      });
+    let bodyUrl: string | null = null;
+    if (response.body !== null && bodyEntry !== undefined) {
+      bodyUrl = await ctx.storage.getUrl(bodyEntry.storageId);
+      // The file is gone from storage. As in `serveAsset` when storage answers 404, the answer must
+      // not stay in a cache.
+      if (bodyUrl === null) {
+        return {
+          state,
+          newestLiveAt,
+          asset: { status: 404, headers: [{ name: "cache-control", value: "no-store" }], bodyUrl },
+        };
+      }
     }
-
-    for (const asset of stagedAssets) {
-      await ctx.db.delete("stagedAssets", asset._id);
-    }
-
-    for (const blobId of blobIds) {
-      await ctx.db.insert("pendingBlobCleanup", { blobId });
-    }
-    for (const storageId of storageIds) {
-      await ctx.db.insert("pendingStorageCleanup", { storageId });
-    }
-
-    const pendingBlobCleanup = await adjustPendingBlobCleanupCount(ctx, blobIds.length);
-    await setCurrentDeployment(ctx, currentDeploymentId, spaFallback ?? true, pendingBlobCleanup);
-    // Old component-storage objects are collected in a separate bounded
-    // maintenance mutation. Keeping those deletes out of this transaction is
-    // what lets a 1,800-file manifest switch atomically below Convex's read
-    // and write limits.
-    return { deleted: 0, pendingBlobCleanup };
+    return {
+      state,
+      newestLiveAt,
+      asset: {
+        status: response.status,
+        headers: [...response.headers].map(([name, value]) => ({ name, value })),
+        bodyUrl,
+      },
+    };
   },
 });
 
-// Commits a finished upload as the current deployment: records the deployment
-// id + SPA config, then garbage-collects assets left over from previous
-// deployments. Returns the storage cleanup tally plus any CDN blobIds the
-// caller should delete (component actions can't reach the /fs blobs endpoint).
-export const commitDeployment = internalMutation({
-  args: {
-    currentDeploymentId: v.string(),
-    // Whether to serve SPA fallback for this deployment (default true).
-    spaFallback: v.optional(v.boolean()),
-  },
-  returns: v.object({
-    deleted: v.number(),
-    blobIds: v.array(v.string()),
-  }),
-  handler: async (ctx, args) => {
-    const oldAssets = await ctx.db.query("staticAssets").collect();
-    const blobIds: string[] = [];
-    let deleted = 0;
-    for (const asset of oldAssets) {
-      if (asset.deploymentId === args.currentDeploymentId) continue;
-      if (asset.storageId) {
-        if (await deleteStorageFile(ctx, asset.storageId)) {
-          deleted++;
-        }
-      }
-      if (asset.blobId) {
-        blobIds.push(asset.blobId);
-      }
-      await ctx.db.delete("staticAssets", asset._id);
-    }
+/** Convex's `_storage` table holds the sha256 in base64; entries hold it in hex. */
+function base64ToHex(base64: string) {
+  return Array.from(atob(base64), (char) => char.charCodeAt(0).toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
 
-    await setCurrentDeployment(ctx, args.currentDeploymentId, args.spaFallback ?? true);
-    return { deleted, blobIds };
-  },
-});
+/** The first 8 hex digits of the SHA-256 of `text`. */
+async function shortHash(text: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest, 0, 4), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}

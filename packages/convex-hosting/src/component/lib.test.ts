@@ -1,1007 +1,597 @@
 /// <reference types="vite/client" />
-
-import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { convexTest } from "convex-test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import type { Id } from "./_generated/dataModel.js";
+import type { Config } from "./lib.js";
 import { api, internal } from "./_generated/api.js";
-import { initConvexTest } from "./setup.test.js";
+import schema from "./schema.js";
 
-describe("component lib", () => {
-  beforeEach(async () => {
-    vi.useFakeTimers();
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts"]);
+
+type Files = Record<string, { body: string; contentType?: string }>;
+
+async function sha256Hex(body: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Stores the config and calls `createVersion`. */
+async function createVersion(
+  t: ReturnType<typeof convexTest>,
+  versionId: string,
+  config: Config = {},
+) {
+  const configId = await t.run((ctx) => ctx.storage.store(new Blob([JSON.stringify(config)])));
+  await t.action(internal.lib.createVersion, { versionId, configId });
+}
+
+/** Stores `body` and returns the complete entry for `path`. */
+async function storedEntry(t: ReturnType<typeof convexTest>, path: string, body: string) {
+  const storageId = await t.run((ctx) => ctx.storage.store(new Blob([body])));
+  return { path, sha256: await sha256Hex(body), storageId };
+}
+
+/**
+ * Runs the calls of one upload: `createVersion`, `knownFiles`, the files it does not know,
+ * `recordFiles`, `finishVersion`.
+ */
+async function uploadVersion(
+  t: ReturnType<typeof convexTest>,
+  versionId: string,
+  files: Files,
+  config: Config = {},
+) {
+  await createVersion(t, versionId, config);
+  const sha256s = await Promise.all(Object.values(files).map(({ body }) => sha256Hex(body)));
+  const known = await t.query(internal.lib.knownFiles, { sha256s });
+  const storageIds = new Map(known.map(({ sha256, storageId }) => [sha256, storageId]));
+  const entries = [];
+  for (const [path, { body, contentType }] of Object.entries(files)) {
+    const sha256 = await sha256Hex(body);
+    const storageId =
+      storageIds.get(sha256) ?? (await t.run((ctx) => ctx.storage.store(new Blob([body]))));
+    storageIds.set(sha256, storageId);
+    entries.push({ path, sha256, contentType, storageId });
+  }
+  await t.mutation(internal.lib.recordFiles, { versionId, entries });
+  await t.mutation(internal.lib.finishVersion, { versionId });
+}
+
+async function tables(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) => ({
+    versions: (await ctx.db.query("versions").collect()).map((v) => [v.versionId, v.state.kind]),
+    entries: (await ctx.db.query("entries").collect()).map((e) => `${e.versionId}${e.path}`),
+    files: (await ctx.db.system.query("_storage").collect()).length,
+  }));
+}
+
+const site: Files = {
+  "/index.html": { body: "<h1>Home</h1>", contentType: "text/html; charset=utf-8" },
+  "/404.html": { body: "<h1>Missing</h1>", contentType: "text/html; charset=utf-8" },
+  "/assets/app-a1.js": { body: "console.log(1)", contentType: "text/javascript; charset=utf-8" },
+};
+
+function route(
+  t: ReturnType<typeof convexTest>,
+  versionId: string,
+  path: string,
+  headers: Record<string, string> = {},
+) {
+  return t.query(api.lib.route, {
+    versionId,
+    method: "GET",
+    url: `https://example.convex.site${path}`,
+    headers,
   });
-  afterEach(() => {
-    vi.useRealTimers();
+}
+
+/** Marks `versionId` live the way `serveAsset` does: with the newest live `at` that `route` saw. */
+async function markLive(t: ReturnType<typeof convexTest>, versionId: string) {
+  const { newestLiveAt } = await route(t, versionId, "/");
+  await t.mutation(api.lib.markLive, { versionId, expectedNewestLiveAt: newestLiveAt });
+}
+
+/** The kind of each version's state, and the number of `collect` chains that `markLive` started. */
+async function liveness(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) => ({
+    versions: Object.fromEntries(
+      (await ctx.db.query("versions").collect()).map((v) => [v.versionId, v.state.kind]),
+    ),
+    collects: (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+      (job) => job.args[0].step.kind === "files" && job.args[0].step.after === undefined,
+    ).length,
+  }));
+}
+
+function header(asset: { headers: { name: string; value: string }[] } | null, name: string) {
+  return asset?.headers.find((h) => h.name === name)?.value;
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("upload", () => {
+  test("generateUploadUrls returns count URLs", async () => {
+    const t = convexTest(schema, modules);
+    expect(await t.mutation(internal.lib.generateUploadUrls, { count: 3 })).toHaveLength(3);
   });
 
-  test("generates upload URLs", async () => {
-    const t = initConvexTest();
-    const uploadUrl = await t.mutation(internal.lib.generateUploadUrl, {});
-    expect(typeof uploadUrl).toBe("string");
-    expect(uploadUrl.length).toBeGreaterThan(0);
-
-    const urls = await t.mutation(internal.lib.generateUploadUrls, {
-      count: 3,
-    });
-    expect(urls).toHaveLength(3);
-    for (const u of urls) {
-      expect(typeof u).toBe("string");
-    }
-
-    await expect(t.mutation(internal.lib.generateUploadUrls, { count: 101 })).rejects.toThrow(
-      "integer from 1 to 100",
+  test("createVersion creates an uploading version, idempotent for the same id and config", async () => {
+    const t = convexTest(schema, modules);
+    await createVersion(t, "v1", { not_found_handling: "404-page" });
+    await createVersion(t, "v1", { not_found_handling: "404-page" });
+    expect((await tables(t)).versions).toEqual([["v1", "uploading"]]);
+    await expect(createVersion(t, "v1", {})).rejects.toThrow(
+      "Version v1 exists with a different config.",
     );
   });
 
-  test("getByPath returns null when absent", async () => {
-    const t = initConvexTest();
-    const asset = await t.query(internal.lib.getByPath, {
-      path: "/index.html",
-    });
-    expect(asset).toBeNull();
+  test("knownFiles returns the stored files that entries of any version have", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    const index = await t.run(
+      async (ctx) =>
+        (
+          await ctx.db
+            .query("entries")
+            .withIndex("by_version_path", (q) => q.eq("versionId", "v1").eq("path", "/index.html"))
+            .unique()
+        )?.storageId,
+    );
+    const sha256 = await sha256Hex("<h1>Home</h1>");
+    expect(
+      await t.query(internal.lib.knownFiles, { sha256s: [await sha256Hex("new"), sha256] }),
+    ).toEqual([{ sha256, storageId: index }]);
   });
 
-  test("listAssets is empty by default", async () => {
-    const t = initConvexTest();
-    const assets = await t.query(internal.lib.listAssets, {});
-    expect(assets).toHaveLength(0);
-  });
-
-  test("commitDeployment on empty db returns zero", async () => {
-    const t = initConvexTest();
-    const result = await t.mutation(internal.lib.commitDeployment, {
-      currentDeploymentId: "deploy-1",
-    });
-    expect(result.deleted).toBe(0);
-    expect(result.blobIds).toHaveLength(0);
-  });
-
-  test("recordAsset stores and replaces blob assets", async () => {
-    const t = initConvexTest();
-
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/test.js",
-      blobId: "blob-123",
-      contentType: "application/javascript; charset=utf-8",
-      deploymentId: "deploy-1",
-    });
-
-    const first = await t.query(internal.lib.getByPath, { path: "/test.js" });
-    expect(first?.blobId).toBe("blob-123");
-
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/test.js",
-      blobId: "blob-456",
-      contentType: "application/javascript; charset=utf-8",
-      deploymentId: "deploy-2",
-    });
-
-    const second = await t.query(internal.lib.getByPath, { path: "/test.js" });
-    expect(second?.blobId).toBe("blob-456");
-  });
-
-  test("replaces a legacy or already-deleted storage reference", async () => {
-    const t = initConvexTest();
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["old"]));
-    });
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      storageId,
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-    await t.run(async (ctx) => {
-      await ctx.storage.delete(storageId);
-    });
-
+  test("recordFiles checks the stored file's sha256 and skips an entry it already has", async () => {
+    const t = convexTest(schema, modules);
+    await createVersion(t, "v1");
+    const wrong = await storedEntry(t, "/a.txt", "b");
     await expect(
-      t.mutation(internal.lib.recordAsset, {
-        path: "/index.html",
-        blobId: "replacement",
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-new",
+      t.mutation(internal.lib.recordFiles, {
+        versionId: "v1",
+        entries: [{ ...wrong, sha256: await sha256Hex("a") }],
       }),
-    ).resolves.toBeNull();
+    ).rejects.toThrow("The file stored for /a.txt does not match its sha256.");
+    const gone = await storedEntry(t, "/gone.txt", "gone");
+    await t.run((ctx) => ctx.storage.delete(gone.storageId));
+    await expect(
+      t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [gone] }),
+    ).rejects.toThrow("The stored file of /gone.txt is gone");
+
+    const right = await storedEntry(t, "/a.txt", "a");
+    await t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [right] });
+    // A retried batch passes.
+    await t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [right] });
+    expect((await tables(t)).entries).toEqual(["v1/a.txt"]);
+    await expect(
+      t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [wrong] }),
+    ).rejects.toThrow("Version v1 has other contents at /a.txt.");
+
+    await t.mutation(internal.lib.finishVersion, { versionId: "v1" });
+    expect((await tables(t)).versions).toEqual([["v1", "ready"]]);
+    await expect(
+      t.mutation(internal.lib.recordFiles, { versionId: "v1", entries: [right] }),
+    ).rejects.toThrow("Version v1 is ready, not uploading.");
+  });
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** The steps of the `collect` calls that are scheduled and have not run. */
+async function pendingSteps(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) =>
+    (await ctx.db.system.query("_scheduled_functions").collect())
+      .filter((job) => job.state.kind === "pending")
+      .map((job) => job.args[0].step),
+  );
+}
+
+/** Runs the scheduled calls that are pending now, and only those. */
+async function runNext(t: ReturnType<typeof convexTest>) {
+  vi.runOnlyPendingTimers();
+  await t.finishInProgressScheduledFunctions();
+}
+
+describe("markLive", () => {
+  test("marks a ready version live; a live version stays as it is", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    await markLive(t, "v1");
+    const state = async () =>
+      await t.run(
+        async (ctx) =>
+          (
+            await ctx.db
+              .query("versions")
+              .withIndex("by_versionId", (q) => q.eq("versionId", "v1"))
+              .unique()
+          )?.state,
+      );
+    const live = await state();
+    expect(live).toEqual({ kind: "live", at: Date.now() });
+    vi.advanceTimersByTime(1000);
+    await markLive(t, "v1");
+    expect(await state()).toEqual(live);
+    expect((await route(t, "v1", "/")).state).toBe("live");
   });
 
-  test("commitDeployment returns blobIds for old CDN assets and bumps deployment", async () => {
-    const t = initConvexTest();
-
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/assets/main.js",
-      blobId: "blob-abc",
-      contentType: "application/javascript; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-
-    const result = await t.mutation(internal.lib.commitDeployment, {
-      currentDeploymentId: "deploy-new",
-    });
-    expect(result.deleted).toBe(0);
-    expect(result.blobIds).toEqual(["blob-abc"]);
-
-    const deployment = await t.query(api.lib.getCurrentDeployment, {});
-    expect(deployment?.currentDeploymentId).toBe("deploy-new");
+  test("refuses a version that is uploading or does not exist", async () => {
+    const t = convexTest(schema, modules);
+    await createVersion(t, "v1");
+    const mark = (versionId: string) =>
+      t.mutation(api.lib.markLive, { versionId, expectedNewestLiveAt: null });
+    await expect(mark("v1")).rejects.toThrow("Version v1 is still uploading.");
+    await expect(mark("v2")).rejects.toThrow("Version v2 does not exist.");
   });
 
-  test("commitDeployment skips a legacy or already-deleted storage ID", async () => {
-    const t = initConvexTest();
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["legacy"]));
-    });
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/legacy.css",
-      storageId,
-      contentType: "text/css; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-    await t.run(async (ctx) => {
-      await ctx.storage.delete(storageId);
-    });
-
-    const result = await t.mutation(internal.lib.commitDeployment, {
-      currentDeploymentId: "deploy-new",
-    });
-
-    expect(result).toEqual({ deleted: 0, blobIds: [] });
-    expect(await t.query(internal.lib.listAssets, {})).toEqual([]);
+  test("a stale mark is refused: a request read the state before another version became live", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    await uploadVersion(t, "b", site);
+    // A request of A's code reads that no version is live, then B's code replaces A's and serves.
+    const { newestLiveAt } = await route(t, "a", "/");
+    expect(newestLiveAt).toBeNull();
+    vi.advanceTimersByTime(1000);
+    await markLive(t, "b");
+    expect(await liveness(t)).toEqual({ versions: { a: "ready", b: "live" }, collects: 1 });
+    // A's mark, based on that read, does nothing and schedules nothing.
+    vi.advanceTimersByTime(1000);
+    await t.mutation(api.lib.markLive, { versionId: "a", expectedNewestLiveAt: newestLiveAt });
+    expect(await liveness(t)).toEqual({ versions: { a: "ready", b: "live" }, collects: 1 });
   });
 
-  test("deletes newly uploaded files after a failed publish", async () => {
-    const t = initConvexTest();
-    const [first, alreadyMissing] = await t.run(async (ctx) => {
-      return await Promise.all([
-        ctx.storage.store(new Blob(["first"])),
-        ctx.storage.store(new Blob(["missing"])),
-      ]);
-    });
-    await t.run(async (ctx) => {
-      await ctx.storage.delete(alreadyMissing);
-    });
-
-    const result = await t.mutation(internal.lib.deleteUploadedFiles, {
-      storageIds: [first, alreadyMissing],
-    });
-
-    expect(result).toEqual({
-      deleted: 1,
-      alreadyMissing: 1,
-      stillReferenced: 0,
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(first)).toBeNull();
-    });
+  test("a late push of another version marks it live and supersedes the live one", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    await uploadVersion(t, "b", site);
+    await markLive(t, "b");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // A's code is pushed after B's: its request reads B's `at`, and its mark succeeds.
+    vi.advanceTimersByTime(1000);
+    const { newestLiveAt } = await route(t, "a", "/");
+    expect(newestLiveAt).toEqual(expect.any(Number));
+    await t.mutation(api.lib.markLive, { versionId: "a", expectedNewestLiveAt: newestLiveAt });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await liveness(t)).versions).toEqual({ a: "live" });
   });
 
-  test("failed-upload cleanup never deletes a file referenced by the live manifest", async () => {
-    const t = initConvexTest();
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["live"]));
-    });
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      storageId,
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-live",
-    });
-
-    const result = await t.mutation(internal.lib.deleteUploadedFiles, {
-      storageIds: [storageId],
-    });
-
-    expect(result).toEqual({
-      deleted: 0,
-      alreadyMissing: 0,
-      stillReferenced: 1,
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(storageId)).not.toBeNull();
-    });
+  test("a mark in the same millisecond as the newest is still strictly newer", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    await uploadVersion(t, "b", site);
+    // The clock does not move between the two marks.
+    await markLive(t, "b");
+    await markLive(t, "a");
+    const at = (versionId: string) =>
+      t.run(async (ctx) => {
+        const version = await ctx.db
+          .query("versions")
+          .withIndex("by_versionId", (q) => q.eq("versionId", versionId))
+          .unique();
+        return version?.state.kind === "live" ? version.state.at : null;
+      });
+    expect(await at("a")).toBe(Date.now() + 1);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await liveness(t)).versions).toEqual({ a: "live" });
   });
 
-  test("cleanup after a lost publish response keeps the newly live file", async () => {
-    const t = initConvexTest();
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["new live deployment"]));
+  test("two first requests of one version mark it live once", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    const first = await route(t, "a", "/");
+    const second = await route(t, "a", "/");
+    await t.mutation(api.lib.markLive, {
+      versionId: "a",
+      expectedNewestLiveAt: first.newestLiveAt,
     });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          storageId,
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-ambiguous",
-        },
-      ],
+    vi.advanceTimersByTime(1000);
+    await t.mutation(api.lib.markLive, {
+      versionId: "a",
+      expectedNewestLiveAt: second.newestLiveAt,
     });
-    await t.mutation(internal.lib.publishDeployment, {
-      currentDeploymentId: "deploy-ambiguous",
-      expectedAssetCount: 1,
-    });
+    expect(await liveness(t)).toEqual({ versions: { a: "live" }, collects: 1 });
+  });
+});
 
-    // This is the sequence the CLI runs when the publish mutation committed
-    // but its response was lost.
-    expect(
-      await t.mutation(internal.lib.discardStagedDeployment, {
-        deploymentId: "deploy-ambiguous",
-      }),
-    ).toEqual({ discarded: 0 });
-    expect(
-      await t.mutation(internal.lib.deleteUploadedFiles, {
-        storageIds: [storageId],
-      }),
-    ).toEqual({ deleted: 0, alreadyMissing: 0, stillReferenced: 1 });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(storageId)).not.toBeNull();
+describe("collect", () => {
+  test("a new live version deletes the version live before it and its entries, not its files", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    await markLive(t, "v1");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // Three files and the config file.
+    expect((await tables(t)).files).toBe(4);
+
+    // v2 keeps index.html and replaces the script.
+    vi.advanceTimersByTime(1000);
+    await uploadVersion(t, "v2", {
+      "/index.html": site["/index.html"],
+      "/assets/app-b2.js": { body: "console.log(2)", contentType: "text/javascript" },
+    });
+    await markLive(t, "v2");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // Every stored file survives: the shared index.html, and the files that no entry references
+    // any more, which are younger than a day.
+    expect(await tables(t)).toEqual({
+      versions: [["v2", "live"]],
+      entries: ["v2/index.html", "v2/assets/app-b2.js"],
+      files: 6,
     });
   });
 
-  test("publishes the manifest, deployment info, and cleanup atomically", async () => {
-    const t = initConvexTest();
-    const oldStorageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["old"]));
-    });
-    await t.mutation(internal.lib.recordAssets, {
-      assets: [
-        {
-          path: "/old.css",
-          storageId: oldStorageId,
-          contentType: "text/css; charset=utf-8",
-          deploymentId: "deploy-old",
-        },
-        {
-          path: "/old.js",
-          blobId: "old-cdn-blob",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-old",
-        },
-      ],
-    });
-    const newStorageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["new"]));
-    });
+  test("deletes a stored file when no entry references it, it is a day old, and it was unreferenced when the chain started", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    // A deploy whose push failed: v1 never becomes live.
+    await uploadVersion(t, "v1", site);
+    const old = await t.run((ctx) => ctx.storage.store(new Blob(["old"])));
+    vi.advanceTimersByTime(DAY + 1);
+    const young = await t.run((ctx) => ctx.storage.store(new Blob(["young"])));
+    const exists = (storageId: Id<"_storage">) =>
+      t.run(async (ctx) => (await ctx.db.system.get("_storage", storageId)) !== null);
 
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          storageId: newStorageId,
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-new",
-        },
-      ],
-    });
-    const result = await t.mutation(internal.lib.publishDeployment, {
-      currentDeploymentId: "deploy-new",
-      expectedAssetCount: 1,
-      spaFallback: false,
-    });
+    await t.mutation(internal.lib.collect, { step: { kind: "files" } });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await exists(old)).toBe(false);
+    expect(await exists(young)).toBe(true);
+    // The chain deleted v1 and its day-old config file, and kept the three files that v1 used.
+    expect(await tables(t)).toEqual({ versions: [], entries: [], files: 4 });
 
-    expect(result).toEqual({ deleted: 0, pendingBlobCleanup: 1 });
-    expect(await t.query(internal.lib.listPendingBlobCleanup, {})).toEqual(["old-cdn-blob"]);
-    expect(await t.query(internal.lib.listAssets, {})).toMatchObject([
-      {
-        path: "/index.html",
-        storageId: newStorageId,
-        deploymentId: "deploy-new",
+    // A later chain deletes them.
+    await t.mutation(internal.lib.collect, { step: { kind: "files" } });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await tables(t)).files).toBe(1);
+    expect(await exists(young)).toBe(true);
+  });
+
+  test("walks the versions a page of 8 at a time, with a creation-time cursor", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    // Twenty abandoned versions with large configs: one call must not read them all.
+    const config: Config = {
+      headers: { version: 2, rules: { "/*": { set: { "x-pad": "x".repeat(200_000) } } } },
+    };
+    for (let i = 0; i < 20; i++) await createVersion(t, `v${i}`, config);
+    // The cursor after each version: its creation time, and it as the one version seen then.
+    const cursors = await t.run(async (ctx) =>
+      (await ctx.db.query("versions").collect()).map(({ _creationTime, _id }) => ({
+        at: _creationTime,
+        seen: [_id],
+      })),
+    );
+    vi.advanceTimersByTime(DAY + 1);
+
+    await t.mutation(internal.lib.collect, { step: { kind: "versions" } });
+    expect((await tables(t)).versions).toHaveLength(12);
+    expect(await pendingSteps(t)).toEqual([{ kind: "versions", after: cursors[7] }]);
+    await runNext(t);
+    expect((await tables(t)).versions).toHaveLength(4);
+    expect(await pendingSteps(t)).toEqual([{ kind: "versions", after: cursors[15] }]);
+    // The last page is not full, so the chain ends.
+    await runNext(t);
+    expect((await tables(t)).versions).toEqual([]);
+    expect(await pendingSteps(t)).toEqual([]);
+  });
+
+  test("deletes the entries of a large version in batches of 1,000, and it is never marked live between them", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await createVersion(t, "large");
+    const entry = await storedEntry(t, "/a.txt", "a");
+    await t.mutation(internal.lib.recordFiles, {
+      versionId: "large",
+      entries: Array.from({ length: 1001 }, (_, i) => ({ ...entry, path: `/${i}.txt` })),
+    });
+    await t.mutation(internal.lib.finishVersion, { versionId: "large" });
+    vi.advanceTimersByTime(DAY + 1);
+
+    await t.mutation(internal.lib.collect, { step: { kind: "versions" } });
+    const after = await tables(t);
+    expect(after.versions).toEqual([["large", "deleting"]]);
+    expect(after.entries).toHaveLength(1);
+    // A request between the pages answers 404 and cannot mark the version live.
+    expect(await route(t, "large", "/0.txt")).toEqual({
+      state: "deleting",
+      newestLiveAt: null,
+      asset: null,
+    });
+    await expect(
+      t.mutation(api.lib.markLive, { versionId: "large", expectedNewestLiveAt: null }),
+    ).rejects.toThrow("Version large is being deleted.");
+    // The next call reads the same version again and ends it.
+    expect(await pendingSteps(t)).toEqual([{ kind: "versions" }]);
+    await runNext(t);
+    expect(await tables(t)).toMatchObject({ versions: [], entries: [] });
+  });
+
+  // convex-test gives every document its own creation time, so these tests resume at a cursor on
+  // a shared time: the documents at that time that `seen` does not hold are handled, the others not.
+  test("resumes the versions at the cursor's time, skipping only the versions it has seen", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    for (const id of ["a", "b", "c"]) await createVersion(t, id);
+    const versions = await t.run((ctx) => ctx.db.query("versions").collect());
+    vi.advanceTimersByTime(DAY + 1);
+    // A cursor at b's time that has seen a, a version of that same time in a real deployment.
+    const at = versions[1]._creationTime;
+    await t.mutation(internal.lib.collect, {
+      step: { kind: "versions", after: { at, seen: [versions[0]._id] } },
+    });
+    expect((await tables(t)).versions).toEqual([["a", "uploading"]]);
+
+    // A cursor that has seen b at its time skips only b.
+    const t2 = convexTest(schema, modules);
+    for (const id of ["a", "b", "c"]) await createVersion(t2, id);
+    const versions2 = await t2.run((ctx) => ctx.db.query("versions").collect());
+    vi.advanceTimersByTime(DAY + 1);
+    await t2.mutation(internal.lib.collect, {
+      step: {
+        kind: "versions",
+        after: { at: versions2[1]._creationTime, seen: [versions2[1]._id] },
       },
+    });
+    expect((await tables(t2)).versions).toEqual([
+      ["a", "uploading"],
+      ["b", "uploading"],
     ]);
-    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
-      currentDeploymentId: "deploy-new",
-      spaFallback: false,
-      pendingBlobCleanupCount: 1,
-    });
-    const concurrentStorageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["concurrent upload"]));
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(oldStorageId)).not.toBeNull();
-      expect(await ctx.storage.get(newStorageId)).not.toBeNull();
-    });
-    // The replaced file is kept for seven days, so open pages can still load it.
-    expect(await t.mutation(internal.lib.cleanupPendingStorage, {})).toEqual({
-      processed: 0,
-      deleted: 0,
-      needsAnotherPass: false,
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(oldStorageId)).not.toBeNull();
-    });
-    vi.advanceTimersByTime(7 * 24 * 60 * 60 * 1000);
-    expect(await t.mutation(internal.lib.cleanupPendingStorage, {})).toEqual({
-      processed: 1,
-      deleted: 1,
-      needsAnotherPass: false,
-    });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(oldStorageId)).toBeNull();
-      expect(await ctx.storage.get(newStorageId)).not.toBeNull();
-      expect(await ctx.storage.get(concurrentStorageId)).not.toBeNull();
-    });
-
-    expect(
-      await t.mutation(internal.lib.acknowledgeBlobCleanup, {
-        blobIds: ["old-cdn-blob"],
-      }),
-    ).toEqual({ acknowledged: 1 });
-    expect(await t.query(internal.lib.listPendingBlobCleanup, {})).toEqual([]);
-    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
-      pendingBlobCleanupCount: 0,
-    });
-
-    expect(
-      await t.mutation(internal.lib.queueBlobCleanup, {
-        blobIds: ["retry-cdn-blob", "retry-cdn-blob"],
-      }),
-    ).toEqual({ queued: 1 });
-    expect(await t.query(internal.lib.listPendingBlobCleanup, {})).toEqual(["retry-cdn-blob"]);
-    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
-      pendingBlobCleanupCount: 1,
-    });
   });
 
-  test("rejects a staged manifest without index.html and keeps the live manifest", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      blobId: "still-live",
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
+  test("resumes the file sweep at the cursor's time, skipping only the files it has seen", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    for (const body of ["a", "b", "c"]) {
+      await t.run((ctx) => ctx.storage.store(new Blob([body])));
+    }
+    const files = await t.run((ctx) => ctx.db.system.query("_storage").collect());
+    vi.advanceTimersByTime(DAY + 1);
+    // A cursor at b's time that has seen a, a file of that same time in a real deployment.
+    await t.mutation(internal.lib.collect, {
+      step: { kind: "files", after: { at: files[1]._creationTime, seen: [files[0]._id] } },
     });
-
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/only.css",
-          blobId: "not-published",
-          contentType: "text/css; charset=utf-8",
-          deploymentId: "deploy-new",
-        },
-      ],
-    });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-new",
-        expectedAssetCount: 1,
-      }),
-    ).rejects.toThrow("must include /index.html");
-
-    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      blobId: "still-live",
-      deploymentId: "deploy-old",
-    });
+    const left = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_storage").collect()).map((file) => file._id),
+    );
+    expect(left).toEqual([files[0]._id]);
   });
 
-  test("rejects a zero expected asset count without changing the live manifest", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      blobId: "still-live",
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-empty",
-        expectedAssetCount: 0,
-      }),
-    ).rejects.toThrow("integer from 1 to 1800");
-
-    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      blobId: "still-live",
-      deploymentId: "deploy-old",
-    });
-  });
-
-  test("keeps CDN cleanup accounting queued before the first deployment", async () => {
-    const t = initConvexTest();
-    expect(
-      await t.mutation(internal.lib.queueBlobCleanup, {
-        blobIds: ["failed-first-upload"],
-      }),
-    ).toEqual({ queued: 1 });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          blobId: "first-live-index",
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-first-success",
-        },
-      ],
-    });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-first-success",
-        expectedAssetCount: 1,
-      }),
-    ).resolves.toEqual({ deleted: 0, pendingBlobCleanup: 1 });
-    expect(await t.query(api.lib.getCurrentDeployment, {})).toMatchObject({
-      currentDeploymentId: "deploy-first-success",
-      pendingBlobCleanupCount: 1,
-    });
-  });
-
-  test("rejects a staged manifest whose storage file disappeared", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      blobId: "still-live",
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-    const missingStorageId = await t.run(async (ctx) => {
-      const storageId = await ctx.storage.store(new Blob(["temporary"]));
-      await ctx.storage.delete(storageId);
-      return storageId;
-    });
-    await expect(
-      t.mutation(internal.lib.stageAssets, {
-        assets: [
-          {
-            path: "/index.html",
-            storageId: missingStorageId,
-            contentType: "text/html; charset=utf-8",
-            deploymentId: "deploy-missing",
-          },
-        ],
-      }),
-    ).rejects.toThrow("Staged storage file is missing");
-    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      blobId: "still-live",
-      deploymentId: "deploy-old",
-    });
-  });
-
-  test("publishes a manifest staged in multiple chunks", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          blobId: "index",
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-chunked",
-        },
-      ],
-    });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/app.js",
-          blobId: "app",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-chunked",
-        },
-      ],
-    });
-
-    await t.mutation(internal.lib.publishDeployment, {
-      currentDeploymentId: "deploy-chunked",
-      expectedAssetCount: 2,
-    });
-
-    expect(await t.query(internal.lib.listAssets, {})).toMatchObject([
-      { path: "/index.html", deploymentId: "deploy-chunked" },
-      { path: "/app.js", deploymentId: "deploy-chunked" },
+  test("deletes the versions that never became live once they are a day old", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    // An upload that died, and a deploy whose push failed.
+    await createVersion(t, "died");
+    await uploadVersion(t, "unpushed", { "/a.txt": { body: "a" } });
+    vi.advanceTimersByTime(DAY + 1);
+    // A deploy that is about to push.
+    await uploadVersion(t, "young", { "/b.txt": { body: "b" } });
+    await uploadVersion(t, "v3", site);
+    await markLive(t, "v3");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await tables(t)).versions).toEqual([
+      ["young", "ready"],
+      ["v3", "live"],
     ]);
-    expect(
-      await t.mutation(internal.lib.discardStagedDeployment, {
-        deploymentId: "deploy-chunked",
-      }),
-    ).toEqual({ discarded: 0 });
+  });
+});
+
+describe("route", () => {
+  test("a hit has Cloudflare's headers and an ETag; If-None-Match answers 304", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    const { state, asset } = await route(t, "v1", "/assets/app-a1.js");
+    expect(state).toBe("ready");
+    expect(asset?.status).toBe(200);
+    expect(header(asset, "content-type")).toBe("text/javascript; charset=utf-8");
+    expect(header(asset, "cache-control")).toBe("public, max-age=0, must-revalidate");
+    expect(header(asset, "cf-cache-status")).toBeUndefined();
+    const eTag = header(asset, "etag");
+    expect(eTag).toMatch(new RegExp(`^"${await sha256Hex("console.log(1)")}[0-9a-f]{8}"$`));
+    expect(asset?.bodyUrl).toEqual(expect.any(String));
+
+    const revalidated = await route(t, "v1", "/assets/app-a1.js", { "if-none-match": eTag ?? "" });
+    expect(revalidated.asset?.status).toBe(304);
+    expect(revalidated.asset?.bodyUrl).toBeNull();
   });
 
-  test("rejects manifests above the safe transaction-sized file limit", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.stageAssets, {
-      assets: Array.from({ length: 1801 }, (_, index) => ({
-        path: index === 0 ? "/index.html" : `/asset-${index}.js`,
-        blobId: `blob-${index}`,
-        contentType:
-          index === 0 ? "text/html; charset=utf-8" : "application/javascript; charset=utf-8",
-        deploymentId: "deploy-too-large",
-      })),
+  test("the same bytes under two content types have two ETags", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", {
+      "/a.txt": { body: "same", contentType: "text/plain" },
+      "/a.js": { body: "same", contentType: "text/javascript" },
     });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-too-large",
-        expectedAssetCount: 1801,
-      }),
-    ).rejects.toThrow("integer from 1 to 1800");
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-too-large",
-        expectedAssetCount: 1800,
-      }),
-    ).rejects.toThrow("Staged manifest has 1801 files; expected 1800");
+    const txt = await route(t, "v1", "/a.txt");
+    const js = await route(t, "v1", "/a.js");
+    expect(header(txt.asset, "etag")).not.toBe(header(js.asset, "etag"));
+    expect(header(js.asset, "content-type")).toBe("text/javascript");
   });
 
-  test("publishes large inherited rows before bounded storage cleanup", async () => {
-    const t = initConvexTest();
-    const sharedStorageId = await t.run(async (ctx) => {
-      const storageId = await ctx.storage.store(new Blob(["legacy"]));
-      await Promise.all(
-        Array.from({ length: 1800 }, (_, index) =>
-          ctx.db.insert("staticAssets", {
-            path: `/legacy-${index}`,
-            storageId,
-            blobId: `legacy-blob-${index}`,
-            contentType: "application/octet-stream",
-            deploymentId: "deploy-legacy",
-          }),
-        ),
-      );
-      return storageId;
-    });
-    expect(sharedStorageId).toBeTruthy();
-    await t.mutation(internal.lib.stageAssets, {
-      assets: Array.from({ length: 1800 }, (_, index) => ({
-        path: index === 0 ? "/index.html" : `/new-${index}.js`,
-        blobId: `new-blob-${index}`,
-        contentType:
-          index === 0 ? "text/html; charset=utf-8" : "application/javascript; charset=utf-8",
-        deploymentId: "deploy-new",
-      })),
-    });
+  test("single-page-application answers navigations only", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site, { not_found_handling: "single-page-application" });
+    const navigation = await route(t, "v1", "/settings/profile", { "sec-fetch-mode": "navigate" });
+    const index = await route(t, "v1", "/");
+    expect(navigation.asset?.status).toBe(200);
+    expect(header(navigation.asset, "etag")).toBe(header(index.asset, "etag"));
 
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-new",
-        expectedAssetCount: 1800,
-      }),
-    ).resolves.toEqual({ deleted: 0, pendingBlobCleanup: 1800 });
-    expect(await t.mutation(internal.lib.cleanupPendingStorage, {})).toEqual({
-      processed: 1,
-      deleted: 1,
-      needsAnotherPass: false,
+    expect(await route(t, "v1", "/settings/profile")).toEqual({
+      state: "ready",
+      newestLiveAt: null,
+      asset: null,
     });
+  });
+
+  test("the custom 404 page answers with its body", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site, { not_found_handling: "404-page" });
+    const { asset } = await route(t, "v1", "/missing", { "sec-fetch-mode": "navigate" });
+    expect(asset?.status).toBe(404);
+    expect(asset?.bodyUrl).toEqual(expect.any(String));
+  });
+
+  test("a file that is gone from storage answers 404 with no-store", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
     await t.run(async (ctx) => {
-      expect(await ctx.storage.get(sharedStorageId)).toBeNull();
+      const entry = await ctx.db
+        .query("entries")
+        .withIndex("by_version_path", (q) => q.eq("versionId", "v1").eq("path", "/index.html"))
+        .unique();
+      if (entry !== null) await ctx.storage.delete(entry.storageId);
+    });
+    expect(await route(t, "v1", "/")).toEqual({
+      state: "ready",
+      newestLiveAt: null,
+      asset: {
+        status: 404,
+        headers: [{ name: "cache-control", value: "no-store" }],
+        bodyUrl: null,
+      },
     });
   });
 
-  test("rejects manifests above the serialized metadata budget", async () => {
-    const t = initConvexTest();
-    const assets = Array.from({ length: 1800 }, (_, index) => ({
-      path: index === 0 ? "/index.html" : `/${index}-${"nested-path/".repeat(100)}asset.js`,
-      blobId: `blob-${index}`,
-      contentType:
-        index === 0 ? "text/html; charset=utf-8" : "application/javascript; charset=utf-8",
-      deploymentId: "deploy-too-many-bytes",
-    }));
-    await t.mutation(internal.lib.stageAssets, { assets });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-too-many-bytes",
-        expectedAssetCount: assets.length,
-      }),
-    ).rejects.toThrow("above the safe limit");
+  test("a _headers rule applies", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site, {
+      headers: {
+        version: 2,
+        rules: { "/assets/*": { set: { "Cache-Control": "public, max-age=31536000, immutable" } } },
+      },
+    });
+    const { asset } = await route(t, "v1", "/assets/app-a1.js");
+    expect(header(asset, "cache-control")).toBe("public, max-age=31536000, immutable");
   });
 
-  test("rejects an oversized combined legacy and new manifest safely", async () => {
-    const t = initConvexTest();
-    await t.run(async (ctx) => {
-      await Promise.all(
-        Array.from({ length: 2001 }, (_, index) =>
-          ctx.db.insert("staticAssets", {
-            path: `/legacy-${index}.js`,
-            blobId: `legacy-${index}`,
-            contentType: "application/javascript; charset=utf-8",
-            deploymentId: "deploy-legacy",
-          }),
-        ),
-      );
+  test("a _redirects rule applies", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site, {
+      redirects: {
+        version: 1,
+        staticRules: { "/old": { status: 301, to: "/", lineNumber: 1 } },
+        rules: {},
+      },
     });
-    const assets = Array.from({ length: 1800 }, (_, index) => ({
-      path: index === 0 ? "/index.html" : `/new-${index}.js`,
-      blobId: `new-${index}`,
-      contentType:
-        index === 0 ? "text/html; charset=utf-8" : "application/javascript; charset=utf-8",
-      deploymentId: "deploy-new",
-    }));
-    await t.mutation(internal.lib.stageAssets, { assets });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-new",
-        expectedAssetCount: assets.length,
-      }),
-    ).rejects.toThrow("more than 3800 rows combined");
+    const { asset } = await route(t, "v1", "/old?x=1");
+    expect(asset?.status).toBe(301);
+    expect(header(asset, "location")).toBe("/?x=1");
+    expect(asset?.bodyUrl).toBeNull();
   });
 
-  test("rejects a truncated staged manifest even when index.html remains", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/index.html",
-      blobId: "still-live",
-      contentType: "text/html; charset=utf-8",
-      deploymentId: "deploy-old",
+  test("a version that is uploading or does not exist reports its state", async () => {
+    const t = convexTest(schema, modules);
+    await createVersion(t, "v1");
+    expect(await route(t, "v1", "/")).toEqual({
+      state: "uploading",
+      newestLiveAt: null,
+      asset: null,
     });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/app.js",
-          blobId: "app",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-truncated",
-        },
-        {
-          path: "/index.html",
-          blobId: "index",
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-truncated",
-        },
-      ],
-    });
-    await t.run(async (ctx) => {
-      const stagedAssets = await ctx.db
-        .query("stagedAssets")
-        .withIndex("by_deploymentId", (q) => q.eq("deploymentId", "deploy-truncated"))
-        .collect();
-      const appAsset = stagedAssets.find((asset) => asset.path === "/app.js");
-      if (!appAsset) throw new Error("Expected staged app asset");
-      await ctx.db.delete("stagedAssets", appAsset._id);
-    });
-
-    await expect(
-      t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: "deploy-truncated",
-        expectedAssetCount: 2,
-      }),
-    ).rejects.toThrow("Staged manifest has 1 files; expected 2");
-    expect(await t.query(internal.lib.getByPath, { path: "/index.html" })).toMatchObject({
-      blobId: "still-live",
-      deploymentId: "deploy-old",
-    });
-  });
-
-  test("removes old unreferenced component storage after an interrupted upload", async () => {
-    const t = initConvexTest();
-    const orphan = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["orphan"]));
-    });
-
-    const result = await t.mutation(internal.lib.cleanupUnreferencedStorage, {
-      before: Date.now() + 1,
-      limit: 10,
-    });
-
-    expect(result.deleted).toBe(1);
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(orphan)).toBeNull();
-    });
-  });
-
-  test("recovers an abandoned staged manifest and queues its CDN blob", async () => {
-    const t = initConvexTest();
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["abandoned"]));
-    });
-    await t.mutation(internal.lib.stageAssets, {
-      assets: [
-        {
-          path: "/index.html",
-          storageId,
-          contentType: "text/html; charset=utf-8",
-          deploymentId: "deploy-abandoned",
-        },
-        {
-          path: "/app.js",
-          blobId: "abandoned-cdn-blob",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-abandoned",
-        },
-      ],
-    });
-
-    expect(
-      await t.mutation(internal.lib.cleanupAbandonedStaging, {
-        before: Date.now() + 1,
-      }),
-    ).toEqual({ discarded: 2, deletedFiles: 1, queuedBlobIds: 1 });
-    expect(await t.query(internal.lib.listPendingBlobCleanup, {})).toEqual(["abandoned-cdn-blob"]);
-    expect(
-      await t.mutation(internal.lib.discardStagedDeployment, {
-        deploymentId: "deploy-abandoned",
-      }),
-    ).toEqual({ discarded: 0 });
-    await t.run(async (ctx) => {
-      expect(await ctx.storage.get(storageId)).toBeNull();
-    });
-  });
-
-  test("recordAssets batches multiple inserts", async () => {
-    const t = initConvexTest();
-
-    const result = await t.mutation(internal.lib.recordAssets, {
-      assets: [
-        {
-          path: "/a.js",
-          blobId: "blob-a",
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-1",
-        },
-        {
-          path: "/b.css",
-          blobId: "blob-b",
-          contentType: "text/css; charset=utf-8",
-          deploymentId: "deploy-1",
-        },
-      ],
-    });
-
-    expect(result).toEqual({ blobIds: [] });
-    const all = await t.query(internal.lib.listAssets, {});
-    expect(all).toHaveLength(2);
-  });
-
-  test("recordAssets returns replaced CDN blobs for cleanup", async () => {
-    const t = initConvexTest();
-    await t.mutation(internal.lib.recordAsset, {
-      path: "/app.js",
-      blobId: "old-blob",
-      contentType: "application/javascript; charset=utf-8",
-      deploymentId: "deploy-old",
-    });
-
-    const storageId = await t.run(async (ctx) => {
-      return await ctx.storage.store(new Blob(["new"]));
-    });
-    const result = await t.mutation(internal.lib.recordAssets, {
-      assets: [
-        {
-          path: "/app.js",
-          storageId,
-          contentType: "application/javascript; charset=utf-8",
-          deploymentId: "deploy-new",
-        },
-      ],
-    });
-
-    expect(result).toEqual({ blobIds: ["old-blob"] });
-    const current = await t.query(internal.lib.getByPath, { path: "/app.js" });
-    expect(current?.storageId).toBe(storageId);
-    expect(current?.blobId).toBeUndefined();
-  });
-
-  test("recordAssets rejects ambiguous locations and duplicate paths", async () => {
-    const t = initConvexTest();
-
-    await expect(
-      t.mutation(internal.lib.recordAssets, {
-        assets: [
-          {
-            path: "/missing-location.js",
-            contentType: "application/javascript; charset=utf-8",
-            deploymentId: "deploy-1",
-          },
-        ],
-      }),
-    ).rejects.toThrow("exactly one of storageId or blobId");
-
-    await expect(
-      t.mutation(internal.lib.recordAssets, {
-        assets: [
-          {
-            path: "/duplicate.js",
-            blobId: "blob-a",
-            contentType: "application/javascript; charset=utf-8",
-            deploymentId: "deploy-1",
-          },
-          {
-            path: "/duplicate.js",
-            blobId: "blob-b",
-            contentType: "application/javascript; charset=utf-8",
-            deploymentId: "deploy-1",
-          },
-        ],
-      }),
-    ).rejects.toThrow("Duplicate asset path");
-  });
-
-  describe("replaced files", () => {
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-
-    async function publish(
-      t: ReturnType<typeof initConvexTest>,
-      deploymentId: string,
-      paths: string[],
-    ) {
-      const assets = await t.run(async (ctx) => {
-        const result = [];
-        for (const path of ["/index.html", ...paths]) {
-          result.push({
-            path,
-            storageId: await ctx.storage.store(new Blob([deploymentId + path])),
-            contentType: path.endsWith(".html")
-              ? "text/html; charset=utf-8"
-              : "application/javascript; charset=utf-8",
-            deploymentId,
-          });
-        }
-        return result;
-      });
-      await t.mutation(internal.lib.stageAssets, { assets });
-      await t.mutation(internal.lib.publishDeployment, {
-        currentDeploymentId: deploymentId,
-        expectedAssetCount: assets.length,
-      });
-      return new Map(assets.map((asset) => [asset.path, asset.storageId]));
-    }
-
-    test("serves a replaced file, but never replaced HTML, for seven days", async () => {
-      const t = initConvexTest();
-      const a = await publish(t, "deploy-a", ["/assets/app-A1b2C3d4.js", "/about.html"]);
-      const b = await publish(t, "deploy-b", ["/assets/app-E5f6G7h8.js"]);
-
-      const resolve = (path: string) => t.query(api.lib.resolveAssetForHttp, { path });
-      expect(await resolve("/assets/app-A1b2C3d4.js")).toMatchObject({
-        etag: `"${a.get("/assets/app-A1b2C3d4.js")}"`,
-      });
-      expect(await resolve("/about.html")).toBeNull();
-      // Paths without an extension still get the current SPA shell.
-      expect(await resolve("/dashboard")).toMatchObject({
-        etag: `"${b.get("/index.html")}"`,
-      });
-
-      vi.advanceTimersByTime(sevenDays);
-      await t.mutation(internal.lib.cleanupPendingStorage, {});
-      expect(await resolve("/assets/app-A1b2C3d4.js")).toBeNull();
-      await t.run(async (ctx) => {
-        expect(await ctx.storage.get(a.get("/assets/app-A1b2C3d4.js")!)).toBeNull();
-      });
-    });
-
-    test("no cleanup deletes a replaced file before it expires", async () => {
-      const t = initConvexTest();
-      const a = await publish(t, "deploy-a", ["/assets/app-A1b2C3d4.js"]);
-      await publish(t, "deploy-b", []);
-      const retired = a.get("/assets/app-A1b2C3d4.js")!;
-      // Old enough for every cleanup to consider it, young enough to keep.
-      vi.advanceTimersByTime(2 * 24 * 60 * 60 * 1000);
-
-      await t.mutation(internal.lib.cleanupPendingStorage, {});
-      await t.mutation(internal.lib.cleanupUnreferencedStorage, {});
-      expect(
-        await t.mutation(internal.lib.deleteUploadedFiles, {
-          storageIds: [retired],
-        }),
-      ).toMatchObject({ stillReferenced: 1 });
-
-      await t.run(async (ctx) => {
-        expect(await ctx.storage.get(retired)).not.toBeNull();
-      });
-      expect(
-        await t.query(api.lib.resolveAssetForHttp, {
-          path: "/assets/app-A1b2C3d4.js",
-        }),
-      ).not.toBeNull();
-    });
-  });
-
-  describe("resolveAsset", () => {
-    async function seedIndex(t: ReturnType<typeof initConvexTest>) {
-      await t.mutation(internal.lib.recordAsset, {
-        path: "/index.html",
-        blobId: "blob-index",
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-1",
-      });
-    }
-
-    test("returns the exact match when present", async () => {
-      const t = initConvexTest();
-      await t.mutation(internal.lib.recordAsset, {
-        path: "/assets/app-B71cUw87.js",
-        blobId: "blob-app",
-        contentType: "application/javascript; charset=utf-8",
-        deploymentId: "deploy-1",
-      });
-
-      const asset = await t.query(internal.lib.resolveAsset, {
-        path: "/assets/app-B71cUw87.js",
-      });
-      expect(asset?.path).toBe("/assets/app-B71cUw87.js");
-    });
-
-    test("falls back to index.html for extension-less misses by default", async () => {
-      const t = initConvexTest();
-      await seedIndex(t);
-
-      const asset = await t.query(internal.lib.resolveAsset, {
-        path: "/dashboard/settings",
-      });
-      expect(asset?.path).toBe("/index.html");
-    });
-
-    test("does not fall back for paths with an extension", async () => {
-      const t = initConvexTest();
-      await seedIndex(t);
-
-      const asset = await t.query(internal.lib.resolveAsset, {
-        path: "/missing.js",
-      });
-      expect(asset).toBeNull();
-    });
-
-    test("does not fall back when the deployment disables it", async () => {
-      const t = initConvexTest();
-      await seedIndex(t);
-      await t.mutation(internal.lib.commitDeployment, {
-        currentDeploymentId: "deploy-1",
-        spaFallback: false,
-      });
-
-      const asset = await t.query(internal.lib.resolveAsset, {
-        path: "/dashboard",
-      });
-      expect(asset).toBeNull();
-    });
-
-    test("returns a storage URL for app-owned HTTP routes", async () => {
-      const t = initConvexTest();
-      const storageId = await t.run(async (ctx) => {
-        return await ctx.storage.store(new Blob(["<h1>Hello</h1>"], { type: "text/html" }));
-      });
-      await t.mutation(internal.lib.recordAsset, {
-        path: "/index.html",
-        storageId,
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-1",
-      });
-
-      const asset = await t.query(api.lib.resolveAssetForHttp, {
-        path: "/index.html",
-      });
-
-      expect(asset?.storageUrl).toContain("http");
-      expect(asset?.etag).toBe(`"${storageId}"`);
-      expect(asset?.contentType).toBe("text/html; charset=utf-8");
-    });
-
-    test("surfaces the app-owned storage id for inherited v1 rows", async () => {
-      // A same-name v1→v2 migration inherits rows whose files live in the app's
-      // storage; the component can't resolve a URL for them. convex-test can't
-      // distinguish that from a deleted file, so deleting one reproduces the
-      // condition: resolveAssetForHttp surfaces appStorageId (no storageUrl) so
-      // the app-side handler can serve it from its own storage during migration.
-      const t = initConvexTest();
-      const storageId = await t.run(async (ctx) => {
-        return await ctx.storage.store(new Blob(["legacy"]));
-      });
-      await t.mutation(internal.lib.recordAsset, {
-        path: "/index.html",
-        storageId,
-        contentType: "text/html; charset=utf-8",
-        deploymentId: "deploy-old",
-      });
-      await t.run(async (ctx) => {
-        await ctx.storage.delete(storageId);
-      });
-
-      const asset = await t.query(api.lib.resolveAssetForHttp, {
-        path: "/index.html",
-      });
-      expect(asset?.appStorageId).toBe(storageId);
-      expect(asset?.storageUrl).toBeUndefined();
-      expect(asset?.etag).toBe(`"${storageId}"`);
-    });
-
-    test("allows compatibility routes to override SPA fallback", async () => {
-      const t = initConvexTest();
-      await seedIndex(t);
-
-      const asset = await t.query(api.lib.resolveAssetForHttp, {
-        path: "/dashboard",
-        spaFallback: false,
-      });
-
-      expect(asset).toBeNull();
-    });
+    expect(await route(t, "v2", "/")).toEqual({ state: null, newestLiveAt: null, asset: null });
   });
 });

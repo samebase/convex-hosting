@@ -1,10 +1,10 @@
 convex-hosting
 Copyright 2026 Nicușor Chiciuc
 
-This product includes a modified version of static-hosting
+This project began in 2026 as a fork of static-hosting
 (https://github.com/get-convex/static-hosting), developed by Convex and licensed under the Apache
-License, Version 2.0. Samebase changed the files in packages/convex-hosting; the git history of
-https://github.com/samebase/convex-hosting records each change.
+License, Version 2.0. Since version 0.4 none of that code remains; the git history of
+https://github.com/samebase/convex-hosting records the origin.
 
 packages/convex-hosting/src/workers-shared is copied from cloudflare/workers-sdk
 (https://github.com/cloudflare/workers-sdk, packages/workers-shared), developed by Cloudflare and

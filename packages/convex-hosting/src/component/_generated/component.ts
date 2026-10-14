@@ -24,31 +24,31 @@ import type { FunctionReference } from "convex/server";
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
     lib: {
-      getCurrentDeployment: FunctionReference<
-        "query",
+      markLive: FunctionReference<
+        "mutation",
         "internal",
-        {},
-        {
-          _creationTime: number;
-          _id: string;
-          currentDeploymentId: string;
-          deployedAt: number;
-          pendingBlobCleanupCount?: number;
-          spaFallback?: boolean;
-        } | null,
+        { expectedNewestLiveAt: number | null; versionId: string },
+        null,
         Name
       >;
-      resolveAssetForHttp: FunctionReference<
+      route: FunctionReference<
         "query",
         "internal",
-        { path: string; spaFallback?: boolean },
         {
-          appStorageId?: string;
-          blobId?: string;
-          contentType: string;
-          etag?: string;
-          storageUrl?: string;
-        } | null,
+          headers: Record<string, string>;
+          method: string;
+          url: string;
+          versionId: string;
+        },
+        {
+          asset: null | {
+            bodyUrl: string | null;
+            headers: Array<{ name: string; value: string }>;
+            status: number;
+          };
+          newestLiveAt: number | null;
+          state: "uploading" | "ready" | "live" | "deleting" | null;
+        },
         Name
       >;
     };
