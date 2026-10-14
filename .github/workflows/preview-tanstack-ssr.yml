@@ -49,9 +49,10 @@ jobs:
         working-directory: examples/tanstack-ssr
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
-        run: >-
-          pnpm exec convex-hosting deploy --preview-name "$GITHUB_HEAD_REF" --dist dist/client
-          --build 'pnpm run build && echo "url=$VITE_CONVEX_SITE_URL" >> "$GITHUB_OUTPUT"'
+        run: |
+          # shellcheck disable=SC2016 -- the variables expand in the shell that npx convex deploy starts
+          pnpm exec convex-hosting deploy --preview-name "$GITHUB_HEAD_REF" --dist dist/client \
+            --build 'pnpm run build && echo "url=$VITE_CONVEX_SITE_URL" >> "$GITHUB_OUTPUT"'
 
       - name: Post the preview URL
         env:
