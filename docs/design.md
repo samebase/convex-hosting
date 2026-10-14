@@ -111,11 +111,12 @@ cannot help, because it needs a running `npx convex dev`. So `convex-hosting ini
 version file with the placeholder id `not-deployed`, which no deploy creates (deploys use random
 UUIDs), and keeps an existing file. A server-rendered app's `http.ts` also imports
 `.convex-hosting/server.js`, which the framework adapter's Vite plugin writes after each server
-build as a re-export of the build's entry (a copy would break the entry's relative chunk imports);
-`init` writes a placeholder there whose `fetch` answers 503 `no-store`, and keeps an existing file.
-`serveSite` reaches it only for a version that exists, so a fresh clone's site answers the same 404.
-Apps run `init` before `npx convex dev`, for example as a `predev` script. Until the first deploy,
-the site answers 404 naming the placeholder id. A plain `npx convex deploy` after `init` pushes the
+build as a re-export of the build's entry (a copy would break the entry's relative chunk imports),
+in the working directory like the CLI, which runs the build in the project directory; `init` writes
+a placeholder there whose `fetch` answers 503 `no-store`, and keeps an existing file. `serveSite`
+reaches it only for a version that exists, so a fresh clone's site answers the same 404. Apps run
+`init` before `npx convex dev`, for example as a `predev` script. Until the first deploy, the site
+answers 404 naming the placeholder id. A plain `npx convex deploy` after `init` pushes the
 placeholder id and the site answers 404, which is why production and previews deploy only through
 `convex-hosting deploy`. Two things in this loop are transient and documented, not solved: when a
 server-rendered app's build changes `dist/server`, which `http.ts` imports through

@@ -2,8 +2,9 @@
 
 ## 0.3.0
 
-- After each server build, `convexSsr()` writes `.convex-hosting/server.js`, a re-export of the
-  build's server entry. `convex/http.ts` imports `../.convex-hosting/server.js` instead of
+- After each server build, `convexSsr()` writes `.convex-hosting/server.js` in the working
+  directory, where the `convex-hosting` CLI looks for it: a re-export of the server entry under the
+  name that the build emitted. `convex/http.ts` imports `../.convex-hosting/server.js` instead of
   `../dist/server/server.js`, and `convex-hosting init` of `@samebase/convex-hosting` 0.6.0 writes a
   placeholder there, so `npx convex dev` works on a fresh clone before any build.
 - The `server-build` types entry is gone: `@samebase/convex-hosting` 0.6.0 declares the new path.
