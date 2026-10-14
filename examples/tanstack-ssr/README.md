@@ -9,11 +9,14 @@ example has its own schema, so it needs its own Convex project.
 
 ## Pages
 
+- `/signin`: a button that signs in anonymously. It is public and runs no Convex query.
 - `/`: the first HTML response already contains a count from a Convex query, and the count stays
-  live after React hydrates. It needs no session.
+  live after React hydrates.
 - `/me`: the result of `users.me` for the session of the request, in the first HTML response:
-  `Signed in as <id> since <time>` with a sign-out button, or `Not signed in` with a sign-in button.
-  The query result decides what shows; there are no redirects.
+  `Signed in as <id> since <time>` with a sign-out button.
+
+`/` and `/me` sit behind the pathless layout in `src/routes/_authed.tsx` and need a session. Without
+one, the server redirects to `/signin`; the browser does the same when the session ends.
 
 ## Sessions
 
@@ -24,12 +27,13 @@ token when it expires within 10 seconds (the refresh rotates both cookies), rend
 root route's `beforeLoad` gives the token to the Convex HTTP client of the server render, so the
 page's queries run as the user. In the browser, `ConvexAuthNextjsProvider` (it contains no Next.js
 code) starts from the token of the server render and calls `POST /auth/signin`, `/auth/refresh`, and
-`/auth/signout` in `convex/http.ts`. The browser's Convex client holds its queries until the
-provider knows the session, so the page never shows the signed-out answer before the token arrives.
+`/auth/signout` in `convex/http.ts`. `expectAuth` makes the browser's Convex client wait for the
+token before its first subscription. It works only before the first authentication, so sign-out
+reloads the page.
 
 The example signs in anonymously: each sign-in creates a user. Password or OAuth sign-in changes the
 provider in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in
-`convex/http.ts`, and the button on `/me`. The page route stays the same.
+`convex/http.ts`, and the button on `/signin`. The other routes stay the same.
 
 ## Set up
 
