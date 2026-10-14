@@ -4,6 +4,7 @@ import { serveSite } from "@samebase/convex-hosting";
 import { api, components } from "./_generated/api.js";
 import { env, httpAction } from "./_generated/server.js";
 import { versionId } from "../.convex-hosting/version.js";
+import worker from "../dist/server/convex.js";
 
 const http = httpRouter();
 
@@ -31,8 +32,6 @@ for (const [path, handler] of [
 
 // vinext renders pages, Server Actions, and route handlers, after proxy.ts refreshes the session.
 async function render(request: Request) {
-  // Loading the renderer here keeps file requests fast.
-  const { default: worker } = await import("../dist/server/convex.js");
   // Work that vinext hands to `waitUntil` must end before the action does. Its `after()` callbacks
   // start only once the body has been read, so the body is read first.
   const pending: Promise<unknown>[] = [];
