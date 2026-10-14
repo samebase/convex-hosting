@@ -1,12 +1,8 @@
-name: Deploy TanStack SSR example
+name: Deploy examples
 
 on:
   push:
     branches: [main]
-
-concurrency:
-  group: deploy-tanstack-ssr
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -15,6 +11,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      # Each example deploys to its own Convex project, so one failure does not stop the other.
+      fail-fast: false
+      matrix:
+        include:
+          - example: tanstack-ssr
+            deploy_key: CONVEX_DEPLOY_KEY_TANSTACK_SSR
+          - example: tanstack-spa
+            deploy_key: CONVEX_DEPLOY_KEY_TANSTACK_SPA
+    concurrency:
+      group: deploy-${{ matrix.example }}
+      cancel-in-progress: false
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -37,6 +45,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Deploy example
+        working-directory: examples/${{ matrix.example }}
+        # An index hands the runner every repository secret; all of them are the examples' Convex
+        # deploy keys.
         env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: pnpm --filter example-tanstack-ssr run deploy
+          CONVEX_DEPLOY_KEY: ${{ secrets[matrix.deploy_key] }} # zizmor: ignore[overprovisioned-secrets]
+        run: pnpm run deploy

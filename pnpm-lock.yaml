@@ -198,6 +198,9 @@ catalogs:
     '@edge-runtime/vm':
       specifier: 5.0.0
       version: 5.0.0
+    '@tanstack/react-query':
+      specifier: 5.103.1
+      version: 5.103.1
     '@tanstack/react-router':
       specifier: 1.170.41
       version: 1.170.41
@@ -271,11 +274,23 @@ importers:
         specifier: 'catalog:'
         version: 1.1.0(@edge-runtime/vm@5.0.0)(@types/node@24.19.1)(@vitest/ui@5.0.3)(esbuild@0.27.0)(jiti@2.7.0)(typescript@7.0.2)
 
-  examples/spa:
+  examples/tanstack-spa:
     dependencies:
+      '@convex-dev/react-query':
+        specifier: 'catalog:'
+        version: 0.1.0(@tanstack/react-query@5.103.1(react@19.3.0))(convex@1.46.0(react@19.3.0))
       '@samebase/convex-hosting':
         specifier: workspace:*
         version: link:../../packages/convex-hosting
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.103.1(react@19.3.0)
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/react-start':
+        specifier: 'catalog:'
+        version: 1.168.60(@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.19.1)(esbuild@0.27.0)(jiti@2.7.0)(typescript@7.0.2))(esbuild@0.27.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       convex:
         specifier: 'catalog:'
         version: 1.46.0(react@19.3.0)
@@ -289,9 +304,6 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.1.2(@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.19.1)(esbuild@0.27.0)(jiti@2.7.0)(typescript@7.0.2))
@@ -320,7 +332,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/convex-hosting-tanstack-start
       '@tanstack/react-query':
-        specifier: 5.103.1
+        specifier: 'catalog:'
         version: 5.103.1(react@19.3.0)
       '@tanstack/react-router':
         specifier: 'catalog:'

@@ -90,14 +90,14 @@ Production needs its own key pair on the production deployment before the first 
 
 ## Previews
 
-`.github/workflows/preview-tanstack-ssr.yml` deploys each pull request to a Convex preview
-deployment named after the branch, with `convex-hosting deploy --preview-name "$GITHUB_HEAD_REF"`,
-and posts the site URL as a comment on the pull request. A second push to the branch reuses the
-deployment. Convex deletes a preview deployment some days after its creation (five on the free
-plan), and the hosting component's files go with it. The workflow needs two things once per project:
+`.github/workflows/preview-examples.yml` deploys each pull request to a Convex preview deployment
+named after the branch, with `convex-hosting deploy --preview-name "$GITHUB_HEAD_REF"`, and posts
+the site URL as a comment on the pull request. A second push to the branch reuses the deployment.
+Convex deletes a preview deployment some days after its creation (five on the free plan), and the
+hosting component's files go with it. The workflow needs two things once per project:
 
-- A preview deploy key, as the repository secret `CONVEX_PREVIEW_DEPLOY_KEY`. The dashboard creates
-  one under Project Settings, and so does the platform API
+- A preview deploy key, as the repository secret `CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SSR`. The
+  dashboard creates one under Project Settings, and so does the platform API
   (`POST /v1/projects/<id>/create_preview_deploy_key`).
 - The signing keys as the project's defaults for preview deployments, which Convex copies into each
   new preview before the first push:

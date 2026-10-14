@@ -6,6 +6,7 @@ catalog:
   "@convex-dev/auth": 2.0.0-alpha.2
   "@convex-dev/react-query": 0.1.0
   "@edge-runtime/vm": 5.0.0
+  "@tanstack/react-query": 5.103.1
   "@tanstack/react-router": 1.170.41
   "@tanstack/react-start": 1.168.60
   "@types/node": 24.19.1

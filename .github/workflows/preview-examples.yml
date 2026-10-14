@@ -1,0 +1,86 @@
+name: Preview examples
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    # A pull request from a fork gets no secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+      # Each example deploys to its own Convex project, so one failure does not stop the other.
+      fail-fast: false
+      matrix:
+        include:
+          - example: tanstack-ssr
+            deploy_key: CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SSR
+          - example: tanstack-spa
+            deploy_key: CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SPA
+    # One run per example and pull request; a newer push waits, so the last deploy is the newest
+    # commit.
+    concurrency:
+      group: preview-${{ matrix.example }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 12.10.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The preview deployment is named after the branch; a second push reuses it. The example's
+      # deploy script brings its flags, and this --build replaces its own (the CLI keeps the last
+      # value) to also record the site URL, which Convex gives the build.
+      - name: Deploy the preview
+        id: deploy
+        working-directory: examples/${{ matrix.example }}
+        # An index hands the runner every repository secret; all of them are the examples' Convex
+        # deploy keys.
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets[matrix.deploy_key] }} # zizmor: ignore[overprovisioned-secrets]
+        run: |
+          # The single quotes are deliberate: the variables expand in the shell that npx convex deploy starts.
+          # shellcheck disable=SC2016
+          pnpm run deploy --preview-name "$GITHUB_HEAD_REF" \
+            --build 'pnpm run build && echo "url=$VITE_CONVEX_SITE_URL" >> "$GITHUB_OUTPUT"'
+
+      # One comment per example: --edit-last would edit whichever example commented last, so this
+      # finds the bot's comment for this example and edits it, or posts it the first time.
+      - name: Post the preview URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          EXAMPLE: ${{ matrix.example }}
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          prefix="Preview of examples/$EXAMPLE:"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq \
+            ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$prefix\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$prefix $URL" > /dev/null
+          else
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$prefix $URL"
+          fi

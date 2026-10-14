@@ -1,23 +1,26 @@
 {
-  "name": "example-spa",
+  "name": "example-tanstack-spa",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "vp build",
     "dev": "vp dev",
-    "deploy:dev": "convex-hosting deploy --dev --build \"pnpm run build\" --dist dist --not-found-handling single-page-application",
-    "deploy": "convex-hosting deploy --build \"pnpm run build\" --dist dist --not-found-handling single-page-application",
+    "deploy:dev": "convex-hosting deploy --dev --build \"pnpm run build\" --dist dist/client --not-found-handling single-page-application",
+    "deploy": "convex-hosting deploy --build \"pnpm run build\" --dist dist/client --not-found-handling single-page-application",
     "typecheck": "tsc -p . && tsc -p convex"
   },
   "dependencies": {
+    "@convex-dev/react-query": "catalog:",
     "@samebase/convex-hosting": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@tanstack/react-start": "catalog:",
     "convex": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

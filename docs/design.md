@@ -393,7 +393,8 @@ owner since `@samebase/convex-hosting` 0.5 and `@samebase/convex-hosting-tanstac
   TanStack Start's server build run inside a Convex HTTP action (Convex cannot bundle `node:stream`,
   so pages render with React's Web Stream renderer), the server entry's type, and the `convex-auth`
   session helpers. It knows nothing about versions.
-- `examples/spa`: a Vite app served with `--not-found-handling single-page-application`.
+- `examples/tanstack-spa`: TanStack Start in SPA mode, served with
+  `--not-found-handling single-page-application`.
 - `examples/tanstack-ssr`: pages rendered in the `render` of `serveSite`.
 - One `README.md` at the repository root, copied into the package at `prepack`.
 - An app has `.convex-hosting/` (ignored, written by the CLI) and nothing else of ours outside

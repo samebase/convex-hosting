@@ -17,7 +17,8 @@ code remains.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
   Start pages in a Convex HTTP action, the server entry's type, and the `convex-auth` session
   helpers.
-- `examples/spa`: a Vite and React app that the component serves.
+- `examples/tanstack-spa`: TanStack Start in SPA mode, served with the single-page-application
+  fallback.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
 
 ## Commands
