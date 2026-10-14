@@ -152,10 +152,14 @@ return serveSite(ctx, components.hosting, request, versionId, render);
 ```
 
 `serveSite` answers with the file when one matches. Otherwise it answers with the page that the
-optional `render()` returns, else 404, both with `Cache-Control: no-store`, because the deployment's
-Cloudflare front caches answers on static-looking paths; the page keeps every other header, several
-`Set-Cookie` included. `serveAsset` is its first step, exported for a route that does something else
-on a miss: it returns `null` when no file matches.
+optional `render()` returns, else 404, both with `Cache-Control: no-store`; the page keeps every
+other header, several `Set-Cookie` included. Measured on 2026-10-14: the deployment's Cloudflare
+front keeps `no-store` for a path without an extension and answers `public, max-age=14400` with
+`cf-cache-status: BYPASS` for a path with one, so the browser, not the edge, caches a 404 for a
+missing script for four hours. The deploy order prevents that case: a version's files exist before
+any page refers to them, and a first install serves no page until its upload ends. `serveAsset` is
+its first step, exported for a route that does something else on a miss: it returns `null` when no
+file matches.
 
 `serveAsset` calls the component query `route` with the method, the URL, and the four request
 headers that Cloudflare's handler reads (`If-None-Match`, `Sec-Fetch-Mode`, and the presence of

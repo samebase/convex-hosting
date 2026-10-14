@@ -3,9 +3,11 @@ import type { ComponentApi } from "../component/_generated/component.js";
 
 /**
  * Answers `request` with the file of version `versionId`, else with the page that `render`
- * returns, else 404. A page and a miss answer `Cache-Control: no-store`: the deployment's
- * Cloudflare front caches answers on static-looking paths, so a 404 for a script requested before
- * its upload ended would stay cached after the file exists.
+ * returns, else 404. A page and a miss answer `Cache-Control: no-store`. The deployment's
+ * Cloudflare front keeps that for a path without an extension and replaces it with a four-hour
+ * browser `max-age` for a path with one, so a browser that asks for a script before its upload
+ * ended keeps the 404; the deploy order prevents that case, because no page refers to a file that
+ * is not uploaded yet.
  */
 export async function serveSite(
   ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,

@@ -186,10 +186,13 @@ files for a year, add a `_headers` rule:
 
 `serveSite` answers with the file that matches, else with the page that `render` returns (see
 [Server-rendered pages](#server-rendered-pages)), else 404. A page and a 404 answer
-`Cache-Control: no-store`, because the deployment's Cloudflare front caches answers on
-static-looking paths. When the version does not exist or is still uploading, it answers 404 naming
-the version. At the first request for a new version, it marks the version live. `serveAsset`, its
-first step, returns the file's response or `null`, for a route that does something else on a miss.
+`Cache-Control: no-store`. The deployment's Cloudflare front keeps that for a path without an
+extension and replaces it with a four-hour browser `max-age` for a path with one, so a browser that
+asks for a script before its upload ended keeps the 404; the deploy order prevents that case,
+because no page refers to a file that is not uploaded yet. When the version does not exist or is
+still uploading, it answers 404 naming the version. At the first request for a new version, it marks
+the version live. `serveAsset`, its first step, returns the file's response or `null`, for a route
+that does something else on a miss.
 
 `not_found_handling` applies to navigation requests (`Sec-Fetch-Mode: navigate`) only, as on
 Cloudflare when a Worker runs: other requests that match no file reach your code. Browsers send that
