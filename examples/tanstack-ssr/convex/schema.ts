@@ -2,5 +2,10 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  counter: defineTable({ count: v.number() }),
+  todos: defineTable({ userId: v.id("users"), text: v.string(), done: v.boolean() }).index(
+    "by_user",
+    ["userId"],
+  ),
+  // One document for each Convex Auth user. The auth components keep the accounts and sessions.
+  users: defineTable({ name: v.string() }),
 });

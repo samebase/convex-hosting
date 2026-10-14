@@ -1,33 +1,35 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
+import { convexQuery } from "@convex-dev/react-query";
 import { api } from "../../convex/_generated/api.js";
 
 export const Route = createFileRoute("/")({
-  // Runs on the server for the first request.
-  loader: () => ({ renderedAt: new Date().toISOString().slice(11, 19) }),
+  loader: async ({ context }) => {
+    await context.queryClient.ensureQueryData(convexQuery(api.todos.latest, {}));
+  },
   component: Home,
 });
 
 function Home() {
-  const { renderedAt } = Route.useLoaderData();
-  // Fetched during the server render, then kept live in the browser.
-  const { data: count } = useSuspenseQuery(convexQuery(api.counter.get, {}));
-  const increment = useConvexMutation(api.counter.increment);
+  const { data: todos } = useSuspenseQuery(convexQuery(api.todos.latest, {}));
   return (
     <main>
       <h1>TanStack Start on Convex</h1>
       <p>
-        Rendered in a Convex HTTP action at {renderedAt} UTC. View the page source to see the HTML
-        the server sent.
+        One route in <code>convex/http.ts</code> serves every page. This page is public: the server
+        renders it for each request, and the list below stays live in the browser.{" "}
+        <Link to="/about">About</Link> was rendered at build time and is served as a file.{" "}
+        <Link to="/todos">Your todos</Link> are rendered on the server as you, after you{" "}
+        <Link to="/signin">sign in</Link>. The header is on every page and shows your session.
       </p>
-      <div className="counter">
-        <span className="count">{count}</span>
-        <button type="button" onClick={() => void increment({})}>
-          Add a click
-        </button>
-      </div>
-      <p>The count lives in Convex. Open this page in two tabs: a click in one updates both.</p>
+      <h2>The latest todos of everyone</h2>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            {todo.author}: {todo.done ? <s>{todo.text}</s> : todo.text}
+          </li>
+        ))}
+      </ul>
     </main>
   );
 }

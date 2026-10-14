@@ -77,7 +77,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The TanStack SSR example prerenders /about, which creates its Convex client at build time.
+      # The prerender sends no query, so the URL needs no deployment.
       - name: Build packages and examples
+        env:
+          VITE_CONVEX_URL: https://placeholder.convex.cloud
         run: pnpm run build
 
       - name: Check
