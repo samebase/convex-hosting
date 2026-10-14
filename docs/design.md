@@ -233,6 +233,41 @@ The package sets one limit of its own, 25 MiB per file, for the reason above. Co
 1 MiB per document, and the transaction limits (16,000 writes, 32,000 documents scanned, 16 MiB read
 and written, 8,192 array elements, 4,096 index ranges, argument and result sizes) shape the batches.
 
+## Orderings and timing
+
+Every interleaving worked through for 0.4, what happens, and what checks it. "Component test" is a
+convex-test run of the exact order of transactions; "runtime" is a run against a local backend.
+
+| What happens                                                                                             | Outcome                                                                                                                                        | Checked by                               |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| A deploy pushes; the first request arrives                                                               | The version is marked live; the versions live before it are deleted                                                                            | Component test, runtime                  |
+| Two deploys overlap; the pushes land in creation order                                                   | Both complete; the last push's version is marked live at its first request; the other was never live and goes at a later switch when a day old | Component test (age rule)                |
+| Two deploys overlap; the earlier-created one pushes last                                                 | Its first request reads the other as newest, the compare-and-set passes, it is marked live, the other is deleted                               | Component test (late push)               |
+| A request on old code is in flight when a push lands, and its mark comes after the new code's first mark | The compare-and-set refuses the stale mark                                                                                                     | Component test (stale mark)              |
+| The same, but its lookup also runs after the new code's first mark                                       | The stale mark passes; the window is the microseconds between an action's start and its first query                                            | Stated                                   |
+| Two first requests of one version                                                                        | One mark; the second is a no-op                                                                                                                | Component test                           |
+| Two marks in one millisecond                                                                             | The second is strictly later                                                                                                                   | Component test                           |
+| A deploy dies before its push                                                                            | A never-live version; deleted at a later switch when a day old                                                                                 | Component test (age rule)                |
+| An upload dies midway                                                                                    | An `uploading` version; same fate; a retry reuses its recorded files                                                                           | Component test, runtime (reuse)          |
+| The push is reported as failed but landed                                                                | The version is `ready` and is marked live at its first request                                                                                 | Inherent; stated                         |
+| No request for days, weeks                                                                               | Nothing is deleted; the first request marks the version live                                                                                   | Inherent: deletion runs only at a switch |
+| Many deploys, no requests in between                                                                     | The first request marks the newest; older never-live versions go when a day old, younger ones at the next switch                               | Component test (age rule)                |
+| A push lands more than a day after its upload, after another switch                                      | Its version is gone; the site answers 404 naming it; redeploy                                                                                  | Stated                                   |
+| An upload borrows a stored file; a switch deletes the lending version                                    | The file survives: files go only when unreferenced, a day old, and already unreferenced when the chain started                                 | Component test (sweep order)             |
+| Two switches during one upload                                                                           | The borrowed file can go; `recordFiles` says so; a retry works                                                                                 | Stated                                   |
+| A first request reaches a version while its entries are being deleted in pages                           | The version is `deleting`: 404, no mark                                                                                                        | Component test                           |
+| Documents share a creation time at a page boundary                                                       | The cursor carries the ids seen at that time; none is skipped                                                                                  | Component test (crafted cursor)          |
+| First install: the component does not exist yet                                                          | Push first, then upload; 404 until the upload ends                                                                                             | Runtime (both flows)                     |
+| Two first installs at once                                                                               | Both push and upload; the last push wins                                                                                                       | Stated                                   |
+| Two commands from one checkout at once                                                                   | They overwrite each other's build output and version file                                                                                      | Stated, unsupported                      |
+| A production deploy from a checkout where `npx convex dev` runs                                          | Production's id is pushed to development until the next `deploy --dev`                                                                         | Stated                                   |
+| `deploy --dev` against an anonymous local deployment without `npx convex dev`                            | Each Convex CLI call starts and stops its own backend; the upload fails                                                                        | Stated in the README                     |
+
+Not reproducible in the test runtime and not yet run against a cloud deployment: two real pushes in
+a chosen order, a preview deployment, an old HTTP action kept running across a push. A smoke script
+against a disposable preview deployment, run by hand with a deploy key before a release, is the
+place for those.
+
 ## Stated, not solved
 
 - A request already running on old code when a push lands, whose first lookup happens after the new
