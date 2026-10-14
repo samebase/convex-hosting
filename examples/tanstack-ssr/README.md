@@ -84,6 +84,22 @@ From `examples/tanstack-ssr`, after `pnpm install` at the repository root:
 
 Production needs its own key pair on the production deployment before the first `pnpm run deploy`.
 
+## Previews
+
+`.github/workflows/preview-tanstack-ssr.yml` deploys each pull request to a Convex preview
+deployment named after the branch, with `convex-hosting deploy --preview-name "$GITHUB_HEAD_REF"`,
+and posts the site URL as a comment on the pull request. A second push to the branch reuses the
+deployment. Convex deletes a preview deployment some days after its creation (five on the free
+plan), and the hosting component's files go with it. The workflow needs two things once per project:
+
+- A preview deploy key, as the repository secret `CONVEX_PREVIEW_DEPLOY_KEY`. The dashboard creates
+  one under Project Settings, and so does the platform API
+  (`POST /v1/projects/<id>/create_preview_deploy_key`).
+- The signing keys as the project's defaults for preview deployments, which Convex copies into each
+  new preview before the first push:
+  `npx convex env default set --type preview AUTH_PRIVATE_KEY ...` and the same for `AUTH_JWKS`. Use
+  a pair of their own, not the production pair.
+
 ## Commands
 
 - `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. It renders the pages
