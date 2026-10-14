@@ -43,7 +43,7 @@ http.route({
   pathPrefix: "/",
   method: "GET",
   handler: httpAction((ctx, request) =>
-    serveSite(ctx, components.hosting, request, versionId, async (request) => {
+    serveSite(ctx, components.hosting, request, versionId, async () => {
       // Loading the renderer here keeps file requests fast.
       const { default: server } = await import("../dist/server/server.js");
       return server.fetch(request);

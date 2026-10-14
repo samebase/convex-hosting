@@ -158,7 +158,7 @@ describe("serveAsset", () => {
 });
 
 describe("serveSite", () => {
-  async function site(path: string, render?: (request: Request) => Promise<Response>) {
+  async function site(path: string, render?: () => Promise<Response>) {
     const { t } = await setup();
     return t.action(async (ctx) => {
       const url = `https://example.convex.site${path}`;

@@ -36,7 +36,7 @@ http.route({
   method: "GET",
   // A path without a file is a page. TanStack Start renders it, including its own 404 page.
   handler: httpAction((ctx, request) =>
-    serveSite(ctx, components.hosting, request, versionId, async (request) => {
+    serveSite(ctx, components.hosting, request, versionId, async () => {
       const cookies = httpCookies(request);
       const session = new ServerAuthSession({
         refreshSession: (refreshToken) =>

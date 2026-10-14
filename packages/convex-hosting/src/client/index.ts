@@ -12,12 +12,12 @@ export async function serveSite(
   component: ComponentApi,
   request: Request,
   versionId: string,
-  render?: (request: Request) => Promise<Response>,
+  render?: () => Promise<Response>,
 ): Promise<Response> {
   const asset = await serveAsset(ctx, component, request, versionId);
   if (asset !== null) return asset;
   if (render === undefined) return new Response(null, { status: 404, headers: NO_STORE });
-  const page = await render(request);
+  const page = await render();
   const headers = new Headers(page.headers);
   headers.set("Cache-Control", "no-store");
   return new Response(page.body, { status: page.status, headers });

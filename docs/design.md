@@ -152,10 +152,10 @@ return serveSite(ctx, components.hosting, request, versionId, render);
 ```
 
 `serveSite` answers with the file when one matches. Otherwise it answers with the page that the
-optional `render(request)` returns, else 404, both with `Cache-Control: no-store`, because the
-deployment's Cloudflare front caches answers on static-looking paths; the page keeps every other
-header, several `Set-Cookie` included. `serveAsset` is its first step, exported for a route that
-does something else on a miss: it returns `null` when no file matches.
+optional `render()` returns, else 404, both with `Cache-Control: no-store`, because the deployment's
+Cloudflare front caches answers on static-looking paths; the page keeps every other header, several
+`Set-Cookie` included. `serveAsset` is its first step, exported for a route that does something else
+on a miss: it returns `null` when no file matches.
 
 `serveAsset` calls the component query `route` with the method, the URL, and the four request
 headers that Cloudflare's handler reads (`If-None-Match`, `Sec-Fetch-Mode`, and the presence of
