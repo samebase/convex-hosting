@@ -45,9 +45,7 @@ http.route({
   pathPrefix: "/",
   method: "GET",
   handler: httpAction((ctx, request) =>
-    serveSite(ctx, components.hosting, request, versionId, async () => {
-      return server.fetch(request);
-    }),
+    serveSite(ctx, components.hosting, request, versionId, async () => server.fetch(request)),
   ),
 });
 ```
