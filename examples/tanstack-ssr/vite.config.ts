@@ -5,5 +5,5 @@ import { convexSsr } from "@samebase/convex-hosting-tanstack-start/vite";
 
 export default defineConfig({
   root: import.meta.dirname,
-  plugins: [convexSsr(), tanstackStart({ prerender: { enabled: false } }), react()],
+  plugins: [convexSsr(), tanstackStart(), react()],
 });

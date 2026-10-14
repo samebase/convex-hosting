@@ -10,10 +10,8 @@ const http = httpRouter();
 // A local backend serves plain HTTP.
 const cookieOptions = { secure: env.CONVEX_SITE_URL.startsWith("https:") };
 
-// Cookie sessions: the refresh token stays in an httpOnly cookie on the site origin, and the
-// browser holds only the short-lived access token. These are the default routes of the auth
-// provider in src/routes/__root.tsx. Exact routes win over the Convex Auth core component, which
-// is mounted at /auth/ (convex.config.ts) and serves its key set there.
+// The browser signs in, refreshes, and signs out through these routes, and the refresh token stays
+// in an httpOnly cookie. Exact routes win over the Convex Auth core component mounted at /auth/.
 const auth = setupConvexAuthServer({
   convexUrl: env.CONVEX_CLOUD_URL,
   refreshSession: api.auth.refreshSession,
@@ -53,11 +51,9 @@ http.route({
     const { default: server } = await import("../dist/server/server.js");
     const page = await server.fetch(request, { context: { token } });
     // The deployment's Cloudflare front caches answers on static-looking paths, so a rendered 404
-    // for a script requested before its upload ended would stay cached after the file exists (the
-    // 0.3.2 incident).
+    // for a script requested before its upload ended would stay cached after the file exists.
     const headers = new Headers(page.headers);
     headers.set("Cache-Control", "no-store");
-    // The page carries the `Set-Cookie` headers of a session refresh, which rotates both cookies.
     cookies.applyTo(headers);
     return new Response(page.body, { status: page.status, headers });
   }),

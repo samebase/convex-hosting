@@ -9,10 +9,8 @@ export const Route = createRootRouteWithContext<{
   convexQueryClient: ConvexQueryClient;
 }>()({
   beforeLoad: ({ context, serverContext }) => {
-    // Only the server render has a request, and with it the token of the session cookie. Its
-    // loaders query Convex with that token. The browser restores this return value when it
-    // hydrates; a later navigation in the browser rebuilds the context without it, so `token` is
-    // undefined there.
+    // Only the server render has the cookie's token, and its loaders query Convex with it. The
+    // browser gets this value at hydration and no token on later navigations.
     const token = serverContext?.token;
     if (token) context.convexQueryClient.serverHttpClient?.setAuth(token);
     return { token };
@@ -30,9 +28,8 @@ export const Route = createRootRouteWithContext<{
 
 function Root() {
   const { convexQueryClient, token } = Route.useRouteContext();
-  // The provider reads `initialToken` once, when it mounts, so the browser client starts with the
-  // token that the server rendered with. Sign-in, refresh, and sign-out go to the /auth routes of
-  // convex/http.ts.
+  // The provider reads `initialToken` once, when it mounts, so the browser starts with the token
+  // that the server rendered with.
   return (
     <ConvexAuthNextjsProvider client={convexQueryClient.convexClient} initialToken={token}>
       <html lang="en">

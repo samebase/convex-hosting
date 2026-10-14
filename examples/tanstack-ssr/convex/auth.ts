@@ -3,7 +3,7 @@ import { setupAnonymous } from "@convex-dev/auth/providers/anonymous/setup";
 import { components, internal } from "./_generated/api.js";
 
 const core = setupCore({ component: components.auth });
-export const { signOut, refreshSession, isAuthenticated } = core;
+export const { signOut, refreshSession } = core;
 
 export const { signInAnonymous } = setupAnonymous(core, {
   component: components.authAnonymous,

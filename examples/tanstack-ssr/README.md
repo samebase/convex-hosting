@@ -54,8 +54,8 @@ Production needs its own key pair on the production deployment before the first 
 ## Commands
 
 - `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. It renders the pages
-  in Vite's own server, without the session; sign-in works only on the deployed site, where
-  `convex/http.ts` serves the `/auth` routes.
+  in Vite's own server without the session, so the browser moves to `/signin`; sign-in works only on
+  the deployed site, where `convex/http.ts` serves the `/auth` routes.
 - `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`.
 - `pnpm run deploy:dev`: build, upload, and push to the development deployment.
 - `pnpm run deploy`: build, upload, and push to production.

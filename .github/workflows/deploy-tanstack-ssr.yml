@@ -36,11 +36,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build workspace packages
-        run:
-          pnpm --filter @samebase/convex-hosting --filter @samebase/convex-hosting-tanstack-start
-          run build
-
       - name: Deploy example
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}

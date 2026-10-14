@@ -4,8 +4,7 @@ import auth from "@convex-dev/auth/core/convex.config.js";
 import anonymous from "@convex-dev/auth/providers/anonymous/convex.config.js";
 import hosting from "@samebase/convex-hosting/convex.config";
 
-// A push fails while a declared variable is missing. The README says how to set both on a
-// deployment.
+// A push fails while either variable is missing on the deployment.
 const app = defineApp({
   env: { AUTH_PRIVATE_KEY: v.string(), AUTH_JWKS: v.string() },
 });

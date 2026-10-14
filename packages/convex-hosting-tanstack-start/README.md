@@ -13,7 +13,7 @@ Add the plugin to `vite.config.ts`:
 import { convexSsr } from "@samebase/convex-hosting-tanstack-start/vite";
 
 export default defineConfig({
-  plugins: [convexSsr(), tanstackStart({ prerender: { enabled: false } }), react()],
+  plugins: [convexSsr(), tanstackStart(), react()],
 });
 ```
 
@@ -44,8 +44,7 @@ http.route({
     const { default: server } = await import("../dist/server/server.js");
     const page = await server.fetch(request);
     // The deployment's Cloudflare front caches answers on static-looking paths, so a rendered 404
-    // for a script requested before its upload ended would stay cached after the file exists (the
-    // 0.3.2 incident).
+    // for a script requested before its upload ended would stay cached after the file exists.
     const headers = new Headers(page.headers);
     headers.set("Cache-Control", "no-store");
     return new Response(page.body, { status: page.status, headers });
@@ -63,8 +62,7 @@ the first build.
 For reactive queries, use the
 [official Convex TanStack integration](https://docs.convex.dev/client/tanstack/tanstack-start/).
 Components use `useSuspenseQuery(convexQuery(...))`; the server entry waits for their HTML, and
-TanStack handles query hydration. HTTP mounts, authentication, and cache policy remain app
-decisions.
+TanStack handles query hydration.
 
 To give the pages data of the request, such as the access token of a session cookie, pass it as
 `context`: `server.fetch(request, { context: { token } })`. Start gives it to each route's
@@ -77,8 +75,6 @@ declare module "@tanstack/react-start" {
   }
 }
 ```
-
-The example signs in with Convex Auth this way.
 
 ## Why these settings exist
 

@@ -2,7 +2,6 @@ import { getAuthUserId } from "@convex-dev/auth/core";
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server.js";
 
-/** The `createUser` callback of the anonymous provider: each anonymous sign-in makes a user. */
 export const createUserAnonymous = internalMutation({
   args: {
     provider: v.object({
@@ -15,7 +14,6 @@ export const createUserAnonymous = internalMutation({
   handler: (ctx) => ctx.db.insert("users", {}),
 });
 
-/** The signed-in user, or `null` without a session. */
 export const me = query({
   args: {},
   returns: v.union(v.null(), v.object({ id: v.id("users"), since: v.number() })),

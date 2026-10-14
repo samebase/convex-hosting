@@ -4,9 +4,9 @@ import { useEffect } from "react";
 
 export const Route = createFileRoute("/_authed")({
   beforeLoad: ({ serverContext }) => {
-    // Only the server render has the cookie. A navigation in the browser has no `serverContext`;
-    // there, the effect in the component is the gate.
-    if (serverContext && serverContext.token === null) throw redirect({ to: "/signin" });
+    // Only the server render has the cookie; a browser navigation has no `serverContext`, and the
+    // effect in the component is its gate.
+    if (serverContext?.token === null) throw redirect({ to: "/signin" });
   },
   component: Authed,
 });
