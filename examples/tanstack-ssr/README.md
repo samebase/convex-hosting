@@ -17,9 +17,8 @@ The demo data is a to-do list in `convex/todos.ts`.
   `Cache-Control: public, max-age=0, must-revalidate`, where a rendered page answers `no-store`. A
   navigation inside the app renders the route in the browser like any other, so a prerendered route
   keeps no request-time data.
-- `/`: rendered per request, and needs no session. The first HTML response contains `todos.count`,
-  the number of todos of all users from one counter document, and the count stays live after React
-  hydrates.
+- `/`: rendered per request, and needs no session. The first HTML response contains the latest
+  twenty todos of all users from `todos.latest`, and the list stays live after React hydrates.
 - `/todos`: rendered as the user. The first HTML response contains the user's todos from
   `todos.list`, and the form adds one with `todos.add`. The page sits behind the pathless layout in
   `src/routes/_authed.tsx`: without a session, the server redirects to `/signin`, and the browser
