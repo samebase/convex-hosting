@@ -1,6 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpCookies, ServerAuthSession, setupConvexAuthServer } from "@convex-dev/auth/server";
-import { serveAsset } from "@samebase/convex-hosting";
+import { serveSite } from "@samebase/convex-hosting";
 import { api, components } from "./_generated/api.js";
 import { env, httpAction } from "./_generated/server.js";
 import { versionId } from "../.convex-hosting/version.js";
@@ -34,29 +34,25 @@ for (const [path, handler] of [
 http.route({
   pathPrefix: "/",
   method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    const asset = await serveAsset(ctx, components.hosting, request, versionId);
-    if (asset) return asset;
-
-    const cookies = httpCookies(request);
-    const session = new ServerAuthSession({
-      refreshSession: (refreshToken) => ctx.runMutation(api.auth.refreshSession, { refreshToken }),
-      cookies,
-      cookieOptions,
-    });
-    const token = await session.getToken();
-
-    // Every other path is a page. TanStack Start renders it, including its own 404 page. Loading
-    // the renderer here keeps file requests fast.
-    const { default: server } = await import("../dist/server/server.js");
-    const page = await server.fetch(request, { context: { token } });
-    // The deployment's Cloudflare front caches answers on static-looking paths, so a rendered 404
-    // for a script requested before its upload ended would stay cached after the file exists.
-    const headers = new Headers(page.headers);
-    headers.set("Cache-Control", "no-store");
-    cookies.applyTo(headers);
-    return new Response(page.body, { status: page.status, headers });
-  }),
+  // A path without a file is a page. TanStack Start renders it, including its own 404 page.
+  handler: httpAction((ctx, request) =>
+    serveSite(ctx, components.hosting, request, versionId, async (request) => {
+      const cookies = httpCookies(request);
+      const session = new ServerAuthSession({
+        refreshSession: (refreshToken) =>
+          ctx.runMutation(api.auth.refreshSession, { refreshToken }),
+        cookies,
+        cookieOptions,
+      });
+      const token = await session.getToken();
+      // Loading the renderer here keeps file requests fast.
+      const { default: server } = await import("../dist/server/server.js");
+      const page = await server.fetch(request, { context: { token } });
+      const headers = new Headers(page.headers);
+      cookies.applyTo(headers);
+      return new Response(page.body, { status: page.status, headers });
+    }),
+  ),
 });
 
 export default http;

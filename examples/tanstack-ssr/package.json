@@ -10,8 +10,8 @@
     "typecheck": "tsc -p . && tsc -p convex"
   },
   "dependencies": {
-    "@convex-dev/auth": "2.0.0-alpha.2",
-    "@convex-dev/react-query": "0.1.0",
+    "@convex-dev/auth": "catalog:",
+    "@convex-dev/react-query": "catalog:",
     "@samebase/convex-hosting": "workspace:*",
     "@samebase/convex-hosting-tanstack-start": "workspace:*",
     "@tanstack/react-query": "5.103.1",

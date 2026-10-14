@@ -308,10 +308,10 @@ importers:
   examples/tanstack-ssr:
     dependencies:
       '@convex-dev/auth':
-        specifier: 2.0.0-alpha.2
+        specifier: 'catalog:'
         version: 2.0.0-alpha.2(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)
       '@convex-dev/react-query':
-        specifier: 0.1.0
+        specifier: 'catalog:'
         version: 0.1.0(@tanstack/react-query@5.103.1(react@19.3.0))(convex@1.46.0(react@19.3.0))
       '@samebase/convex-hosting':
         specifier: workspace:*

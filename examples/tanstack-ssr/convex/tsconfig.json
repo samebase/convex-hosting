@@ -10,7 +10,8 @@
     "lib": ["ES2021", "dom"],
     "module": "ESNext",
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": ["@samebase/convex-hosting-tanstack-start/server-build"]
   },
   "include": ["./**/*"],
   "exclude": ["./_generated"]
