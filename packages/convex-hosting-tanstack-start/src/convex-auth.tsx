@@ -16,6 +16,9 @@ import {
 } from "@tanstack/react-router";
 // The module of the `Register` below: TypeScript 7 rejects an augmentation of a module that the
 // file does not import.
+// TypeScript 7 refuses an augmentation of a module this file does not import. The import does not
+// survive into the emitted declaration, but every Start app loads the module through its generated
+// route tree, which is what makes the augmentation visible to it.
 import type {} from "@tanstack/react-start";
 import { useConvexAuth, type ConvexReactClient } from "convex/react";
 import { createContext, useContext, useEffect, type ReactNode } from "react";

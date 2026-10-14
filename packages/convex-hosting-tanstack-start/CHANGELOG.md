@@ -1,12 +1,12 @@
 # Changelog
 
-## 0.2.1
+## 0.3.0
 
 - After each server build, `convexSsr()` writes `.convex-hosting/server.js`, a re-export of the
   build's server entry. `convex/http.ts` imports `../.convex-hosting/server.js` instead of
-  `../dist/server/server.js`, and `convex-hosting init` of `@samebase/convex-hosting` 0.5.1 writes a
+  `../dist/server/server.js`, and `convex-hosting init` of `@samebase/convex-hosting` 0.6.0 writes a
   placeholder there, so `npx convex dev` works on a fresh clone before any build.
-- The `server-build` types entry is gone: `@samebase/convex-hosting` 0.5.1 declares the new path.
+- The `server-build` types entry is gone: `@samebase/convex-hosting` 0.6.0 declares the new path.
   Remove it from `types` in `tsconfig.json` files, and leave `allowJs` out of
   `convex/tsconfig.json`.
 - `redirectWithoutSession(serverContext, options)` takes the options of TanStack's `redirect()`,

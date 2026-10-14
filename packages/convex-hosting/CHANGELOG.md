@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1
+## 0.6.0
 
 - `convex-hosting init` also writes `.convex-hosting/server.js`, a placeholder server entry that
   answers 503 with `no-store`, and keeps an existing one. A server-rendered app imports this file in

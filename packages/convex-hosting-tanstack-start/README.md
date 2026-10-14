@@ -25,7 +25,7 @@ export { default } from "@samebase/convex-hosting-tanstack-start/server";
 
 After each server build, the plugin writes `.convex-hosting/server.js`, which re-exports the build's
 server entry, `dist/server/server.js`. Before the first build, `convex-hosting init` of
-`@samebase/convex-hosting` 0.5.1 or later writes a placeholder there, so `npx convex dev` bundles
+`@samebase/convex-hosting` 0.6.0 or later writes a placeholder there, so `npx convex dev` bundles
 `convex/http.ts` on a fresh clone. That package also declares the file's type. Leave `allowJs` out
 of `convex/tsconfig.json`: with it, tsc reads the placeholder or the build instead of the type.
 

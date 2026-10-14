@@ -368,7 +368,7 @@ are not proposed again.
 ## What an app writes
 
 One row per piece of a TanStack Start app with Convex Auth cookie sessions on this host, with its
-owner since `@samebase/convex-hosting` 0.5.1 and `@samebase/convex-hosting-tanstack-start` 0.2.1.
+owner since `@samebase/convex-hosting` 0.6.0 and `@samebase/convex-hosting-tanstack-start` 0.3.0.
 
 | Piece                                                     | Owner                                                                                                                        | Why                                                                                         |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
