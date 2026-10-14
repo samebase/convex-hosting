@@ -1,11 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:best-practices"],
-  "description": "One pull request a week with every update. A major that needs work is taken out of that pull request by hand.",
-  "schedule": ["* 0-5 * * 1"],
+  "schedule": ["* * * * 1-5"],
   "timezone": "Europe/Chisinau",
   "minimumReleaseAge": "7 days",
-  "separateMajorMinor": false,
   "packageRules": [
     {
       "description": "Match pnpm's 7-day minimumReleaseAge. config:best-practices sets 3 days for npm.",
@@ -13,8 +11,8 @@
       "minimumReleaseAge": "7 days"
     },
     {
-      "groupName": "Weekly updates",
-      "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest"]
+      "groupName": "Routine updates",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"]
     }
   ]
 }
