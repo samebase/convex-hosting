@@ -1,9 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:best-practices"],
-  "schedule": ["* * * * 1-5"],
+  "description": "One pull request a week with every update. A major that needs work is taken out of that pull request by hand.",
+  "schedule": ["* 0-5 * * 1"],
   "timezone": "Europe/Chisinau",
   "minimumReleaseAge": "7 days",
+  "separateMajorMinor": false,
   "packageRules": [
     {
       "description": "Match pnpm's 7-day minimumReleaseAge. config:best-practices sets 3 days for npm.",
@@ -11,8 +13,13 @@
       "minimumReleaseAge": "7 days"
     },
     {
-      "groupName": "Routine updates",
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"]
+      "groupName": "Weekly updates",
+      "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest"]
+    },
+    {
+      "description": "The published declarations are built with this TypeScript, and the apps that consume them (Bristol) are on TypeScript 5. Move to 7 together with them. Vite+ runs its own TypeScript 7 engine for linting either way.",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
     }
   ]
 }
