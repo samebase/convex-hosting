@@ -5,5 +5,11 @@ import { convexSsr } from "@samebase/convex-hosting-tanstack-start/vite";
 
 export default defineConfig({
   root: import.meta.dirname,
-  plugins: [convexSsr(), tanstackStart(), react()],
+  plugins: [
+    convexSsr(),
+    // Prerenders /about only. `prerender: { enabled: true }` would also prerender every static
+    // route, and crawling would follow /about's links.
+    tanstackStart({ pages: [{ path: "/about", prerender: { enabled: true, crawlLinks: false } }] }),
+    react(),
+  ],
 });

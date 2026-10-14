@@ -1,24 +1,31 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { convexQuery } from "@convex-dev/react-query";
+import { api } from "../../convex/_generated/api.js";
 
 export const Route = createFileRoute("/")({
-  // Runs on the server for the first request.
-  loader: () => ({ renderedAt: new Date().toISOString().slice(11, 19) }),
+  loader: async ({ context }) => {
+    await context.queryClient.ensureQueryData(convexQuery(api.todos.count, {}));
+  },
   component: Home,
 });
 
 function Home() {
-  const { renderedAt } = Route.useLoaderData();
+  const { data: count } = useSuspenseQuery(convexQuery(api.todos.count, {}));
   return (
     <main>
       <h1>TanStack Start on Convex</h1>
+      <p>{count} todos so far</p>
       <p>
-        Rendered in a Convex HTTP action at {renderedAt} UTC. View the page source to see the HTML
-        the server sent. This page is public and runs no Convex query.
-      </p>
-      <p>
-        <Link to="/counter">The counter</Link> and <Link to="/me">your session</Link> need a
-        session: the server renders them as the signed-in user. Without one, they send you to{" "}
-        <Link to="/signin">sign in</Link>.
+        One route in <code>convex/http.ts</code> serves every page. This page is public: the server
+        renders it for each request, and the count stays live in the browser.{" "}
+        {/* A full page load gets the prerendered file; a client navigation would run its loader. */}
+        <Link to="/about" reloadDocument>
+          About
+        </Link>{" "}
+        was rendered at build time and is served as a file. <Link to="/todos">Your todos</Link> are
+        rendered on the server as you, after you <Link to="/signin">sign in</Link>. The header is on
+        every page and shows your session.
       </p>
     </main>
   );

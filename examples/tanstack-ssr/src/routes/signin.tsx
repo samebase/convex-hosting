@@ -16,7 +16,7 @@ function SignIn() {
         type="button"
         onClick={async () => {
           await signInAnonymous();
-          await navigate({ to: "/counter" });
+          await navigate({ to: "/todos" });
         }}
       >
         Sign in anonymously

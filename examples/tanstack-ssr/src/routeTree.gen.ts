@@ -11,9 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as SigninRouteImport } from './routes/signin'
-import { Route as AuthedCounterRouteImport } from './routes/_authed/counter'
-import { Route as AuthedMeRouteImport } from './routes/_authed/me'
+import { Route as AuthedTodosRouteImport } from './routes/_authed/todos'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -24,59 +24,54 @@ const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SigninRoute = SigninRouteImport.update({
   id: '/signin',
   path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthedCounterRoute = AuthedCounterRouteImport.update({
-  id: '/counter',
-  path: '/counter',
-  getParentRoute: () => AuthedRoute,
-} as any)
-const AuthedMeRoute = AuthedMeRouteImport.update({
-  id: '/me',
-  path: '/me',
+const AuthedTodosRoute = AuthedTodosRouteImport.update({
+  id: '/todos',
+  path: '/todos',
   getParentRoute: () => AuthedRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/signin': typeof SigninRoute
-  '/counter': typeof AuthedCounterRoute
-  '/me': typeof AuthedMeRoute
+  '/todos': typeof AuthedTodosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/signin': typeof SigninRoute
-  '/counter': typeof AuthedCounterRoute
-  '/me': typeof AuthedMeRoute
+  '/todos': typeof AuthedTodosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
+  '/about': typeof AboutRoute
   '/signin': typeof SigninRoute
-  '/_authed/counter': typeof AuthedCounterRoute
-  '/_authed/me': typeof AuthedMeRoute
+  '/_authed/todos': typeof AuthedTodosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/signin' | '/counter' | '/me'
+  fullPaths: '/' | '/about' | '/signin' | '/todos'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/signin' | '/counter' | '/me'
-  id:
-    | '__root__'
-    | '/'
-    | '/_authed'
-    | '/signin'
-    | '/_authed/counter'
-    | '/_authed/me'
+  to: '/' | '/about' | '/signin' | '/todos'
+  id: '__root__' | '/' | '/_authed' | '/about' | '/signin' | '/_authed/todos'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthedRoute: typeof AuthedRouteWithChildren
+  AboutRoute: typeof AboutRoute
   SigninRoute: typeof SigninRoute
 }
 
@@ -96,6 +91,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signin': {
       id: '/signin'
       path: '/signin'
@@ -103,31 +105,22 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SigninRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authed/counter': {
-      id: '/_authed/counter'
-      path: '/counter'
-      fullPath: '/counter'
-      preLoaderRoute: typeof AuthedCounterRouteImport
-      parentRoute: typeof AuthedRoute
-    }
-    '/_authed/me': {
-      id: '/_authed/me'
-      path: '/me'
-      fullPath: '/me'
-      preLoaderRoute: typeof AuthedMeRouteImport
+    '/_authed/todos': {
+      id: '/_authed/todos'
+      path: '/todos'
+      fullPath: '/todos'
+      preLoaderRoute: typeof AuthedTodosRouteImport
       parentRoute: typeof AuthedRoute
     }
   }
 }
 
 interface AuthedRouteChildren {
-  AuthedCounterRoute: typeof AuthedCounterRoute
-  AuthedMeRoute: typeof AuthedMeRoute
+  AuthedTodosRoute: typeof AuthedTodosRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
-  AuthedCounterRoute: AuthedCounterRoute,
-  AuthedMeRoute: AuthedMeRoute,
+  AuthedTodosRoute: AuthedTodosRoute,
 }
 
 const AuthedRouteWithChildren =
@@ -136,6 +129,7 @@ const AuthedRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthedRoute: AuthedRouteWithChildren,
+  AboutRoute: AboutRoute,
   SigninRoute: SigninRoute,
 }
 export const routeTree = rootRouteImport
