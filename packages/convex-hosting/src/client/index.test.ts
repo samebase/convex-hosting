@@ -32,10 +32,11 @@ async function setup() {
   });
   await t.mutation(internal.lib.finishVersion, { versionId: "v1" });
   await createVersion("v2");
-  // `t.run` returns Convex values, so the response comes back as its parts, with the number of
-  // mutations that `serveAsset` called.
+  // `serveAsset` runs in an HTTP action, an action context where `fetch` is allowed; convex-test
+  // refuses `fetch` in `t.run`, which is a mutation. The response comes back as its parts, with the
+  // number of mutations that `serveAsset` called.
   const serve = (path: string, versionId = "v1") =>
-    t.run(async (ctx) => {
+    t.action(async (ctx) => {
       const runMutation = vi.spyOn(ctx, "runMutation");
       const url = `https://example.convex.site${path}`;
       const response = await serveAsset(ctx, component, new Request(url), versionId);

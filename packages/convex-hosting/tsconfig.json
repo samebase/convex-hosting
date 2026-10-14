@@ -17,7 +17,8 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["./src/**/*"],
   "exclude": ["./src/workers-shared/**/tests/**"]
