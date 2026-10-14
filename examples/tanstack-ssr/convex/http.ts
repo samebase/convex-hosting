@@ -4,6 +4,7 @@ import { serveSite } from "@samebase/convex-hosting";
 import { api, components } from "./_generated/api.js";
 import { env, httpAction } from "./_generated/server.js";
 import { versionId } from "../.convex-hosting/version.js";
+import server from "../dist/server/server.js";
 
 const http = httpRouter();
 
@@ -45,8 +46,6 @@ http.route({
         cookieOptions,
       });
       const token = await session.getToken();
-      // Loading the renderer here keeps file requests fast.
-      const { default: server } = await import("../dist/server/server.js");
       const page = await server.fetch(request, { context: { token } });
       const headers = new Headers(page.headers);
       cookies.applyTo(headers);
