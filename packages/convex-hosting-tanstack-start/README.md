@@ -102,8 +102,11 @@ import {
 } from "@samebase/convex-hosting-tanstack-start/convex-auth";
 
 export const Route = createFileRoute("/_authed")({
-  beforeLoad: ({ serverContext, location }) =>
-    redirectWithoutSession(serverContext, { to: "/signin", search: { next: location.href } }),
+  // A block body: with `search`, the return type of an expression body would depend on the route
+  // tree, which contains this route, and TypeScript reports the cycle.
+  beforeLoad: ({ serverContext, location }) => {
+    redirectWithoutSession(serverContext, { to: "/signin", search: { next: location.href } });
+  },
   component: () => (
     <RedirectWithoutSession to={(next) => ({ to: "/signin", search: { next } })}>
       <Outlet />
@@ -122,9 +125,10 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
 - `redirectWithoutSession`: a server render without a session throws `redirect(options)`, with the
   options of TanStack's `redirect()`. Only the server render has the cookie; a browser navigation
   has no `serverContext`.
-- `RedirectWithoutSession`: when the session ends, in this tab or in another one, renders nothing
-  and navigates to `to`, a path or the options that `to` builds from `next`, the page that was open.
-  The navigation replaces the history entry.
+- `RedirectWithoutSession`: without a session, after it ends in this tab or in another one, or on a
+  navigation inside the app to a gated page, renders nothing and navigates once to `to`, a path or
+  the options that `to` builds from `next`, the gated page. The navigation replaces the history
+  entry.
 - `useSignedIn()`: `true`, `false`, or `undefined` while unknown. Convex's provider reports loading
   during the server render and the hydration, so the token that `SessionProvider` was given decides
   until it settles, and both renders agree. `SignedIn` and `SignedOut` render their children by it,

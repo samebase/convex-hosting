@@ -5,6 +5,7 @@ import { ConvexAuthNextjsProvider } from "@convex-dev/auth/nextjs";
 import type { ConvexQueryClient } from "@convex-dev/react-query";
 import {
   redirect,
+  useLocation,
   useRouter,
   type InferFrom,
   type InferMaskFrom,
@@ -21,7 +22,7 @@ import {
 // route tree, which is what makes the augmentation visible to it.
 import type {} from "@tanstack/react-start";
 import { useConvexAuth, type ConvexReactClient } from "convex/react";
-import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 
 /** The request context of a page render: the session's access token, or `null` without one. */
 export interface RequestContext {
@@ -133,22 +134,28 @@ export function redirectWithoutSession<TOptions>(
 }
 
 /**
- * A gate's component: when the session ends, in this tab or in another one, it renders nothing and
- * navigates to `to`, a path, or the options that `to` builds from `next`, the page that was open.
+ * A gate's component: without a session, after it ends in this tab or in another one, or on a
+ * navigation inside the app to a gated page, it renders nothing and navigates to `to`, a path, or
+ * the options that `to` builds from `next`, the gated page.
  */
 export function RedirectWithoutSession<TOptions>({
   to,
   children,
 }: {
-  to: string | ((next: string | undefined) => ValidateNavigateOptions<RegisteredRouter, TOptions>);
+  to: string | ((next: string) => ValidateNavigateOptions<RegisteredRouter, TOptions>);
   children: ReactNode;
 }) {
   const signedIn = useSignedIn();
   const router = useRouter();
+  // The location of this render, the gated page. The router's `resolvedLocation` still names the
+  // page that a navigation inside the app left, until the gated page has rendered.
+  const next = useLocation({ select: (location) => location.href });
+  // Once the redirect starts, the location names its target while this gate stays mounted, and the
+  // effect runs again: a second redirect would put the sign-in page in `next`.
+  const redirected = useRef(false);
   useEffect(() => {
-    if (signedIn !== false) return;
-    // The page that was open: the router's location names the target while this gate stays mounted.
-    const next = router.state.resolvedLocation?.href;
+    if (signedIn !== false || redirected.current) return;
+    redirected.current = true;
     if (typeof to === "string") {
       void router.navigate({ to, replace: true });
     } else {
@@ -160,6 +167,6 @@ export function RedirectWithoutSession<TOptions>({
         InferMaskTo<TOptions>
       >({ ...to(next), replace: true });
     }
-  }, [signedIn, router, to]);
+  }, [signedIn, router, to, next]);
   return signedIn === false ? null : children;
 }

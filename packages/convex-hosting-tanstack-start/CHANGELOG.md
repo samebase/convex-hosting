@@ -13,8 +13,8 @@
 - `redirectWithoutSession(serverContext, options)` takes the options of TanStack's `redirect()`,
   such as `{ to: "/signin", search: { next } }`, instead of a path.
 - `RedirectWithoutSession` takes `to` as a path or as a function that builds the navigation options
-  from `next`, the page that was open. It renders nothing without a session, and its navigation
-  replaces the history entry.
+  from `next`, the gated page, also after a navigation inside the app. It renders nothing without a
+  session, redirects once, and its navigation replaces the history entry.
 - `useSignedIn()`, `SignedIn`, and `SignedOut` tell a signed-in visitor apart in the server render
   too, from the token that `SessionProvider` was given.
 - The `requestContext` declaration moves to the `Register` of `@tanstack/react-start`, where Start
