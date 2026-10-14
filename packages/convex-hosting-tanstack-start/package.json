@@ -1,6 +1,6 @@
 {
   "name": "@samebase/convex-hosting-tanstack-start",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Render TanStack Start pages in a Convex HTTP action.",
   "license": "Apache-2.0",
   "repository": {
@@ -9,13 +9,21 @@
     "directory": "packages/convex-hosting-tanstack-start"
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "type": "module",
   "exports": {
+    "./convex-auth": {
+      "types": "./dist/convex-auth.d.ts",
+      "default": "./dist/convex-auth.js"
+    },
     "./server": {
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
+    },
+    "./server-build": {
+      "types": "./dist/server-build.d.ts"
     },
     "./vite": {
       "types": "./dist/vite.d.ts",
@@ -23,25 +31,39 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/server-build.d.ts', 'dist/server-build.d.ts')\"",
     "prepare": "pnpm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@convex-dev/auth": "catalog:",
+    "@convex-dev/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-start": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "convex": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
   },
   "peerDependencies": {
+    "@convex-dev/auth": "^2.0.0-alpha.2",
+    "@convex-dev/react-query": "^0.1.0",
     "@tanstack/react-router": "^1.170.38",
     "@tanstack/react-start": "^1.168.56",
+    "convex": "^1.46.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "vite": "*"
+  },
+  "peerDependenciesMeta": {
+    "@convex-dev/auth": {
+      "optional": true
+    },
+    "@convex-dev/react-query": {
+      "optional": true
+    }
   }
 }

@@ -5,9 +5,9 @@ import { ConvexQueryClient } from "@convex-dev/react-query";
 import { routeTree } from "./routeTree.gen.js";
 
 export function getRouter() {
-  // Start calls this for each server request, so clients are never shared. `expectAuth` is explained
-  // at `ReleaseWhenSignedOut` in routes/__root.tsx.
+  // Start calls this for each server request, so clients are never shared.
   const convexQueryClient = new ConvexQueryClient(import.meta.env.VITE_CONVEX_URL, {
+    // Holds queries until the session is known; `SessionProvider` explains it.
     expectAuth: true,
   });
   const queryClient = new QueryClient({
@@ -26,10 +26,4 @@ export function getRouter() {
   });
   setupRouterSsrQueryIntegration({ router, queryClient });
   return router;
-}
-
-declare module "@tanstack/react-start" {
-  interface Register {
-    server: { requestContext: { token: string | null } };
-  }
 }

@@ -5,6 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
+    "jsx": "react-jsx",
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "declaration": true,

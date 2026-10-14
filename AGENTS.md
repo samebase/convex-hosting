@@ -9,12 +9,14 @@ code remains.
 
 - `packages/convex-hosting`: the published component and CLI.
   - `src/component`: code that runs inside the component on Convex.
-  - `src/client`: `serveAsset`, which apps call from their `convex/http.ts`.
+  - `src/client`: `serveSite`, which apps call from their `convex/http.ts`, and `serveAsset`, its
+    first step.
   - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, its inner step.
   - `src/workers-shared`: Cloudflare's asset worker, copied by `scripts/sync-workers-shared.ts`.
     Never edit it by hand.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
-  Start pages in a Convex HTTP action.
+  Start pages in a Convex HTTP action, the server entry's type, and the `convex-auth` session
+  helpers.
 - `examples/spa`: a Vite and React app that the component serves.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
 

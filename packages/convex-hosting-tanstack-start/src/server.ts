@@ -18,16 +18,16 @@ if (new URLSearchParams().size === undefined) {
 }
 
 // Apps call only `fetch(request, { context })`. Start gives `context` to each route's `beforeLoad`
-// and loader on the server as `serverContext`; the app types it as `requestContext` in Start's
-// `Register`. The inferred handler type names TanStack's internal router packages, which the
-// published declarations cannot reference.
+// and loader on the server as `serverContext`. The inferred handler type names TanStack's internal
+// router packages, which the published declarations cannot reference, and `<unknown>` keeps it off
+// `Register`, where the `convex-auth` entry's `requestContext` would make `context` required.
 const server: {
   fetch: (
     request: Request,
     opts?: { context?: Record<string, unknown> },
   ) => Response | Promise<Response>;
 } = {
-  fetch: createStartHandler((context) => {
+  fetch: createStartHandler<unknown>((context) => {
     const { router, responseHeaders, request } = context;
     return renderSsrHtmlResponse({
       router,

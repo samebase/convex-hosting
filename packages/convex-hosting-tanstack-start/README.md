@@ -1,9 +1,9 @@
 # @samebase/convex-hosting-tanstack-start
 
 Renders TanStack Start pages inside a Convex HTTP action, so the app needs no separate server host.
-The package has a Vite plugin and a server entry. It owns no tables and needs no `app.use(...)`. The
-hosting component in [samebase/convex-hosting](https://github.com/samebase/convex-hosting) serves
-the browser files.
+The package has a Vite plugin, a server entry with its type, and helpers for Convex Auth cookie
+sessions. It owns no tables and needs no `app.use(...)`. The hosting component in
+[samebase/convex-hosting](https://github.com/samebase/convex-hosting) serves the browser files.
 
 ## Use
 
@@ -17,64 +17,113 @@ export default defineConfig({
 });
 ```
 
-Create `src/server.ts`:
+Create `src/server.ts`, which Vite builds as the server entry:
 
 ```ts
 export { default } from "@samebase/convex-hosting-tanstack-start/server";
 ```
 
-In `convex/http.ts`, serve the uploaded files with `serveAsset` first, then render every other path
-with the server entry of the build:
+Vite emits the server entry without TypeScript declarations, so the package ships its type. Add it
+to `convex/tsconfig.json`, and to any other `tsconfig.json` whose files import
+`convex/_generated/api`, which reaches `convex/http.ts`:
+
+```json
+{
+  "compilerOptions": {
+    "types": ["@samebase/convex-hosting-tanstack-start/server-build"]
+  }
+}
+```
+
+In `convex/http.ts`, `serveSite` serves the uploaded files and renders every other path with the
+server entry of the build:
 
 ```ts
-import { httpRouter } from "convex/server";
-import { serveAsset } from "@samebase/convex-hosting";
-import { components } from "./_generated/api.js";
-import { httpAction } from "./_generated/server.js";
-import { versionId } from "../.convex-hosting/version.js";
-
-const http = httpRouter();
+import server from "../dist/server/server.js";
 
 http.route({
   pathPrefix: "/",
   method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    const asset = await serveAsset(ctx, components.hosting, request, versionId);
-    if (asset) return asset;
-    const { default: server } = await import("../dist/server/server.js");
-    const page = await server.fetch(request);
-    // The deployment's Cloudflare front caches answers on static-looking paths, so a rendered 404
-    // for a script requested before its upload ended would stay cached after the file exists.
-    const headers = new Headers(page.headers);
-    headers.set("Cache-Control", "no-store");
-    return new Response(page.body, { status: page.status, headers });
-  }),
+  handler: httpAction((ctx, request) =>
+    serveSite(ctx, components.hosting, request, versionId, async () => server.fetch(request)),
+  ),
 });
-
-export default http;
 ```
-
-The
-[TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
-declares the server entry's type in `convex/server-build.d.ts`, so typechecking also works before
-the first build.
 
 For reactive queries, use the
 [official Convex TanStack integration](https://docs.convex.dev/client/tanstack/tanstack-start/).
 Components use `useSuspenseQuery(convexQuery(...))`; the server entry waits for their HTML, and
 TanStack handles query hydration.
 
-To give the pages data of the request, such as the access token of a session cookie, pass it as
-`context`: `server.fetch(request, { context: { token } })`. Start gives it to each route's
-`beforeLoad` and loader on the server as `serverContext`. Declare its type in Start's `Register`:
+To give the pages data of the request, pass it as `context`: `server.fetch(request, { context })`.
+Start gives it to each route's `beforeLoad` and loader on the server as `serverContext`, typed as
+`requestContext` in Start's `Register`.
 
-```ts
-declare module "@tanstack/react-start" {
-  interface Register {
-    server: { requestContext: { token: string | null } };
-  }
+## Convex Auth sessions
+
+With [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies,
+`convex/http.ts` reads the session in `render` and passes its access token as
+`server.fetch(request, { context: { token } })`, as the
+[TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
+does. `@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and importing it declares
+`requestContext` as `{ token: string | null }`. The app creates its Convex client with
+`expectAuth: true`.
+
+The root route gives the token to the server render's Convex client and wraps the document in the
+session provider:
+
+```tsx
+import {
+  SessionProvider,
+  sessionBeforeLoad,
+} from "@samebase/convex-hosting-tanstack-start/convex-auth";
+
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+  convexQueryClient: ConvexQueryClient;
+}>()({
+  beforeLoad: sessionBeforeLoad,
+  component: Root,
+});
+
+function Root() {
+  const { convexQueryClient, token } = Route.useRouteContext();
+  return (
+    <SessionProvider client={convexQueryClient.convexClient} token={token}>
+      <html lang="en">{/* ... */}</html>
+    </SessionProvider>
+  );
 }
 ```
+
+A pathless layout route gates the pages under it:
+
+```tsx
+import {
+  RedirectWithoutSession,
+  redirectWithoutSession,
+} from "@samebase/convex-hosting-tanstack-start/convex-auth";
+
+export const Route = createFileRoute("/_authed")({
+  beforeLoad: ({ serverContext }) => redirectWithoutSession(serverContext, "/signin"),
+  component: () => (
+    <RedirectWithoutSession to="/signin">
+      <Outlet />
+    </RedirectWithoutSession>
+  ),
+});
+```
+
+- `sessionBeforeLoad`: on the server, the render's Convex HTTP client queries with the token, so
+  loaders run as the user. It puts `token` in the route context.
+- `SessionProvider`: Convex Auth's provider, started from the token of the server render. It also
+  releases `expectAuth` for a visitor without a session, which Convex's provider never does.
+- `redirectWithoutSession`: a server render without a session redirects. Only the server render has
+  the cookie; a browser navigation has no `serverContext`.
+- `RedirectWithoutSession`: navigates when the session ends, in this tab or in another one.
+
+`@convex-dev/auth` is an optional peer dependency: an app with another auth provider uses only the
+plugin and the server entry.
 
 ## Why these settings exist
 

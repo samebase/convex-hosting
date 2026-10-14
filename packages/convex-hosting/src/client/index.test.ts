@@ -4,7 +4,7 @@ import { anyApi } from "convex/server";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { internal } from "../component/_generated/api.js";
 import schema from "../component/schema.js";
-import { serveAsset } from "./index.js";
+import { serveAsset, serveSite } from "./index.js";
 
 const modules = import.meta.glob(["../component/**/*.ts", "!../component/**/*.test.ts"]);
 
@@ -154,5 +154,56 @@ describe("serveAsset", () => {
       throw new TypeError("fetch failed");
     });
     expect((await serve("/")).response?.status).toBe(502);
+  });
+});
+
+describe("serveSite", () => {
+  async function site(path: string, render?: () => Promise<Response>) {
+    const { t } = await setup();
+    return t.action(async (ctx) => {
+      const url = `https://example.convex.site${path}`;
+      const response = await serveSite(ctx, component, new Request(url), "v1", render);
+      return {
+        status: response.status,
+        cacheControl: response.headers.get("cache-control"),
+        setCookie: response.headers.getSetCookie(),
+        body: await response.text(),
+      };
+    });
+  }
+
+  test("answers a file as serveAsset does, without rendering", async () => {
+    vi.stubGlobal("fetch", async () => new Response("<h1>Home</h1>"));
+    const render = vi.fn(async () => new Response("page"));
+    const file = await site("/", render);
+    expect(file.status).toBe(200);
+    expect(file.cacheControl).toBe("public, max-age=0, must-revalidate");
+    expect(file.body).toBe("<h1>Home</h1>");
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  test("answers a rendered page with no-store and keeps its other headers", async () => {
+    const page = await site(
+      "/todos",
+      async () =>
+        new Response("<h1>Todos</h1>", {
+          status: 200,
+          headers: [
+            ["Cache-Control", "public, max-age=60"],
+            ["Set-Cookie", "a=1"],
+            ["Set-Cookie", "b=2"],
+          ],
+        }),
+    );
+    expect(page.status).toBe(200);
+    expect(page.cacheControl).toBe("no-store");
+    expect(page.setCookie).toEqual(["a=1", "b=2"]);
+    expect(page.body).toBe("<h1>Todos</h1>");
+  });
+
+  test("answers a miss without render with 404 and no-store", async () => {
+    const miss = await site("/missing");
+    expect(miss.status).toBe(404);
+    expect(miss.cacheControl).toBe("no-store");
   });
 });

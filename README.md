@@ -35,7 +35,7 @@ Requires `convex` 1.46 or later.
 
    ```ts
    import { httpRouter } from "convex/server";
-   import { serveAsset } from "@samebase/convex-hosting";
+   import { serveSite } from "@samebase/convex-hosting";
    import { components } from "./_generated/api.js";
    import { httpAction } from "./_generated/server.js";
    import { versionId } from "../.convex-hosting/version.js";
@@ -45,13 +45,7 @@ Requires `convex` 1.46 or later.
    http.route({
      pathPrefix: "/",
      method: "GET",
-     handler: httpAction(async (ctx, request) => {
-       const asset = await serveAsset(ctx, components.hosting, request, versionId);
-       if (asset) return asset;
-       // A static site: 404. A server-rendered site: render the page here, also with `no-store`.
-       // The deployment's Cloudflare front caches answers on static-looking paths.
-       return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
-     }),
+     handler: httpAction((ctx, request) => serveSite(ctx, components.hosting, request, versionId)),
    });
 
    export default http;
@@ -90,7 +84,6 @@ declares the type of `.convex-hosting/version.js`, so the app typechecks without
   after `init` that is none: the site answers 404 until the next `convex-hosting deploy`.
 - Do not commit `.convex-hosting/`. It ignores itself.
 - Do not change directory in `--build`. The build and the upload run in the project directory.
-- Answer a miss in `convex/http.ts` with `Cache-Control: no-store`, as in step 3.
 
 ## Deploy
 
@@ -191,9 +184,15 @@ files for a year, add a `_headers` rule:
 
 ## Routing
 
-`serveAsset` returns the asset's response, or `null` when no asset matches, so your route continues.
-When the version does not exist or is still uploading, it returns a 404 response that names the
-version. At the first request for a new version, it marks the version live.
+`serveSite` answers with the file that matches, else with the page that `render` returns (see
+[Server-rendered pages](#server-rendered-pages)), else 404. A page and a 404 answer
+`Cache-Control: no-store`. The deployment's Cloudflare front keeps that for a path without an
+extension and replaces it with a four-hour browser `max-age` for a path with one, so a browser that
+asks for a script before its upload ended keeps the 404; the deploy order prevents that case,
+because no page refers to a file that is not uploaded yet. When the version does not exist or is
+still uploading, it answers 404 naming the version. At the first request for a new version, it marks
+the version live. `serveAsset`, its first step, returns the file's response or `null`, for a route
+that does something else on a miss.
 
 `not_found_handling` applies to navigation requests (`Sec-Fetch-Mode: navigate`) only, as on
 Cloudflare when a Worker runs: other requests that match no file reach your code. Browsers send that
@@ -242,8 +241,10 @@ export function useReloadOnNewVersion() {
 
 ## Server-rendered pages
 
+`serveSite` takes a fifth argument, `render`, a function from the request to the page's response,
+and calls it when no file matches.
 [`@samebase/convex-hosting-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
-renders TanStack Start pages in the same route, after `serveAsset`. See the
+renders TanStack Start pages in it. See the
 [TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr),
 live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
 
