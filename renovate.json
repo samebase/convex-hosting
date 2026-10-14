@@ -15,11 +15,6 @@
     {
       "groupName": "Weekly updates",
       "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest"]
-    },
-    {
-      "description": "The published declarations are built with this TypeScript, and the apps that consume them (Bristol) are on TypeScript 5. Move to 7 together with them. Vite+ runs its own TypeScript 7 engine for linting either way.",
-      "matchPackageNames": ["typescript"],
-      "allowedVersions": "<7"
     }
   ]
 }
