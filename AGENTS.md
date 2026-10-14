@@ -44,4 +44,9 @@ Run from the repository root with pnpm 11 and the Node version in `.node-version
 - Shared dependency versions live in the `catalog` in `pnpm-workspace.yaml`.
 - Releases: a version bump on `main` makes `release.yml` stage the package on npm; a maintainer
   approves it with 2FA. See `CONTRIBUTING.md`.
+- An app-side script, build step, type file, or wrapper in an example or a consuming app that exists
+  because a package or the adapter lacks something is a package bug. Fix it in the package in the
+  same cycle; do not keep the workaround in the app. The server placeholder that
+  `convex-hosting init` writes is such a fix: it replaced an app's script that built before
+  `npx convex dev`.
 - Never use the U+2014 em dash character. Use commas, colons, parentheses, or separate sentences.
