@@ -9,68 +9,97 @@ the same `_headers`, `_redirects`, and `.assetsignore` files, the same `html_han
 `not_found_handling` options, and the same responses, computed by Cloudflare's own asset-serving
 code.
 
-## Install
+## Setup
 
-```sh
-npm install @samebase/convex-hosting
-```
+Requires `convex` 1.46 or later.
 
-`convex/convex.config.ts`:
+1. Install:
 
-```ts
-import { defineApp } from "convex/server";
-import hosting from "@samebase/convex-hosting/convex.config";
+   ```sh
+   npm install @samebase/convex-hosting
+   ```
 
-const app = defineApp();
-app.use(hosting);
+2. `convex/convex.config.ts` mounts the component:
 
-export default app;
-```
+   ```ts
+   import { defineApp } from "convex/server";
+   import hosting from "@samebase/convex-hosting/convex.config";
 
-`convex/http.ts` has one `GET` route for the site. Convex answers `HEAD` through it.
+   const app = defineApp();
+   app.use(hosting);
 
-```ts
-import { httpRouter } from "convex/server";
-import { serveAsset } from "@samebase/convex-hosting";
-import { components } from "./_generated/api.js";
-import { httpAction } from "./_generated/server.js";
-import { versionId } from "../.convex-hosting/version.js";
+   export default app;
+   ```
 
-const http = httpRouter();
+3. `convex/http.ts` has one `GET` route for the site. Convex answers `HEAD` through it.
 
-http.route({
-  pathPrefix: "/",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    const asset = await serveAsset(ctx, components.hosting, request, versionId);
-    if (asset) return asset;
-    // A static site: 404. A server-rendered site: render the page here, also with `no-store`.
-    // The deployment's Cloudflare front caches answers on static-looking paths.
-    return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
-  }),
-});
+   ```ts
+   import { httpRouter } from "convex/server";
+   import { serveAsset } from "@samebase/convex-hosting";
+   import { components } from "./_generated/api.js";
+   import { httpAction } from "./_generated/server.js";
+   import { versionId } from "../.convex-hosting/version.js";
 
-export default http;
-```
+   const http = httpRouter();
+
+   http.route({
+     pathPrefix: "/",
+     method: "GET",
+     handler: httpAction(async (ctx, request) => {
+       const asset = await serveAsset(ctx, components.hosting, request, versionId);
+       if (asset) return asset;
+       // A static site: 404. A server-rendered site: render the page here, also with `no-store`.
+       // The deployment's Cloudflare front caches answers on static-looking paths.
+       return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
+     }),
+   });
+
+   export default http;
+   ```
+
+4. Run `convex-hosting init` before `npx convex dev`, once per clone. `convex/http.ts` imports
+   `.convex-hosting/version.js`, which only a deploy writes, so without it `npx convex dev` fails
+   with `Could not resolve "../.convex-hosting/version.js"`. `init` writes the file with no site
+   version and keeps an existing one. Put it in the script that starts `npx convex dev`:
+
+   ```json
+   {
+     "scripts": {
+       "predev": "convex-hosting init",
+       "dev": "convex dev"
+     }
+   }
+   ```
+
+   Until the first deploy, the site answers 404.
+
+5. Deploy, from CI or a terminal:
+
+   ```sh
+   npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling single-page-application
+   ```
 
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
-Wrangler's `.wrangler/`. Every deploy writes the version to `.convex-hosting/version.js`. The folder
-has its own `.gitignore`, so git ignores it. The package declares the module's type, so a fresh
-clone typechecks before its first deploy; nothing to add.
+Wrangler's `.wrangler/`. The folder has its own `.gitignore`, so git ignores it. The package
+declares the type of `.convex-hosting/version.js`, so the app typechecks without it.
+
+## Rules
+
+- Deploy production and previews with `convex-hosting deploy`, never with a plain
+  `npx convex deploy`. A plain push sends whatever version `.convex-hosting/version.js` names, and
+  after `init` that is none: the site answers 404 until the next `convex-hosting deploy`.
+- Do not commit `.convex-hosting/`. It ignores itself.
+- Do not change directory in `--build`. The build and the upload run in the project directory.
+- Answer a miss in `convex/http.ts` with `Cache-Control: no-store`, as in step 3.
 
 ## Deploy
-
-```sh
-npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling single-page-application
-```
-
-The build command runs in the project directory. Do not change directory in it.
 
 `deploy` runs `npx convex deploy` with your build and the upload of `--dist` as its `--cmd`. The
 pushed code names the version it was built with, so the push switches the site, and the command
 ends. The first request that the new code serves marks its version live, which deletes the versions
 that were live before it. A version that never becomes live, from a deploy that failed, is deleted
-when it is a day old, with the stored files that no version uses.
+when it is a day old, with the stored files that no version uses. Nothing is deleted while a site
+gets no request.
 
 `deploy` goes to production. `--preview-name <name>` sends it to that preview (with a login or a
 project's preview deploy key; always pass the name with that key), and `--dev` to the development
@@ -79,15 +108,25 @@ deployment (see [Development](#development)). A deploy key in `CONVEX_DEPLOY_KEY
 and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment.
 
 The first deploy to a deployment pushes the component, then uploads the files. Until that upload
-ends, the site answers 404.
+ends, the site answers 404. Two deploys that overlap both complete, and the last push wins.
 
-Two deploys that overlap both complete, and the last push wins.
+## Deploy tools and CI
+
+- **A tool that runs `convex deploy` itself**, such as Alchemy's `Convex.Code`, has no place for the
+  upload, which must happen between the build and the push. Run `convex-hosting deploy` in place of
+  that tool's push step, with the deploy key in `CONVEX_DEPLOY_KEY`.
+- **A deploy key limited to some actions** needs `deployment:deploy`,
+  `deployment:functions:runInternalQueries`, `deployment:functions:runInternalMutations`,
+  `deployment:functions:runInternalActions` (the upload calls one internal action), and
+  `deployment:functions:runTestQuery` (the first-install check is an inline query).
+- **Checks that must stop a release** run before `convex-hosting deploy`, because its push switches
+  the site. Checks that need the new functions run after it.
 
 ## Development
 
 The inner loop is your framework's dev server, such as Vite's, which serves the frontend locally
 with hot reload against the development deployment's URL from `.env.local`, plus `npx convex dev`,
-which pushes your function changes.
+which pushes your function changes. Neither needs a deploy.
 
 When the development deployment should serve the current build, run the one-shot command:
 
@@ -103,8 +142,7 @@ environment, so the framework reads the deployment's URL from `.env.local` (Vite
 running, because without it every Convex CLI call starts and stops its own backend and the upload's
 requests find nothing; cloud development deployments do not have this constraint. There is no watch
 mode: a build, an upload, and a push per change is not an inner loop, and Cloudflare's own tooling
-works the same way, with a local dev server and a push on demand. A fresh clone runs `deploy --dev`
-once; after that, the version file exists and `npx convex dev` bundles as usual.
+works the same way, with a local dev server and a push on demand.
 
 Two cases are transient:
 
@@ -138,9 +176,10 @@ Put them at the root of `--dist`, as for Cloudflare:
 [`_headers`](https://developers.cloudflare.com/workers/static-assets/headers/),
 [`_redirects`](https://developers.cloudflare.com/workers/static-assets/redirects/), and
 [`.assetsignore`](https://developers.cloudflare.com/workers/static-assets/binding/#ignoring-assets).
-They are not served. Symbolic links in `--dist` are followed, as Wrangler follows them, also when
-they point outside the folder; a link to nothing, or back into a folder already included, is skipped
-with a message. `.assetsignore` excludes what a link should not publish.
+For a Vite app, put them in `public/`, which Vite copies into `dist/`. They are not served. Symbolic
+links in `--dist` are followed, as Wrangler follows them, also when they point outside the folder; a
+link to nothing, or back into a folder already included, is skipped with a message. `.assetsignore`
+excludes what a link should not publish.
 
 Every asset has `Cache-Control: public, max-age=0, must-revalidate` and an `ETag`. To cache hashed
 files for a year, add a `_headers` rule:
@@ -157,8 +196,13 @@ When the version does not exist or is still uploading, it returns a 404 response
 version. At the first request for a new version, it marks the version live.
 
 `not_found_handling` applies to navigation requests (`Sec-Fetch-Mode: navigate`) only, as on
-Cloudflare when a Worker runs: other requests that match no file reach your code. Two differences
-from Cloudflare follow from Convex's router:
+Cloudflare when a Worker runs: other requests that match no file reach your code. Browsers send that
+header whenever they open a page. `curl`, `fetch` in scripts and tests, uptime monitors, and
+link-preview bots do not, so they get your route's answer for a deep link of a single-page app,
+a 404. To test a deep link as a browser opens it, send the header:
+`curl -H "Sec-Fetch-Mode: navigate"`, or `node:http` in Node, whose `fetch` refuses to set it.
+
+Two differences from Cloudflare follow from Convex's router:
 
 - An exact route in `convex/http.ts` wins over an asset at the same path.
 - On a static site, a request that is not a navigation and matches no file (`curl /missing`) answers

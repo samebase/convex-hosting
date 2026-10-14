@@ -105,14 +105,20 @@ answers 404 (see Serve). Once per deployment.
 development deployment's URL, while `npx convex dev` pushes function changes, as in any Convex app.
 `convex-hosting deploy --dev` is a one-shot command for when the development deployment itself
 should serve the current build. There is no watch mode: a build, an upload, and a push per change is
-not an inner loop, and Cloudflare's tooling has the same shape. A fresh clone runs `deploy --dev`
-once; after that the version file exists and `npx convex dev` bundles as usual. Two things in this
-loop are transient and documented, not solved: when a server-rendered app's build changes
-`dist/server`, which `http.ts` imports, a running `npx convex dev` pushes before `deploy --dev` has
-written the new id, so pages reference files that answer 404 until that run ends; and a production
-deploy run from the same checkout writes production's id, which a running `npx convex dev` then
-pushes to the development deployment, where that version does not exist, until the next
-`deploy --dev`. Production deploys belong in CI or a separate checkout.
+not an inner loop, and Cloudflare's tooling has the same shape. A fresh clone has no version file,
+so `npx convex dev` cannot bundle `http.ts`, and with an anonymous local deployment `deploy --dev`
+cannot help, because it needs a running `npx convex dev`. So `convex-hosting init` writes the
+version file with the placeholder id `not-deployed`, which no deploy creates (deploys use random
+UUIDs), and keeps an existing file. Apps run it before `npx convex dev`, for example as a `predev`
+script. Until the first deploy, the site answers 404 naming the placeholder. A plain
+`npx convex deploy` after `init` pushes the placeholder and the site answers 404, which is why
+production and previews deploy only through `convex-hosting deploy`. Two things in this loop are
+transient and documented, not solved: when a server-rendered app's build changes `dist/server`,
+which `http.ts` imports, a running `npx convex dev` pushes before `deploy --dev` has written the new
+id, so pages reference files that answer 404 until that run ends; and a production deploy run from
+the same checkout writes production's id, which a running `npx convex dev` then pushes to the
+development deployment, where that version does not exist, until the next `deploy --dev`. Production
+deploys belong in CI or a separate checkout.
 
 **Failures.** A deploy that dies before the push leaves a version that nothing serves; a later
 switch deletes it when it is a day old. An upload that dies leaves a version in state `uploading`,
@@ -346,7 +352,7 @@ are not proposed again.
 - `packages/convex-hosting`
   - `src/component`: `schema.ts`, `lib.ts`, `convex.config.ts`, and its generated files.
   - `src/client`: `serveAsset`, and the shipped declaration of the version module.
-  - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, the inner step that
+  - `src/cli`: the `convex-hosting` command: `init`, `deploy`, and `upload`, the inner step that
     `npx convex deploy --cmd` has to call as a program.
   - `src/workers-shared`: Cloudflare's asset worker and its tests, copied by
     `scripts/sync-workers-shared.ts` from cloudflare/workers-sdk at the commit in `UPSTREAM`. Only
