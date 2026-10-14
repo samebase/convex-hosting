@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1
+
+- `convex-hosting init` also writes `.convex-hosting/server.js`, a placeholder server entry that
+  answers 503 with `no-store`, and keeps an existing one. A server-rendered app imports this file in
+  `convex/http.ts`, so `npx convex dev` bundles on a fresh clone before the first build. The
+  framework adapter's Vite plugin replaces it with a re-export of the server build.
+- The package declares the type of `.convex-hosting/server.js`, as it does for `version.js`.
+
 ## 0.5.0
 
 - `serveSite(ctx, component, request, versionId, render?)` serves the whole site from one route: the

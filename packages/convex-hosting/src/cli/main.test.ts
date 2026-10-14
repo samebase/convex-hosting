@@ -11,9 +11,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 import { deploymentSelector, type Cli } from "./convex.js";
-import { main, VERSION_FILE } from "./main.js";
+import { main, SERVER_FILE, VERSION_FILE } from "./main.js";
 
 /** What `npx convex run --component <name> --inline-query` prints when the component is missing. */
 const missing = (component: string) =>
@@ -151,7 +152,7 @@ describe("help", () => {
 });
 
 describe("init", () => {
-  test("writes a version file with no site version, and the folder's .gitignore", async () => {
+  test("writes the version file, the server placeholder, and the folder's .gitignore", async () => {
     const cwd = app(site);
     const { cli, logs, events } = fake(cwd);
     expect(await main(["init"], cli)).toBe(0);
@@ -159,15 +160,26 @@ describe("init", () => {
     expect(readFileSync(join(cwd, ".convex-hosting", ".gitignore"), "utf8")).toBe("*\n");
     expect(logs[0]).toContain("The site answers 404 until the first convex-hosting deploy.");
     expect(events).toEqual([]);
+
+    const placeholder: { default: { fetch: (request: Request) => Response } } = await import(
+      pathToFileURL(join(cwd, SERVER_FILE)).href
+    );
+    const response = placeholder.default.fetch(new Request("https://example.test/"));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.text()).toBe("The site is not built yet.");
   });
 
-  test("keeps an existing version file", async () => {
+  test("keeps existing files", async () => {
     const cwd = app(site);
     const { cli } = fake(cwd);
     expect(await main(["init"], cli)).toBe(0);
+    const built = 'export { default } from "../dist/server/server.js";\n';
     writeFileSync(join(cwd, VERSION_FILE), 'export const versionId = "v1";\n');
+    writeFileSync(join(cwd, SERVER_FILE), built);
     expect(await main(["init"], cli)).toBe(0);
     expect(versionFile(cwd)).toBe('export const versionId = "v1";\n');
+    expect(readFileSync(join(cwd, SERVER_FILE), "utf8")).toBe(built);
   });
 
   test("takes no deploy options", async () => {
@@ -180,6 +192,7 @@ describe("init", () => {
       const { cli } = fake(cwd);
       expect(await main(args, cli)).toBe(1);
       expect(existsSync(join(cwd, VERSION_FILE))).toBe(false);
+      expect(existsSync(join(cwd, SERVER_FILE))).toBe(false);
     }
   });
 });
