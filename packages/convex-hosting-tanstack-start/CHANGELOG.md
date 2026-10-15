@@ -11,6 +11,10 @@
   `convex/http.ts` loads it with
   `import type {} from "@samebase/convex-hosting-tanstack-start/server-build";`. It covers the
   default output only; an app with another output folder or entry name declares its own path.
+- `signOutSession(url)` in `convex-auth` posts to the app's sign-out route and reloads the page only
+  when the route answers 2xx; otherwise it returns `false`. Use it in place of Convex Auth's
+  `signOut()` followed by a reload: `signOut()` resolves even when the route failed, and the reload
+  then signed the user back in from the cookie.
 
 ## 0.3.0
 

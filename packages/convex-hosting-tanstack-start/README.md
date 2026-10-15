@@ -137,6 +137,10 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   during the server render and the hydration, so the token that `SessionProvider` was given decides
   until it settles, and both renders agree. `SignedIn` and `SignedOut` render their children by it,
   where Convex's `Authenticated` and `Unauthenticated` render nothing on the server.
+- `signOutSession(url)`: posts to the app's sign-out route, such as `/auth/signout`, and reloads the
+  page only when the route answers 2xx; otherwise it returns `false`, and the session stays. Convex
+  Auth's `signOut()` resolves even when the route failed, so a reload after it signs the user back
+  in from the cookie.
 
 `@convex-dev/auth` is an optional peer dependency: an app with another auth provider uses only the
 plugin and the server entry.
