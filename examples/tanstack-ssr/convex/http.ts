@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpCookies, ServerAuthSession, setupConvexAuthServer } from "@convex-dev/auth/server";
 import { serveSite } from "@samebase/convex-hosting";
+import type { RequestContext } from "@samebase/convex-hosting-tanstack-start/convex-auth";
 import { api, components } from "./_generated/api.js";
 import { env, httpAction } from "./_generated/server.js";
 import { versionId } from "../.convex-hosting/version.js";
@@ -47,8 +48,8 @@ http.route({
         cookies,
         cookieOptions,
       });
-      const token = await session.getToken();
-      const page = await server.fetch(request, { context: { token } });
+      const context: RequestContext = { token: await session.getToken() };
+      const page = await server.fetch(request, { context });
       const headers = new Headers(page.headers);
       cookies.applyTo(headers);
       return new Response(page.body, { status: page.status, headers });

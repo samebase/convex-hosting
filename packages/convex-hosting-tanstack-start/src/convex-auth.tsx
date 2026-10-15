@@ -22,8 +22,12 @@ import type {} from "@tanstack/react-start";
 import { useConvexAuth, type ConvexReactClient } from "convex/react";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 
-/** The request context of a page render: the session's access token, or `null` without one. */
-interface RequestContext {
+/**
+ * The request context of a page render: the session's access token, or `null` without one. An app
+ * imports it in `convex/http.ts`, which types the context value and loads this `Register`
+ * registration into the `convex/` program, where nothing else imports this entry.
+ */
+export interface RequestContext {
   token: string | null;
 }
 

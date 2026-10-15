@@ -57,15 +57,25 @@ TanStack handles query hydration.
 
 To give the pages data of the request, pass it as `context`: `server.fetch(request, { context })`.
 Start gives it to each route's `beforeLoad` and loader on the server as `serverContext`, typed as
-`requestContext` in Start's `Register`.
+`requestContext` in Start's `Register`. `fetch` is TanStack's `RequestHandler<Register>`: with a
+registered `requestContext`, `context` is required and has that type.
 
 ## Convex Auth sessions
 
 With [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies,
-`convex/http.ts` reads the session in `render` and passes its access token as
-`server.fetch(request, { context: { token } })`, as the
+`convex/http.ts` reads the session in `render` and passes its access token as the context, as the
 [TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
-does. `@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and importing it declares
+does:
+
+```ts
+import type { RequestContext } from "@samebase/convex-hosting-tanstack-start/convex-auth";
+
+// In `render`, with the session of the request's cookies:
+const context: RequestContext = { token: await session.getToken() };
+const page = await server.fetch(request, { context });
+```
+
+`@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and importing it declares
 `requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`. The app
 creates its Convex client with `expectAuth: true`.
 
@@ -142,6 +152,9 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   token in every tab, and reloads the page; otherwise it returns `false` and the session stays.
   Convex Auth's `signOut()` resolves even when the route failed, so a reload after it alone signs
   the user back in from the cookie.
+- `RequestContext`: the type of the context, `{ token: string | null }`. Import it in
+  `convex/http.ts`: it types the context value and loads this entry's `Register` registration into
+  the `convex/` program, where nothing else imports this entry.
 
 `@convex-dev/auth` is an optional peer dependency: an app with another auth provider uses only the
 plugin and the server entry.
