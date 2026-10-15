@@ -39,10 +39,10 @@ http.route({
 ```
 
 Vite names the entry `server.js` when the app's `package.json` has `"type": "module"`, and
-`server.mjs` without it. `@samebase/convex-hosting` 0.7.0 or later declares the type of
-`dist/server/server.js`. Leave `allowJs` out of `convex/tsconfig.json`: with it, tsc reads the build
-instead of the type. `npx convex dev` bundles `convex/http.ts` only after a build, so a fresh clone
-runs `convex-hosting deploy --dev` before its first push, as the
+`server.mjs` without it; import the name that the build emits. `@samebase/convex-hosting` 0.7.0 or
+later declares the type of both. Leave `allowJs` out of `convex/tsconfig.json`: with it, tsc reads
+the build instead of the type. `npx convex dev` bundles `convex/http.ts` only after a build, so a
+fresh clone runs `convex-hosting deploy --dev` before its first push, as the
 [README](https://github.com/samebase/convex-hosting#setup) says.
 
 For reactive queries, use the
