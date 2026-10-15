@@ -112,6 +112,22 @@ queues them, with one `concurrency` group per deployment.
 
 ## Deploy tools and CI
 
+- **The deploy keys** go into repository secrets. Create the production key with the Convex CLI and
+  pipe it into `gh secret set`, which keeps it off the screen:
+
+  ```sh
+  npx convex deployment token create "<repository> deploy.yml" --prod | gh secret set CONVEX_DEPLOY_KEY
+  ```
+
+  The CLI cannot create a project's preview deploy key, so use the management API, with a personal
+  or team access token from the Convex dashboard in `CONVEX_TOKEN`:
+
+  ```sh
+  curl -s -X POST "https://api.convex.dev/v1/projects/<project id>/create_preview_deploy_key" \
+    -H "Authorization: Bearer $CONVEX_TOKEN" -H "Content-Type: application/json" \
+    -d '{"name": "<repository> preview.yml"}' | jq -r .previewDeployKey | gh secret set CONVEX_PREVIEW_DEPLOY_KEY
+  ```
+
 - **A tool that runs `convex deploy` itself**, such as Alchemy's `Convex.Code`, has no place for the
   upload, which must happen between the build and the push. Run `convex-hosting deploy` in place of
   that tool's push step, with the deploy key in `CONVEX_DEPLOY_KEY`.
@@ -128,6 +144,25 @@ queues them, with one `concurrency` group per deployment.
 - **A step that needs the site URL**, such as a preview comment, reads it from the deploy step: when
   `GITHUB_OUTPUT` is set, `deploy` appends `url=<site URL>` to it, so give the deploy step an `id`
   and read `steps.<id>.outputs.url`.
+
+## Your own domain
+
+A custom domain needs the Convex Pro plan. Add it to the deployment in the dashboard, under
+Deployment Settings, Custom Domains, with "HTTP Actions" as the destination, or with the management
+API: `POST https://api.convex.dev/v1/deployments/<deployment>/create_custom_domain` with
+`{"domain": "<domain>", "requestDestination": "convexSite"}`.
+
+Then create the two records that the dashboard shows: a `CNAME` from the domain to `convex.domains`,
+and a `TXT` record at `_convex_domains.<domain>` whose value is the deployment's name. On
+Cloudflare, make the `CNAME` DNS only; Convex documents a proxied record as an
+[advanced setup](https://docs.convex.dev/production/abuse-protection). Verification can take up to
+30 minutes.
+
+Do not choose the domain under "Override Environment Variables". That changes `CONVEX_SITE_URL`
+everywhere in the app, and Convex Auth uses it as the token issuer and in its redirect URLs.
+
+An apex domain, such as `example.com`, relies on Cloudflare's CNAME flattening and is not tested
+yet.
 
 ## Development
 
