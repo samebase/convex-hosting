@@ -106,6 +106,10 @@ and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment.
 The first deploy to a deployment pushes the component, then uploads the files. Until that upload
 ends, the site answers 404.
 
+Run one deploy at a time per deployment; the examples'
+[deploy workflow](https://github.com/samebase/convex-hosting/blob/main/.github/workflows/deploy-examples.yml)
+queues them, with one `concurrency` group per deployment.
+
 ## Deploy tools and CI
 
 - **A tool that runs `convex deploy` itself**, such as Alchemy's `Convex.Code`, has no place for the

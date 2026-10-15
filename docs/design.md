@@ -40,7 +40,9 @@ may follow its upload, and it is the only time constant in the design.
 
 The precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
 pushed last, the component cannot tell its requests from requests still running on replaced code:
-its version serves, but it never becomes live, and nothing is deleted until the next deploy.
+its version serves, but it never becomes live, and nothing is deleted until the next deploy. So run
+one deploy at a time per deployment; the example workflows queue them, with one `concurrency` group
+per deployment.
 
 ## Deploy
 
