@@ -133,10 +133,10 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   navigation inside the app to a gated page, renders nothing and navigates once to `to`, a path or
   the options that `to` builds from `next`, the gated page. The navigation replaces the history
   entry.
-- `useSignedIn()`: `true`, `false`, or `undefined` while unknown. Convex's provider reports loading
-  during the server render and the hydration, so the token that `SessionProvider` was given decides
-  until it settles, and both renders agree. `SignedIn` and `SignedOut` render their children by it,
-  where Convex's `Authenticated` and `Unauthenticated` render nothing on the server.
+- `SignedIn` and `SignedOut`: render their children when the visitor is signed in, or signed out.
+  Convex's provider reports loading during the server render and the hydration, so the token that
+  `SessionProvider` was given decides until it settles, and both renders agree, where Convex's
+  `Authenticated` and `Unauthenticated` render nothing on the server.
 - `useSignOutSession(url)`: returns a function that posts to the app's sign-out route, such as
   `/auth/signout`, and only after a 2xx calls Convex Auth's `signOut()`, which clears the stored
   token in every tab, and reloads the page; otherwise it returns `false` and the session stays.

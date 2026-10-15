@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- `convex-auth` no longer exports `useSignedIn` and `RequestContext`. `SignedIn` and `SignedOut`
+  keep the same behavior, and importing `convex-auth` still declares `requestContext` as
+  `{ token: string | null }` in the `Register` of `@tanstack/react-start`.
+
 ## 0.4.0
 
 - `convexSsr()` no longer writes `.convex-hosting/server.js`; it only sets the `ssr` environment's

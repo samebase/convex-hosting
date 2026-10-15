@@ -59,7 +59,9 @@ is. `--dev`: the development deployment this checkout is bound to, the one `npx 
 typecheck included, and works whether or not `npx convex dev` is running). A deploy key in the
 environment (`CONVEX_DEPLOY_KEY` or its alias `CONVEX_DEPLOYMENT_TOKEN`) wins over the selector in
 both commands, the same way. A self-hosted deployment (`CONVEX_SELF_HOSTED_URL`) takes no selector.
-The CLI parses no credential.
+The CLI parses no credential. `--component <name>` names the component instance, `hosting` by
+default. The name is Convex's own `app.use(hosting, { name })` option, so the CLI must match it;
+Bristol's production used it while hosting 0.3 and 0.4 ran side by side under two names.
 
 1. The CLI chooses a random version id.
 2. Production and preview: it runs
@@ -421,7 +423,7 @@ owner since `@samebase/convex-hosting` 0.7.0 and `@samebase/convex-hosting-tanst
 | The root `beforeLoad`                                     | Adapter `convex-auth`: `sessionBeforeLoad`                                                                                   | The same lines in every app with this session                                      |
 | The provider, plus the release of `expectAuth`            | Adapter `convex-auth`: `SessionProvider`                                                                                     | Convex's provider never releases `expectAuth` for a signed-out visitor             |
 | The gate                                                  | Adapter `convex-auth`: `redirectWithoutSession` and `RedirectWithoutSession`; the app gives the redirect options             | Only the server render has the cookie; the browser follows the provider            |
-| The session state in components                           | Adapter `convex-auth`: `useSignedIn`, `SignedIn`, and `SignedOut`                                                            | Convex's provider reports loading during the server render and the hydration       |
+| The session state in components                           | Adapter `convex-auth`: `SignedIn` and `SignedOut`                                                                            | Convex's provider reports loading during the server render and the hydration       |
 | The cookie session lines in `http.ts`                     | Convex Auth's own API, written in the app                                                                                    | A helper for HTTP actions belongs upstream                                         |
 | The `/auth/*` routes                                      | Convex Auth's own API (`setupConvexAuthServer`), registered by the app                                                       | The handlers are Convex Auth's; the paths are the app's                            |
 | The Convex Auth setup files                               | App, with Convex Auth's own API                                                                                              | The providers and the users table are the app's                                    |
