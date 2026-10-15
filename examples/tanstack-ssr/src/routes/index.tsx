@@ -16,8 +16,8 @@ function Home() {
     <main>
       <h1>TanStack Start on Convex</h1>
       <p>
-        One route in <code>convex/http.ts</code> serves every page. This page is public: the server
-        renders it for each request, and the list below stays live in the browser.{" "}
+        The server renders the pages with your session. This page is public: the server renders it
+        for each request, and the list below stays live in the browser.{" "}
         <Link to="/about">About</Link> was rendered at build time and is served as a file.{" "}
         <Link to="/todos">Your todos</Link> are rendered on the server as you, after you{" "}
         <Link to="/signin">sign in</Link>. The header is on every page and shows your session.
