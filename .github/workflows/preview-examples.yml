@@ -51,6 +51,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A re-run of an old run checks out its old commit, and its push would put older code over the
+      # pull request's newer preview. On pull_request, GITHUB_SHA is a merge commit, so this compares
+      # the head commit.
+      - name: Check that this commit is the head of the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "::error::$HEAD_SHA is stale: the pull request now points to $head. Convex was not deployed."
+            exit 1
+          fi
+
       # The preview deployment is named after the branch; a second push reuses it. The deploy writes
       # url=<site URL> to $GITHUB_OUTPUT.
       - name: Deploy the preview

@@ -121,6 +121,10 @@ queues them, with one `concurrency` group per deployment.
   `deployment:functions:runTestQuery` (the first-install check and the site URL are inline queries).
 - **Checks that must stop a release** run before `convex-hosting deploy`, because its push switches
   the site. Checks that need the new functions run after it.
+- **A re-run of an old workflow run** checks out its old commit, and its push puts older code over
+  newer code; a `concurrency` group orders runs but does not refuse a stale one. So the examples'
+  workflows check, right before the deploy, that the commit is still the head of `main`, or of the
+  pull request for a preview, and fail otherwise.
 - **A step that needs the site URL**, such as a preview comment, reads it from the deploy step: when
   `GITHUB_OUTPUT` is set, `deploy` appends `url=<site URL>` to it, so give the deploy step an `id`
   and read `steps.<id>.outputs.url`.
