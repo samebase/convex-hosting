@@ -207,8 +207,10 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   Convex Auth's `signOut()` resolves even when the route failed, so a reload after it alone signs
   the user back in from the cookie.
 
-`@convex-dev/auth` is an optional peer dependency: an app with another auth provider uses only the
-plugin and the server entry.
+`@convex-dev/auth` is an optional peer dependency of the `convex-auth` entry only. An app that uses
+only the plugin and the server entry, with another auth provider or with Convex Auth 0.0.x, can
+ignore the unmet-peer warning that pnpm prints; npm refuses the install instead, and needs
+`--legacy-peer-deps`.
 
 ## Why these settings exist
 

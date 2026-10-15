@@ -109,6 +109,19 @@ jobs:
       - name: Check
         run: pnpm run check
 
+      # pnpm pack writes the manifest that release.yml stages, with catalog: versions replaced. An
+      # npm: alias in it, such as the catalog's vite, makes npm audit signatures in an app ask for
+      # the aliased package at the version of the app's own package of that name.
+      - name: Reject npm aliases in the adapter's packed manifest
+        working-directory: packages/convex-hosting-tanstack-start
+        run: |
+          tarball=$(pnpm pack --pack-destination "$RUNNER_TEMP" | tail -n 1)
+          found=$(tar -xOzf "$tarball" package/package.json | jq -r '[.dependencies, .peerDependencies, .devDependencies][] | objects | to_entries[] | select(.value | startswith("npm:")) | "\(.key): \(.value)"')
+          if [ -n "$found" ]; then
+            echo "::error::The adapter's packed manifest has npm: aliases: $found"
+            exit 1
+          fi
+
       # One pkg.pr.new preview per commit for both packages, so a consumer can install a PR build
       # before an npm release. --pnpm packs with pnpm, which resolves catalog and workspace versions.
       - name: Publish preview packages

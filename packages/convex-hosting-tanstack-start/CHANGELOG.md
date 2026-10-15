@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.0
+
+- The published manifest no longer lists `vite` in `devDependencies`. 0.5.0 to 0.7.0 listed it as
+  `npm:@voidzero-dev/vite-plus-core@1.1.0`, and in an app installed with pnpm,
+  `npm audit signatures` failed with
+  `No matching version found for @voidzero-dev/vite-plus-core@<the app's vite version>`. `vite`
+  stays a peer dependency, `*`: a Vite+ app resolves `vite` to Vite+'s core package at its own
+  version numbers, so no Vite range fits both.
+- The `react` and `react-dom` peers are `^19.2.0`. The server entry imports `renderToReadableStream`
+  from `react-dom/server`, which React's Node build has from 19.2 on, so with an older React the dev
+  server answered 500 on every page.
+- The `@tanstack/react-start` peer is `^1.168.60`, the first version with the fix for
+  GHSA-qx66-fv34-fjm8.
+
 ## 0.7.0
 
 - The session lines move from `convex/http.ts` into the app's `src/server.ts`, around this package's
