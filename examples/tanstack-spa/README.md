@@ -36,6 +36,10 @@ pnpm run deploy:dev               # builds, uploads, writes .convex-hosting/vers
 npx convex dev                    # then work as usual
 ```
 
+The example commits `convex/_generated`, as Convex recommends, so a fresh clone can build:
+`npx convex dev --skip-push` does not write it, and `npx convex codegen` bundles `convex/http.ts`,
+so on a fresh clone it fails with the "Could not resolve" error below.
+
 `convex/http.ts` imports `.convex-hosting/version.js`, which only `deploy:dev` writes. If
 `.convex-hosting/` is deleted later, `npx convex dev` fails with a clear "Could not resolve" error,
 and `pnpm run deploy:dev` fixes it. The site URL is `VITE_CONVEX_SITE_URL` in `.env.local`.
