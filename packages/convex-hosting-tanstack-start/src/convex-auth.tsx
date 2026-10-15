@@ -22,8 +22,12 @@ import type {} from "@tanstack/react-start";
 import { useConvexAuth, type ConvexReactClient } from "convex/react";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 
-/** The request context of a page render: the session's access token, or `null` without one. */
-export interface RequestContext {
+/**
+ * The request context of a page render: the session's access token, or `null` without one. The
+ * `convex/` folder is its own TypeScript program and nothing in it imports this entry, so
+ * `convex/http.ts` loads the registration below with `import type {} from ".../convex-auth"`.
+ */
+interface RequestContext {
   token: string | null;
 }
 
@@ -95,7 +99,7 @@ function ReleaseWhenSignedOut({ client }: { client: ConvexReactClient }) {
  * user, and `null` that it found no session. The Vite dev server renders without a request context,
  * so it has no token. Both renders read the same token, so the hydration matches.
  */
-export function useSignedIn(): boolean | undefined {
+function useSignedIn(): boolean | undefined {
   const token = useContext(SessionToken);
   const { isLoading, isAuthenticated } = useConvexAuth();
   if (!isLoading) return isAuthenticated;

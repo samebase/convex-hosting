@@ -244,7 +244,7 @@ export const finishVersion = internalMutation({
 });
 
 /**
- * Marks a `ready` version `live` and schedules `collect`. `serveAsset` calls it at each request that
+ * Marks a `ready` version `live` and schedules `collect`. `serveSite` calls it at each request that
  * finds the version `ready`. An older upload never goes live over a newer one: the mark does nothing
  * when a live version was created after this one. So a request that started on replaced code, and
  * reaches its lookup or its mark after the new code's first request marked the new version, cannot
@@ -416,9 +416,20 @@ const routeHeaders = v.record(v.string(), v.string());
  * Runs Cloudflare's asset handler for one request against one version. `state` is the kind of the
  * version's state, or `null` when the version does not exist. `asset` is `null` when the version is
  * uploading, being deleted, or does not exist, or when no asset answers.
+ *
+ * `hasUserWorker` is Cloudflare's `has_user_worker`: whether the app has code that answers a miss.
+ * With it, Cloudflare's router asks `canFetch` first, which keeps `not_found_handling` for
+ * navigations only, and the app answers the other misses. Without it, every request goes to
+ * `handleRequest`, so `not_found_handling` applies to all of them, and an asset always answers.
  */
 export const route = query({
-  args: { versionId: v.string(), method: v.string(), url: v.string(), headers: routeHeaders },
+  args: {
+    versionId: v.string(),
+    method: v.string(),
+    url: v.string(),
+    headers: routeHeaders,
+    hasUserWorker: v.boolean(),
+  },
   returns: v.object({
     state: v.union(
       v.literal("uploading"),
@@ -437,7 +448,7 @@ export const route = query({
       }),
     ),
   }),
-  handler: async (ctx, { versionId, method, url, headers }) => {
+  handler: async (ctx, { versionId, method, url, headers, hasUserWorker }) => {
     const version = await getVersion(ctx, versionId);
     if (version === null) return { state: null, asset: null };
     const state = version.state.kind;
@@ -466,14 +477,14 @@ export const route = query({
       bodyEntry = found.get(eTag);
       if (bodyEntry === undefined) throw new Error(`No entry has the ETag ${eTag}.`);
       return {
-        // `serveAsset` replaces this placeholder with the stored file.
+        // `serveSite` replaces this placeholder with the stored file.
         readableStream: new ReadableStream(),
         contentType: bodyEntry.contentType,
         cacheStatus: "MISS" as const,
       };
     };
 
-    if (!(await canFetch(request, env, configuration, exists))) {
+    if (hasUserWorker && !(await canFetch(request, env, configuration, exists))) {
       return { state, asset: null };
     }
     const response = await handleRequest(
@@ -486,11 +497,13 @@ export const route = query({
     );
     // It describes Cloudflare's cache, which does not exist here.
     response.headers.delete("CF-Cache-Status");
+    // The deployment's Cloudflare front caches 404 answers on static paths.
+    if (response.status === 404) response.headers.set("Cache-Control", "no-store");
 
     let bodyUrl: string | null = null;
     if (response.body !== null && bodyEntry !== undefined) {
       bodyUrl = await ctx.storage.getUrl(bodyEntry.storageId);
-      // The file is gone from storage. As in `serveAsset` when storage answers 404, the answer must
+      // The file is gone from storage. As in `serveSite` when storage answers 404, the answer must
       // not stay in a cache.
       if (bodyUrl === null) {
         return {

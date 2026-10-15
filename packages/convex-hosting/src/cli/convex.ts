@@ -10,7 +10,7 @@ import {
   type FunctionReturnType,
   type FunctionType,
 } from "convex/server";
-import type { z } from "zod";
+import { z } from "zod";
 
 /** The processes and network calls of the CLI. Tests pass fakes. */
 export interface Cli {
@@ -130,6 +130,24 @@ export async function probeComponent(cli: Cli, target: Target): Promise<string |
   const output = `${stderr}\n${stdout}`.trim();
   if (output.includes(`Component path "${target.component}" was not found.`)) return output;
   throw new Error(stderr.trim() || stdout.trim() || `npx convex run exited with ${exitCode}.`);
+}
+
+/**
+ * The site URL, as the deployment gives it to its own functions in `CONVEX_SITE_URL`: an inline
+ * query at the app's root, with the deploy's selector. So it is right for every kind of deployment,
+ * and it is the custom domain when the dashboard's "Override Environment Variables" sets one.
+ */
+export async function siteUrl(cli: Cli, flags: string[]): Promise<string> {
+  const { exitCode, stdout, stderr } = await cli.convex([
+    "run",
+    "--inline-query",
+    "process.env.CONVEX_SITE_URL",
+    ...flags,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(stderr.trim() || stdout.trim() || `npx convex run exited with ${exitCode}.`);
+  }
+  return z.string().parse(JSON.parse(stdout));
 }
 
 /**

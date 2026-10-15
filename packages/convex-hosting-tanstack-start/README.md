@@ -57,17 +57,30 @@ TanStack handles query hydration.
 
 To give the pages data of the request, pass it as `context`: `server.fetch(request, { context })`.
 Start gives it to each route's `beforeLoad` and loader on the server as `serverContext`, typed as
-`requestContext` in Start's `Register`.
+`requestContext` in Start's `Register`. `fetch` is TanStack's `RequestHandler<Register>`: with a
+registered `requestContext`, `context` is required and has that type.
 
 ## Convex Auth sessions
 
 With [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies,
-`convex/http.ts` reads the session in `render` and passes its access token as
-`server.fetch(request, { context: { token } })`, as the
+`convex/http.ts` reads the session in `render` and passes its access token as the context, as the
 [TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
-does. `@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and importing it declares
-`requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`. The app
-creates its Convex client with `expectAuth: true`.
+does:
+
+```ts
+// Type only, nothing is bundled: the request context this entry registers on TanStack's `Register`.
+import type {} from "@samebase/convex-hosting-tanstack-start/convex-auth";
+
+// In `render`, with the session of the request's cookies:
+const token = await session.getToken();
+const page = await server.fetch(request, { context: { token } });
+```
+
+`@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and loading it declares
+`requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`, which
+makes `context` required and typed in `server.fetch` and gives every route a typed `serverContext`.
+The `convex/` folder is its own TypeScript program, which is why `convex/http.ts` loads the entry
+itself. The app creates its Convex client with `expectAuth: true`.
 
 The root route gives the token to the server render's Convex client and wraps the document in the
 session provider:
@@ -133,10 +146,10 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   navigation inside the app to a gated page, renders nothing and navigates once to `to`, a path or
   the options that `to` builds from `next`, the gated page. The navigation replaces the history
   entry.
-- `useSignedIn()`: `true`, `false`, or `undefined` while unknown. Convex's provider reports loading
-  during the server render and the hydration, so the token that `SessionProvider` was given decides
-  until it settles, and both renders agree. `SignedIn` and `SignedOut` render their children by it,
-  where Convex's `Authenticated` and `Unauthenticated` render nothing on the server.
+- `SignedIn` and `SignedOut`: render their children when the visitor is signed in, or signed out.
+  Convex's provider reports loading during the server render and the hydration, so the token that
+  `SessionProvider` was given decides until it settles, and both renders agree, where Convex's
+  `Authenticated` and `Unauthenticated` render nothing on the server.
 - `useSignOutSession(url)`: returns a function that posts to the app's sign-out route, such as
   `/auth/signout`, and only after a 2xx calls Convex Auth's `signOut()`, which clears the stored
   token in every tab, and reloads the page; otherwise it returns `false` and the session stays.

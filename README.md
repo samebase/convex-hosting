@@ -91,11 +91,11 @@ server-rendered app gets the type of its server build from the framework adapter
 ## Deploy
 
 `deploy` runs `npx convex deploy` with your build and the upload of `--dist` as its `--cmd`. The
-pushed code names the version it was built with, so the push switches the site, and the command
-ends. The first request that the new code serves marks its version live, which deletes the versions
-that were live before it. A version that never becomes live, from a deploy that failed, is deleted
-when it is a day old, with the stored files that no version uses. Nothing is deleted while a site
-gets no request.
+pushed code names the version it was built with, so the push switches the site. Then the command
+prints the site URL, which it asks the deployment for (`CONVEX_SITE_URL`), and ends. The first
+request that the new code serves marks its version live, which deletes the versions that were live
+before it. A version that never becomes live, from a deploy that failed, is deleted when it is a day
+old, with the stored files that no version uses. Nothing is deleted while a site gets no request.
 
 `deploy` goes to production. `--preview-name <name>` sends it to that preview (with a login or a
 project's preview deploy key; always pass the name with that key), and `--dev` to the development
@@ -112,15 +112,60 @@ queues them, with one `concurrency` group per deployment.
 
 ## Deploy tools and CI
 
+- **The deploy keys** go into repository secrets. Create the production key with the Convex CLI and
+  hand it to `gh secret set` on standard input, which keeps it off the screen and out of process
+  arguments:
+
+  ```sh
+  key=$(npx convex deployment token create "<repository> deploy.yml" --prod) && printf '%s' "$key" | gh secret set CONVEX_DEPLOY_KEY
+  ```
+
+  The CLI cannot create a project's preview deploy key, so use the management API, with a personal
+  or team access token from the Convex dashboard in `CONVEX_TOKEN`:
+
+  ```sh
+  key=$(curl -s -X POST "https://api.convex.dev/v1/projects/<project id>/create_preview_deploy_key" \
+    -H "Authorization: Bearer $CONVEX_TOKEN" -H "Content-Type: application/json" \
+    -d '{"name": "<repository> preview.yml"}' | jq -er .previewDeployKey) && printf '%s' "$key" | gh secret set CONVEX_PREVIEW_DEPLOY_KEY
+  ```
+
+  A failed first command stops before anything is stored.
+
 - **A tool that runs `convex deploy` itself**, such as Alchemy's `Convex.Code`, has no place for the
   upload, which must happen between the build and the push. Run `convex-hosting deploy` in place of
   that tool's push step, with the deploy key in `CONVEX_DEPLOY_KEY`.
 - **A deploy key limited to some actions** needs `deployment:deploy`,
   `deployment:functions:runInternalQueries`, `deployment:functions:runInternalMutations`,
   `deployment:functions:runInternalActions` (the upload calls one internal action), and
-  `deployment:functions:runTestQuery` (the first-install check is an inline query).
+  `deployment:functions:runTestQuery` (the first-install check and the site URL are inline queries).
 - **Checks that must stop a release** run before `convex-hosting deploy`, because its push switches
   the site. Checks that need the new functions run after it.
+- **A re-run of an old workflow run** checks out its old commit, and its push puts older code over
+  newer code; a `concurrency` group orders runs but does not refuse a stale one. So the examples'
+  workflows check, right before the deploy, that the commit is still the head of `main`, or of the
+  pull request for a preview, and fail otherwise.
+- **A step that needs the site URL**, such as a preview comment, reads it from the deploy step: when
+  `GITHUB_OUTPUT` is set, `deploy` appends `url=<site URL>` to it, so give the deploy step an `id`
+  and read `steps.<id>.outputs.url`.
+
+## Your own domain
+
+A custom domain needs the Convex Pro plan. Add it to the deployment in the dashboard, under
+Deployment Settings, Custom Domains, with "HTTP Actions" as the destination, or with the management
+API: `POST https://api.convex.dev/v1/deployments/<deployment>/create_custom_domain` with
+`{"domain": "<domain>", "requestDestination": "convexSite"}`.
+
+Then create the two records that the dashboard shows: a `CNAME` from the domain to `convex.domains`,
+and a `TXT` record at `_convex_domains.<domain>` whose value is the deployment's name. On
+Cloudflare, make the `CNAME` DNS only; Convex documents a proxied record as an
+[advanced setup](https://docs.convex.dev/production/abuse-protection). Verification can take up to
+30 minutes.
+
+Do not choose the domain under "Override Environment Variables". That changes `CONVEX_SITE_URL`
+everywhere in the app, and Convex Auth uses it as the token issuer and in its redirect URLs.
+
+An apex domain, such as `example.com`, relies on Cloudflare's CNAME flattening and is not tested
+yet.
 
 ## Development
 
@@ -193,32 +238,40 @@ files for a year, add a `_headers` rule:
 ## Routing
 
 `serveSite` answers with the file that matches, else with the page that `render` returns (see
-[Server-rendered pages](#server-rendered-pages)), else 404. A page and a 404 answer
-`Cache-Control: no-store`. The deployment's Cloudflare front keeps that for a path without an
-extension and replaces it with a four-hour browser `max-age` for a path with one, so a browser that
-asks for a script before its upload ended keeps the 404; the deploy order prevents that case,
-because no page refers to a file that is not uploaded yet. When the version does not exist or is
-still uploading, it answers 404 naming the version. At the first request for a new version, it marks
-the version live. `serveAsset`, its first step, returns the file's response or `null`, for a route
-that does something else on a miss.
+[Server-rendered pages](#server-rendered-pages)), else 404. `render` is the code that runs on a
+miss, with the request in its closure. Everything it returns gets `Cache-Control: no-store`, and so
+does a 404, because the `*.convex.site` front caches paths with an extension. The front keeps
+`no-store` for a path without an extension and replaces it with a four-hour browser `max-age` for a
+path with one, so a browser that asks for a script before its upload ended keeps the 404; the deploy
+order prevents that case, because no page refers to a file that is not uploaded yet. When the
+version does not exist or is still uploading, it answers 404 naming the version. At the first
+request for a new version, it marks the version live.
 
-`not_found_handling` applies to navigation requests (`Sec-Fetch-Mode: navigate`) only, as on
-Cloudflare when a Worker runs: other requests that match no file reach your code. Browsers send that
-header whenever they open a page. `curl`, `fetch` in scripts and tests, uptime monitors, and
-link-preview bots do not, so they get your route's answer for a deep link of a single-page app,
-a 404. To test a deep link as a browser opens it, send the header:
-`curl -H "Sec-Fetch-Mode: navigate"`, or `node:http` in Node, whose `fetch` refuses to set it.
+As on Cloudflare, the presence of code decides where `not_found_handling` (the single-page fallback
+or the 404 page) applies:
 
-Two differences from Cloudflare follow from Convex's router:
+- Without `render`, the site is files only, like a Worker without a script: `not_found_handling`
+  applies to every request. `curl`, uptime monitors, and link-preview bots get what a browser gets.
+- With `render`, your code is the Worker: `not_found_handling` applies to navigation requests
+  (`Sec-Fetch-Mode: navigate`) only, and other requests that match no file reach your code. Browsers
+  send that header whenever they open a page. `curl`, `fetch` in scripts and tests, uptime monitors,
+  and link-preview bots do not. To test a deep link as a browser opens it, send the header:
+  `curl -H "Sec-Fetch-Mode: navigate"`, or `node:http` in Node, whose `fetch` refuses to set it.
 
-- An exact route in `convex/http.ts` wins over an asset at the same path.
-- On a static site, a request that is not a navigation and matches no file (`curl /missing`) answers
-  404, not the single-page fallback.
+On a files-only single-page app, a missing hashed file such as `/assets/old.js` gets the shell, with
+200 and `text/html`, as on Cloudflare. A `_headers` rule for its path applies to it too, so with the
+one-year rule above a browser keeps that HTML for a year; without a rule, the deployment's
+Cloudflare front gives a path with an extension a four-hour browser `max-age`. Hashed names do not
+come back.
+
+One difference from Cloudflare follows from Convex's router: an exact route in `convex/http.ts` wins
+over an asset at the same path.
 
 ## Open tabs after a deploy
 
-A page opened before a deploy keeps asking for its hashed files, which now answer 404, as on
-Cloudflare. To reload open tabs on a new version, add a query that returns the bundled version:
+A page opened before a deploy keeps asking for its hashed files, which the new version does not
+have, as on Cloudflare: they answer 404, or the shell on a files-only single-page app. To reload
+open tabs on a new version, add a query that returns the bundled version:
 
 ```ts
 // convex/siteVersion.ts
@@ -249,8 +302,8 @@ export function useReloadOnNewVersion() {
 
 ## Server-rendered pages
 
-`serveSite` takes a fifth argument, `render`, a function from the request to the page's response,
-and calls it when no file matches. `convex/http.ts` imports the server build directly, such as
+`serveSite` takes a fifth argument, `render`, a function that returns the page's response, and calls
+it when no file matches. `convex/http.ts` imports the server build directly, such as
 `../dist/server/server.js` for TanStack Start, so `npx convex dev` bundles it only after a build: on
 a fresh clone, the first `deploy --dev` builds before the first push (see [Setup](#setup)).
 [`@samebase/convex-hosting-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)

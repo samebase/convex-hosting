@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.0
+
+- `serveSite` without `render` routes like a Cloudflare Worker without a script:
+  `not_found_handling` applies to every request, not only to navigations. `curl`, uptime monitors,
+  and link-preview bots now get the single-page fallback or the 404 page where they got a bare 404,
+  and a missing hashed file on a single-page app gets the shell with 200. `serveSite` with `render`
+  keeps the routing of a Worker with a script. The component query `route` takes `hasUserWorker`,
+  which `serveSite` sets from the presence of `render`; the app sets nothing.
+- Every 404 that the handler answers, including the custom 404 page, has `Cache-Control: no-store`.
+- `deploy` prints the site URL when it ends, which it asks the deployment for (`CONVEX_SITE_URL`
+  through an inline query), and appends `url=<site URL>` to `$GITHUB_OUTPUT` when that is set. A
+  workflow reads it as `steps.<id>.outputs.url` and no longer needs to record it in the build
+  command.
+- `serveAsset` is removed, and `serveSite` is the one entry. `render` is the code that runs on a
+  miss, with the request in its closure, so an app that called `serveAsset` and answered misses
+  itself passes that code as `render`.
+
 ## 0.7.0
 
 - `convex-hosting init` is gone, with the placeholder `.convex-hosting/server.js` it wrote. On a

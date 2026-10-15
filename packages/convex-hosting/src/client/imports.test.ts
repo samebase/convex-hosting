@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vite-plus/test";
 
-// The component's functions and `serveAsset` run in Convex's default runtime: Convex bundles the
-// component, and the app's `convex/http.ts` with `serveAsset`, without Node modules. Only the CLI
+// The component's functions and `serveSite` run in Convex's default runtime: Convex bundles the
+// component, and the app's `convex/http.ts` with `serveSite`, without Node modules. Only the CLI
 // may import `node:` modules, and in src/workers-shared only utils/helpers.ts and
 // utils/configuration/constructConfiguration.ts do.
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -20,7 +20,7 @@ const ENTRIES = [
 const STATIC = /^\s*(?:import|export)\s+(?!type\s)(?:[^"';]*?\sfrom\s*)?["']([^"']+)["']/gm;
 const DYNAMIC = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
 
-test("the component and serveAsset import no Node modules", () => {
+test("the component and serveSite import no Node modules", () => {
   const seen = new Set<string>();
   const external = new Set<string>();
   const visit = (file: string) => {

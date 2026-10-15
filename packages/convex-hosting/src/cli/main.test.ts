@@ -19,6 +19,9 @@ import { main, VERSION_FILE } from "./main.js";
 const missing = (component: string) =>
   `✖ Component path "${component}" was not found.\n\nThis deployment has no mounted components.`;
 
+/** The site URL that the fake deployment gives its functions in `CONVEX_SITE_URL`. */
+const SITE_URL = "https://happy-cat-123.convex.site";
+
 /** An app directory with `convex/` and the given files. */
 function app(files: Record<string, string>) {
   const cwd = mkdtempSync(join(tmpdir(), "convex-hosting-cli-"));
@@ -30,10 +33,19 @@ function app(files: Record<string, string>) {
   return cwd;
 }
 
+/** What a `npx convex run` call is: the probe, the site URL query, or a function's name. */
+const callName = (args: string[]) =>
+  args.includes("process.env.CONVEX_SITE_URL")
+    ? "site url"
+    : args.includes("--inline-query")
+      ? "probe"
+      : args[3];
+
 /**
  * A fake `Cli`: `npx convex run` answers like a deployment with the component, the build calls
  * `build`, and `npx convex deploy` or `npx convex run --push` calls `push`. No processes, no
- * network. `events` lists the builds, the probes, the function calls, and the pushes in order.
+ * network. `events` lists the builds, the probes, the site URL queries, the function calls, and the
+ * pushes in order.
  */
 function fake(
   cwd: string,
@@ -62,6 +74,10 @@ function fake(
     env: options.env ?? {},
     convex: async (args) => {
       runs.push(args);
+      if (callName(args) === "site url") {
+        events.push("site url");
+        return ok(SITE_URL);
+      }
       if (args.includes("--inline-query")) {
         events.push("probe");
         return (options.installed?.() ?? true)
@@ -101,7 +117,7 @@ function fake(
     },
     log: (message) => logs.push(message),
   };
-  const calls = () => runs.map((args) => (args.includes("--inline-query") ? "probe" : args[3]));
+  const calls = () => runs.map(callName);
   const callArgs = (name: string) =>
     runs.filter((args) => args[3] === name).map((args) => JSON.parse(args[4]));
   return { cli, runs, pushes, builds, events, stored, logs, calls, callArgs };
@@ -151,7 +167,7 @@ describe("help", () => {
 });
 
 describe("deploy --dev", () => {
-  test("builds, uploads, writes the version file, pushes with npx convex run --push, and ends", async () => {
+  test("builds, uploads, writes the version file, pushes with npx convex run --push, and reports the site URL", async () => {
     const cwd = app(site);
     let pushedVersionId: string | undefined;
     const { cli, events, builds, pushes, runs, logs } = fake(cwd, {
@@ -163,7 +179,7 @@ describe("deploy --dev", () => {
     expect(await main(DEV, cli)).toBe(0);
 
     expect(builds).toEqual(["vite build"]);
-    // Nothing runs after the push.
+    // Only the site URL query runs after the push.
     expect(events).toEqual([
       "build",
       "probe",
@@ -174,6 +190,7 @@ describe("deploy --dev", () => {
       "lib:recordFiles",
       "lib:finishVersion",
       "push: run",
+      "site url",
     ]);
     // An inline query at the app's root, which exists before a first install.
     expect(pushes).toEqual([["run", "--push", "--inline-query", "null"]]);
@@ -181,7 +198,7 @@ describe("deploy --dev", () => {
     expect(selectors(runs)).toEqual([]);
     const versionId = writtenVersionId(cwd);
     expect(pushedVersionId).toBe(versionId);
-    expect(logs[logs.length - 1]).toBe(`Deployed version ${versionId}.`);
+    expect(logs[logs.length - 1]).toBe(`Deployed version ${versionId} to ${SITE_URL}.`);
   });
 
   test("on a first install, writes the version file, pushes, then uploads", async () => {
@@ -203,7 +220,7 @@ describe("deploy --dev", () => {
       "probe",
       "lib:generateUploadUrls",
     ]);
-    expect(events[events.length - 1]).toBe("lib:finishVersion");
+    expect(events.slice(-2)).toEqual(["lib:finishVersion", "site url"]);
     expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
     expect(callArgs("lib:createVersion")[0].versionId).toBe(writtenVersionId(cwd));
   });
@@ -231,7 +248,7 @@ describe("deploy --dev", () => {
 });
 
 describe("deploy", () => {
-  test("runs the build and the upload inside npx convex deploy, and ends after the push", async () => {
+  test("runs the build and the upload inside npx convex deploy, then reports the site URL", async () => {
     const cwd = app(site);
     const { cli, pushes, runs, events, callArgs } = fake(cwd, { push: innerUpload });
     expect(await main(DEPLOY, cli)).toBe(0);
@@ -245,9 +262,9 @@ describe("deploy", () => {
     // `npx convex deploy` goes to production by default and has no --prod flag; every run gets it.
     expect(pushes[0]).not.toContain("--prod");
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
-    // The upload runs inside the push, and nothing runs after it.
+    // The upload runs inside the push, and only the site URL query runs after it.
     expect(events[0]).toBe("push: deploy");
-    expect(events[events.length - 1]).toBe("lib:finishVersion");
+    expect(events.slice(-2)).toEqual(["lib:finishVersion", "site url"]);
     expect(callArgs("lib:createVersion")[0].versionId).toBe(writtenVersionId(cwd));
   });
 
@@ -267,7 +284,7 @@ describe("deploy", () => {
     expect(await main(DEPLOY, cli)).toBe(0);
 
     expect(calls().slice(0, 3)).toEqual(["probe", "probe", "lib:generateUploadUrls"]);
-    expect(calls()[calls().length - 1]).toBe("lib:finishVersion");
+    expect(calls().slice(-2)).toEqual(["lib:finishVersion", "site url"]);
     expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
   });
 
@@ -289,6 +306,17 @@ describe("deploy", () => {
     expect(pushes[0].slice(-2)).toEqual(["--preview-name", "pr-7"]);
     expect(pushes[0][2]).toContain("'--preview-name' 'pr-7'");
     expect(runs.every((args) => args.slice(-2).join(" ") === "--preview-name pr-7")).toBe(true);
+  });
+
+  test("appends the site URL to $GITHUB_OUTPUT when it is set", async () => {
+    const cwd = app(site);
+    const output = join(cwd, "github-output");
+    writeFileSync(output, "earlier=1\n");
+    const { cli, runs } = fake(cwd, { env: { GITHUB_OUTPUT: output }, push: innerUpload });
+    expect(await main([...DEPLOY, "--preview-name", "pr-7"], cli)).toBe(0);
+    expect(readFileSync(output, "utf8")).toBe(`earlier=1\nurl=${SITE_URL}\n`);
+    // The query goes to the deployment of the deploy.
+    expect(runs[runs.length - 1].slice(-2)).toEqual(["--preview-name", "pr-7"]);
   });
 
   test("names the probe's output when the push did not install the component", async () => {

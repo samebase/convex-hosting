@@ -44,6 +44,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A re-run of an old run checks out its old commit, and its push would put older code over
+      # newer code. The concurrency group orders runs; this refuses a stale one.
+      - name: Check that this commit is the head of main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::$GITHUB_SHA is stale: main now points to $head. Convex was not deployed."
+            exit 1
+          fi
+
       - name: Deploy example
         working-directory: examples/${{ matrix.example }}
         # An index hands the runner every repository secret; all of them are the examples' Convex

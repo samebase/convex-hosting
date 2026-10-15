@@ -76,12 +76,14 @@ function route(
   versionId: string,
   path: string,
   headers: Record<string, string> = {},
+  hasUserWorker = true,
 ) {
   return t.query(api.lib.route, {
     versionId,
     method: "GET",
     url: `https://example.convex.site${path}`,
     headers,
+    hasUserWorker,
   });
 }
 
@@ -479,7 +481,7 @@ describe("route", () => {
     expect(header(js.asset, "content-type")).toBe("text/javascript");
   });
 
-  test("single-page-application answers navigations only", async () => {
+  test("with code, single-page-application answers navigations only", async () => {
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site, { not_found_handling: "single-page-application" });
     const navigation = await route(t, "v1", "/settings/profile", { "sec-fetch-mode": "navigate" });
@@ -490,12 +492,52 @@ describe("route", () => {
     expect(await route(t, "v1", "/settings/profile")).toEqual({ state: "ready", asset: null });
   });
 
-  test("the custom 404 page answers with its body", async () => {
+  test("without code, single-page-application answers every request, as a files-only Worker", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site, { not_found_handling: "single-page-application" });
+    const index = await route(t, "v1", "/");
+    // No `Sec-Fetch-Mode`, as from curl, a monitor, or a link-preview bot.
+    const filesOnly = await route(t, "v1", "/about", {}, false);
+    expect(filesOnly.asset?.status).toBe(200);
+    expect(header(filesOnly.asset, "content-type")).toBe("text/html; charset=utf-8");
+    expect(header(filesOnly.asset, "etag")).toBe(header(index.asset, "etag"));
+    // With code, the same request is a miss, which the app answers.
+    expect(await route(t, "v1", "/about", {}, true)).toEqual({ state: "ready", asset: null });
+  });
+
+  test("without code and with html_handling none, / answers index.html through the fallback", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site, {
+      html_handling: "none",
+      not_found_handling: "single-page-application",
+    });
+    const { asset } = await route(t, "v1", "/", {}, false);
+    const index = await route(t, "v1", "/index.html", {}, false);
+    expect(asset?.status).toBe(200);
+    expect(header(asset, "etag")).toBe(header(index.asset, "etag"));
+  });
+
+  test("without code, a miss with not_found_handling none answers 404 with no-store", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    const miss = await route(t, "v1", "/missing", {}, false);
+    expect(miss.asset).toEqual({
+      status: 404,
+      headers: [{ name: "cache-control", value: "no-store" }],
+      bodyUrl: null,
+    });
+  });
+
+  test("the custom 404 page answers with its body and no-store", async () => {
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site, { not_found_handling: "404-page" });
     const { asset } = await route(t, "v1", "/missing", { "sec-fetch-mode": "navigate" });
     expect(asset?.status).toBe(404);
     expect(asset?.bodyUrl).toEqual(expect.any(String));
+    expect(header(asset, "cache-control")).toBe("no-store");
+    const filesOnly = await route(t, "v1", "/missing", {}, false);
+    expect(filesOnly.asset?.status).toBe(404);
+    expect(header(filesOnly.asset, "etag")).toBe(header(asset, "etag"));
   });
 
   test("a file that is gone from storage answers 404 with no-store", async () => {
