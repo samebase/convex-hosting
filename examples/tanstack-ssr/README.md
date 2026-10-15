@@ -89,6 +89,12 @@ npx convex dev                    # then work as usual
 a clear "Could not resolve" error, and `pnpm run deploy:dev` fixes it. The site URL is
 `VITE_CONVEX_SITE_URL` in `.env.local`.
 
+Local deployment (anonymous or `--local`): the backend must be running while `deploy:dev` uploads,
+else the upload fails with `fetch failed`. Run `npx convex dev` first and keep it running, then run
+`npx @convex-dev/auth` and `pnpm run deploy:dev` in a second terminal. `deploy:dev` pushes by
+itself, so the site works when it ends. The running `npx convex dev` keeps its "Could not resolve"
+error until the next change under `convex/`, then pushes as usual.
+
 Production needs its own key pair on the production deployment before the first `pnpm run deploy`.
 
 ## Previews

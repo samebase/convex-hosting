@@ -118,17 +118,20 @@ clone cannot push before its first deploy, and that deploy's build needs the dep
 writes `.env.local`, and exits without pushing. Then `convex-hosting deploy --dev` builds, uploads,
 writes the version file, and pushes, and from then on `npx convex dev` works as usual. When `dist/`
 or `.convex-hosting/` is deleted later, `npx convex dev` fails with a "Could not resolve" error that
-names the file, and `deploy --dev` writes both again. Against an anonymous local deployment,
-`deploy --dev` needs a running `npx convex dev` (see the table below), which on a fresh clone cannot
-bundle `http.ts`; that case is not verified. A plain `npx convex deploy` from a fresh clone fails to
-bundle, and from a checkout that deployed elsewhere it pushes that deploy's id and the site answers
-404, which is why production and previews deploy only through `convex-hosting deploy`. Two things in
-this loop are transient and documented, not solved: when a server-rendered app's build changes
-`dist/server`, which `http.ts` imports, a running `npx convex dev` pushes before `deploy --dev` has
-written the new id, so pages reference files that answer 404 until that run ends; and a production
-deploy run from the same checkout writes production's id, which a running `npx convex dev` then
-pushes to the development deployment, where that version does not exist, until the next
-`deploy --dev`. Production deploys belong in CI or a separate checkout.
+names the file, and `deploy --dev` writes both again. Against a local deployment, the upload needs a
+running backend, which a Convex CLI call starts only for itself (see the table below). So a fresh
+clone starts `npx convex dev` first and keeps it running: its first push fails to resolve the
+imports, `deploy --dev` in a second terminal pushes, installs, and uploads, and the running
+`npx convex dev` pushes again at the next change under `convex/` (run against an anonymous
+deployment on 2026-10-15). A plain `npx convex deploy` from a fresh clone fails to bundle, and from
+a checkout that deployed elsewhere it pushes that deploy's id and the site answers 404, which is why
+production and previews deploy only through `convex-hosting deploy`. Two things in this loop are
+transient and documented, not solved: when a server-rendered app's build changes `dist/server`,
+which `http.ts` imports, a running `npx convex dev` pushes before `deploy --dev` has written the new
+id, so pages reference files that answer 404 until that run ends; and a production deploy run from
+the same checkout writes production's id, which a running `npx convex dev` then pushes to the
+development deployment, where that version does not exist, until the next `deploy --dev`. Production
+deploys belong in CI or a separate checkout.
 
 The server import names the framework's own output, `../dist/server/server.js` for TanStack Start,
 with nothing in between. The hosting package declares that module, a default export with
@@ -289,7 +292,7 @@ convex-test run of the exact order of transactions; "runtime" is a run against a
 | Two first installs at once                                                                               | Both push and upload; the last push wins                                                                                                       | Stated                                   |
 | Two commands from one checkout at once                                                                   | They overwrite each other's build output and version file                                                                                      | Stated, unsupported                      |
 | A production deploy from a checkout where `npx convex dev` runs                                          | Production's id is pushed to development until the next `deploy --dev`                                                                         | Stated                                   |
-| `deploy --dev` against an anonymous local deployment without `npx convex dev`                            | Each Convex CLI call starts and stops its own backend; the upload fails                                                                        | Stated in the README                     |
+| `deploy --dev` against an anonymous local deployment without `npx convex dev`                            | Each Convex CLI call starts and stops its own backend; the upload fails with `fetch failed`                                                    | Runtime; stated in the README            |
 
 Not reproducible in the test runtime and not yet run against a cloud deployment: two real pushes in
 a chosen order, a preview deployment, an old HTTP action kept running across a push. A smoke script
