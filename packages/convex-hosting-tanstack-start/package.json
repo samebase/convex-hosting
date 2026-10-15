@@ -1,6 +1,6 @@
 {
   "name": "@samebase/convex-hosting-tanstack-start",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Render TanStack Start pages in a Convex HTTP action.",
   "license": "Apache-2.0",
   "repository": {
@@ -22,16 +22,13 @@
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
-    "./server-build": {
-      "types": "./dist/server-build.d.ts"
-    },
     "./vite": {
       "types": "./dist/vite.d.ts",
       "default": "./dist/vite.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/server-build.d.ts', 'dist/server-build.d.ts')\"",
+    "build": "tsc -p tsconfig.build.json",
     "prepare": "pnpm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

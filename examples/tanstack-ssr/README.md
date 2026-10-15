@@ -76,14 +76,14 @@ render its request context, and returns the page.
 
 From `examples/tanstack-ssr`, after `pnpm install` at the repository root:
 
-1. `npx convex dev`. It writes `.env.local`, then its first push fails: `convex/http.ts` imports
-   `dist/server/server.js` and `.convex-hosting/version.js`, which do not exist yet, and the
-   deployment has no `AUTH_PRIVATE_KEY` and `AUTH_JWKS`.
-2. In a second terminal, `pnpm run build` and `pnpm exec convex-hosting init`. The build prerenders
-   `/about`, which creates the Convex client from `VITE_CONVEX_URL` in `.env.local`.
+1. `pnpm exec convex-hosting init`. `convex/http.ts` imports `.convex-hosting/version.js` and
+   `.convex-hosting/server.js`; `init` writes the first with no site version and the second with a
+   placeholder server entry, which each build replaces.
+2. `npx convex dev`. It writes `.env.local`, then its first push fails: the deployment has no
+   `AUTH_PRIVATE_KEY` and `AUTH_JWKS`.
 3. `npx @convex-dev/auth`. It generates an RS256 key pair, sets both variables on the deployment
    that `.env.local` names, and leaves the files in `convex/` as they are. Save a file in `convex/`
-   so that `npx convex dev` pushes again.
+   so that `npx convex dev` pushes again. The site answers 404 until the first deploy.
 4. `pnpm run deploy:dev`, then open the site URL, `VITE_CONVEX_SITE_URL` in `.env.local`.
 
 Production needs its own key pair on the production deployment before the first `pnpm run deploy`.
@@ -111,7 +111,7 @@ hosting component's files go with it. The workflow needs two things once per pro
   `/signin`, and sign-in works only on the deployed site, where `convex/http.ts` serves the `/auth`
   routes.
 - `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`,
-  and prerender `/about`.
+  point `.convex-hosting/server.js` at the server, and prerender `/about`.
 - `pnpm run deploy:dev`: build, upload, and push to the development deployment.
 - `pnpm run deploy`: build, upload, and push to production.
 
