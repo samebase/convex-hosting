@@ -1,0 +1,30 @@
+{
+  "name": "example-vinext-ssr",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vp build && node scripts/bundle-server.ts",
+    "deploy:dev": "convex-hosting deploy --dev --build \"pnpm run build\" --dist dist/client",
+    "deploy": "convex-hosting deploy --build \"pnpm run build\" --dist dist/client",
+    "typecheck": "tsc -p . && tsc -p convex"
+  },
+  "dependencies": {
+    "@convex-dev/auth": "catalog:",
+    "@samebase/convex-hosting": "workspace:*",
+    "convex": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-server-dom-webpack": "19.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.63.0",
+    "@types/react": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@vitejs/plugin-rsc": "0.5.37",
+    "esbuild": "0.27.0",
+    "typescript": "catalog:",
+    "vinext": "1.2.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

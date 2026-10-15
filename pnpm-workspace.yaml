@@ -40,6 +40,11 @@ peerDependencyRules:
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 minimumReleaseAgeIgnoreMissingTime: false
+minimumReleaseAgeExclude:
+  # TODO(2026-10-21): Remove once both are 7 days old. examples/vinext-ssr pins vinext 1.2.0,
+  # which needs @vitejs/plugin-rsc 0.5.37.
+  - vinext@1.2.0
+  - "@vitejs/plugin-rsc@0.5.37"
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
 trustPolicyExclude:
@@ -48,3 +53,6 @@ trustPolicyExclude:
   - semver@6.3.1
 allowBuilds:
   esbuild: true
+  # The Cloudflare Vite plugin of examples/vinext-ssr depends on workerd, whose postinstall checks
+  # its binary. The example's build never starts workerd.
+  workerd: false

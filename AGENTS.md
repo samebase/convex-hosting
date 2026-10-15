@@ -19,13 +19,14 @@ code remains.
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with the single-page-application
   fallback.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
+- `examples/vinext-ssr`: vinext App Router pages rendered in a Convex HTTP action.
 
 ## Commands
 
 Run from the repository root with pnpm 11 and the Node version in `.node-version`.
 
 - `pnpm install`: install dependencies. The component's `prepare` script builds it.
-- `pnpm run build`: build the component and both examples.
+- `pnpm run build`: build the packages and the examples.
 - `pnpm run check`: format check, lint, typecheck, and tests. Build first: the examples typecheck
   against the built component.
 - `pnpm run format`: format with oxfmt.

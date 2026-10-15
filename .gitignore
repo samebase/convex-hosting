@@ -20,3 +20,6 @@ next-example/
 dist/
 example/dist/
 .tanstack/
+.next/
+.wrangler/
+next-env.d.ts

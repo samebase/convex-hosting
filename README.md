@@ -255,7 +255,10 @@ on a fresh clone before any build.
 [`@samebase/convex-hosting-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
 renders TanStack Start pages in it. See the
 [TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr),
-live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
+live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site). The
+[vinext example](https://github.com/samebase/convex-hosting/tree/main/examples/vinext-ssr) renders
+the same app with vinext's App Router and Convex Auth's Next.js integration, with no adapter
+package.
 
 Because the path is fixed, the route in `convex/http.ts` is the same for every framework; the
 adapter's build step points the file at the framework's own server output.
