@@ -116,10 +116,11 @@ hosting component's files go with it. The workflow needs two things once per pro
 
 ## Commands
 
-- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. It renders the pages
-  in Vite's own server without the session: `/`, `/about`, and `/signin` show, `/todos` moves to
-  `/signin`, and sign-in works only on the deployed site, where `convex/http.ts` serves the `/auth`
-  routes.
+- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. The proxy in
+  `vite.config.ts` sends `/auth/` to the deployment's `VITE_CONVEX_SITE_URL`, so sign-in and
+  sign-out work and the session cookies belong to the dev origin. Vite renders the pages without the
+  session: `/todos` answers 200 with no todos, and the browser fills it in as the user after
+  hydration, or moves to `/signin` without a session.
 - `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`,
   and prerender `/about`.
 - `pnpm run deploy:dev`: build, upload, and push to the development deployment.
