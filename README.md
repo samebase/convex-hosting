@@ -51,25 +51,21 @@ Requires `convex` 1.46 or later.
    export default http;
    ```
 
-4. Run `convex-hosting init` before `npx convex dev`, once per clone. `convex/http.ts` imports
-   `.convex-hosting/version.js`, which only a deploy writes, so without it `npx convex dev` fails
-   with `Could not resolve "../.convex-hosting/version.js"`. `init` writes the file with no site
-   version, and `.convex-hosting/server.js`, the placeholder server entry that a
-   [server-rendered app](#server-rendered-pages) imports until its first build. It keeps existing
-   files. Put it in the script that starts `npx convex dev`:
+4. Deploy once before the first `npx convex dev` push. `convex/http.ts` imports
+   `.convex-hosting/version.js`, which only a deploy writes, and the deploy's build needs the
+   deployment's URL, which only `npx convex dev` writes to `.env.local`. So on a fresh clone:
 
-   ```json
-   {
-     "scripts": {
-       "predev": "convex-hosting init",
-       "dev": "convex dev"
-     }
-   }
+   ```sh
+   npx convex dev --skip-push   # creates your dev deployment and .env.local, no push
+   npx convex-hosting deploy --dev --build "vite build" --dist dist --not-found-handling single-page-application
+   npx convex dev               # then work as usual
    ```
 
-   Until the first deploy, the site answers 404.
+   The `deploy --dev` line builds, uploads, writes `.convex-hosting/version.js`, and pushes. If
+   `.convex-hosting/` is deleted later, `npx convex dev` fails with
+   `Could not resolve "../.convex-hosting/version.js"`, and `deploy --dev` fixes it.
 
-5. Deploy, from CI or a terminal:
+5. Deploy production, from CI or a terminal:
 
    ```sh
    npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling single-page-application
@@ -80,14 +76,15 @@ An app set up this way: the
 
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
 Wrangler's `.wrangler/`. The folder has its own `.gitignore`, so git ignores it. The package
-declares the types of `.convex-hosting/version.js` and `.convex-hosting/server.js`, so the app
-typechecks without them.
+declares the types of `.convex-hosting/version.js` and of a server build at `dist/server/server.js`,
+so the app typechecks without them.
 
 ## Rules
 
 - Deploy production and previews with `convex-hosting deploy`, never with a plain
-  `npx convex deploy`. A plain push sends whatever version `.convex-hosting/version.js` names, and
-  after `init` that is none: the site answers 404 until the next `convex-hosting deploy`.
+  `npx convex deploy`. A plain push sends whatever version `.convex-hosting/version.js` names, the
+  version of this checkout's last deploy, which is often another deployment's: the site answers 404
+  until the next `convex-hosting deploy`.
 - Do not commit `.convex-hosting/`. It ignores itself.
 - Do not change directory in `--build`. The build and the upload run in the project directory.
 
@@ -145,9 +142,9 @@ works the same way, with a local dev server and a push on demand.
 
 Two cases are transient:
 
-- A server-rendered app imports its server build through `.convex-hosting/server.js` in
-  `convex/http.ts`, so a running `npx convex dev` pushes after the build, before `deploy --dev`
-  writes the new version. Until `deploy --dev` ends, the new pages refer to files that answer 404.
+- A server-rendered app imports its server build in `convex/http.ts`, so a running `npx convex dev`
+  pushes after the build, before `deploy --dev` writes the new version. Until `deploy --dev` ends,
+  the new pages refer to files that answer 404.
 - A production deploy writes production's version to the version file, and a running
   `npx convex dev` pushes it to the development deployment, where that version does not exist, until
   the next `deploy --dev`. Run production deploys in CI or in a separate checkout.
@@ -248,17 +245,13 @@ export function useReloadOnNewVersion() {
 ## Server-rendered pages
 
 `serveSite` takes a fifth argument, `render`, a function from the request to the page's response,
-and calls it when no file matches. `convex/http.ts` imports the server entry from
-`.convex-hosting/server.js`: `init` writes a placeholder, and the framework adapter's Vite plugin
-replaces it after each server build with a re-export of the build's entry, so `npx convex dev` works
-on a fresh clone before any build.
+and calls it when no file matches. `convex/http.ts` imports the server build directly, such as
+`../dist/server/server.js` for TanStack Start, so `npx convex dev` bundles it only after a build: on
+a fresh clone, the first `deploy --dev` builds before the first push (see [Setup](#setup)).
 [`@samebase/convex-hosting-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
 renders TanStack Start pages in it. See the
 [TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr),
 live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
-
-Because the path is fixed, the route in `convex/http.ts` is the same for every framework; the
-adapter's build step points the file at the framework's own server output.
 
 ## License
 
