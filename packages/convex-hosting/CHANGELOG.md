@@ -17,6 +17,9 @@
   files were deleted. `markLive` takes only `versionId`, and `route` no longer returns
   `newestLiveAt`; `serveSite` and `serveAsset` are unchanged. Deploys to one deployment must not
   overlap.
+- A symbolic link in `--dist` to another folder of the build no longer hides that folder when it
+  comes first in the listing: both paths are uploaded. Only a link to a folder that contains it,
+  such as a link to `--dist` itself, is skipped.
 
 ## 0.6.0
 

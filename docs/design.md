@@ -68,11 +68,11 @@ The CLI parses no credential.
    deployment's URL in `CONVEX_URL` and in one framework variable such as `VITE_CONVEX_URL`, as it
    documents for frontends. Inside the command, `upload`:
    1. collects the files of `<dir>`, honoring `.assetsignore` and following symbolic links as
-      Wrangler does (a link to nothing, or back into a folder already walked, is skipped with a
-      message), and computes each file's sha256 and content type; refuses a file above 25 MiB,
-      Cloudflare's limit per asset (the HTTP action that serves a file could not answer more than
-      Convex's 100 MiB response limit anyway); reads `_headers` and `_redirects` with Cloudflare's
-      parsers into the version's config;
+      Wrangler does (a link to nothing, or to a folder that contains it, is skipped with a message;
+      a link to another folder uploads its files under both paths), and computes each file's sha256
+      and content type; refuses a file above 25 MiB, Cloudflare's limit per asset (the HTTP action
+      that serves a file could not answer more than Convex's 100 MiB response limit anyway); reads
+      `_headers` and `_redirects` with Cloudflare's parsers into the version's config;
    2. stores the config as one file through an upload URL, because `npx convex run` passes arguments
       on the command line, which the operating system limits, and a `_redirects` file can be large;
       (`npx convex run` stays the transport because it handles every way a deployment is selected:

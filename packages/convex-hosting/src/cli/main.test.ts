@@ -399,19 +399,20 @@ describe("upload", () => {
     expect(logs).toContain(`Skipped ${join(cwd, "dist", "gone.txt")}: a symbolic link to nothing.`);
   });
 
-  test("walks a linked folder once, and skips a link back into the folder", async () => {
-    const cwd = app({ "dist/index.html": "<h1>Home</h1>", "shared/fonts/a.woff2": "font" });
-    symlinkSync(join(cwd, "shared", "fonts"), join(cwd, "dist", "fonts"));
+  test("uploads a linked sibling folder under both paths, and skips a link to dist itself", async () => {
+    const cwd = app({ "dist/assets/app.js": "console.log(1)" });
+    // `alias` comes before `assets` in the listing.
+    symlinkSync(join(cwd, "dist", "assets"), join(cwd, "dist", "alias"));
     symlinkSync(join(cwd, "dist"), join(cwd, "dist", "loop"));
     const { cli, callArgs, logs } = fake(cwd);
     expect(await main(upload(), cli)).toBe(0);
     const [{ entries }] = callArgs("lib:recordFiles");
     expect(entries.map((entry: { path: string }) => entry.path).sort()).toEqual([
-      "/fonts/a.woff2",
-      "/index.html",
+      "/alias/app.js",
+      "/assets/app.js",
     ]);
     expect(logs).toContain(
-      `Skipped ${join(cwd, "dist", "loop")}: a link to a folder that is already included.`,
+      `Skipped ${join(cwd, "dist", "loop")}: a link to a folder that contains it.`,
     );
   });
 
