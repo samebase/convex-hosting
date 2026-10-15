@@ -1,12 +1,13 @@
 import { httpRouter } from "convex/server";
 import { httpCookies, ServerAuthSession, setupConvexAuthServer } from "@convex-dev/auth/server";
 import { serveSite } from "@samebase/convex-hosting";
-import type { RequestContext } from "@samebase/convex-hosting-tanstack-start/convex-auth";
 import { api, components } from "./_generated/api.js";
 import { env, httpAction } from "./_generated/server.js";
 import { versionId } from "../.convex-hosting/version.js";
-// Types of the server build imported below; the adapter owns them.
+// Types only, nothing is bundled: the server build's type, and the request context that
+// `convex-auth` registers on TanStack's `Register`, which types `context` in `server.fetch` below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
+import type {} from "@samebase/convex-hosting-tanstack-start/convex-auth";
 import server from "../dist/server/server.js";
 
 const http = httpRouter();
@@ -48,8 +49,8 @@ http.route({
         cookies,
         cookieOptions,
       });
-      const context: RequestContext = { token: await session.getToken() };
-      const page = await server.fetch(request, { context });
+      const token = await session.getToken();
+      const page = await server.fetch(request, { context: { token } });
       const headers = new Headers(page.headers);
       cookies.applyTo(headers);
       return new Response(page.body, { status: page.status, headers });

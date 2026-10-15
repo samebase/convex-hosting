@@ -5,10 +5,9 @@
 - `convex-auth` no longer exports `useSignedIn`. `SignedIn` and `SignedOut` keep the same behavior.
 - The server entry's `fetch` is TanStack's `RequestHandler<Register>`, so the request context is
   typed from `Register`: with the `convex-auth` registration, `context` is required and is
-  `{ token: string | null }`. `RequestContext` is the type to import in `convex/http.ts`; the import
-  also loads the registration into the `convex/` program. Write
-  `const context: RequestContext = { token: await session.getToken() };` and pass
-  `server.fetch(request, { context })`.
+  `{ token: string | null }`. `convex/http.ts` loads the registration with
+  `import type {} from "@samebase/convex-hosting-tanstack-start/convex-auth";` (type only, nothing
+  is bundled) and passes `server.fetch(request, { context: { token } })` as before.
 
 ## 0.4.0
 

@@ -68,16 +68,19 @@ With [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOn
 does:
 
 ```ts
-import type { RequestContext } from "@samebase/convex-hosting-tanstack-start/convex-auth";
+// Type only, nothing is bundled: the request context this entry registers on TanStack's `Register`.
+import type {} from "@samebase/convex-hosting-tanstack-start/convex-auth";
 
 // In `render`, with the session of the request's cookies:
-const context: RequestContext = { token: await session.getToken() };
-const page = await server.fetch(request, { context });
+const token = await session.getToken();
+const page = await server.fetch(request, { context: { token } });
 ```
 
-`@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and importing it declares
-`requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`. The app
-creates its Convex client with `expectAuth: true`.
+`@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and loading it declares
+`requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`, which
+makes `context` required and typed in `server.fetch` and gives every route a typed `serverContext`.
+The `convex/` folder is its own TypeScript program, which is why `convex/http.ts` loads the entry
+itself. The app creates its Convex client with `expectAuth: true`.
 
 The root route gives the token to the server render's Convex client and wraps the document in the
 session provider:
@@ -152,9 +155,6 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   token in every tab, and reloads the page; otherwise it returns `false` and the session stays.
   Convex Auth's `signOut()` resolves even when the route failed, so a reload after it alone signs
   the user back in from the cookie.
-- `RequestContext`: the type of the context, `{ token: string | null }`. Import it in
-  `convex/http.ts`: it types the context value and loads this entry's `Register` registration into
-  the `convex/` program, where nothing else imports this entry.
 
 `@convex-dev/auth` is an optional peer dependency: an app with another auth provider uses only the
 plugin and the server entry.
