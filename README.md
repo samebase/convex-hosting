@@ -56,7 +56,9 @@ Requires `convex` 1.46 or later.
    with `Could not resolve "../.convex-hosting/version.js"`. `init` writes the file with no site
    version, and `.convex-hosting/server.js`, the placeholder server entry that a
    [server-rendered app](#server-rendered-pages) imports until its first build. It keeps existing
-   files. Put it in the script that starts `npx convex dev`:
+   files. When `server.js` re-exports a build output that is gone, for example after you delete
+   `dist/`, `init` writes the placeholder again, which answers until the next build. Put it in the
+   script that starts `npx convex dev`:
 
    ```json
    {

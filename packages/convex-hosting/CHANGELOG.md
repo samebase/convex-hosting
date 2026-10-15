@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- `convex-hosting init` replaces `.convex-hosting/server.js` with the placeholder when the file is
+  an adapter's re-export whose target is gone, for example after `dist/` was deleted. Before, `init`
+  kept the file, and `npx convex dev` could not bundle `convex/http.ts`. It keeps the file in every
+  other case.
+
 ## 0.6.0
 
 - `convex-hosting init` also writes `.convex-hosting/server.js`, a placeholder server entry that

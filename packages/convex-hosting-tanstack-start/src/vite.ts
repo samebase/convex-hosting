@@ -55,6 +55,9 @@ export function convexSsr(): Plugin {
       const outDir: string = options.dir;
       // A re-export, not a copy: the entry imports its chunks by relative paths. The entry's name
       // comes from the bundle: without `"type": "module"` in `package.json`, Vite emits `.mjs`.
+      // `convex-hosting init` reads this format with `adapterReExportTarget` in
+      // `packages/convex-hosting/src/cli/main.ts`, and writes its placeholder again when the target
+      // is gone: keep one `export { default } from "<relative path>";` line and only comment lines.
       const target = relative(stateDir, join(outDir, entry.fileName));
       writeFileSync(
         join(stateDir, "server.js"),

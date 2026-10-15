@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
@@ -21,7 +21,7 @@ const USAGE = `Usage:
   convex-hosting init
       Once per clone, before npx convex dev: writes .convex-hosting/version.js with no site
       version and .convex-hosting/server.js with a placeholder server entry, so convex/http.ts
-      bundles. Keeps existing files.
+      bundles. Keeps existing files, except a build's server entry whose build output is gone.
   convex-hosting deploy --build "<command>" --dist <dir> [options]
       Builds, stores the site files, and pushes the functions. The push switches the site.
 
@@ -405,7 +405,9 @@ async function upload(
  * Makes a fresh clone bundle: `convex/http.ts` imports `.convex-hosting/version.js`, which only a
  * deploy writes, and in a server-rendered app `.convex-hosting/server.js`, which only a build
  * writes. Keeps an existing file, which names the version that this checkout last deployed or the
- * server entry of its last build.
+ * server entry of its last build. The one exception is an adapter's re-export whose target is gone,
+ * for example after `dist/` was deleted: `convex/http.ts` cannot bundle through it, so `init`
+ * writes the placeholder again.
  */
 function init(cli: Cli) {
   if (existsSync(join(cli.cwd, VERSION_FILE))) {
@@ -417,12 +419,38 @@ function init(cli: Cli) {
         "The site answers 404 until the first convex-hosting deploy.",
     );
   }
-  if (existsSync(join(cli.cwd, SERVER_FILE))) {
-    cli.log(`${SERVER_FILE} exists. Kept it.`);
-  } else {
+  const serverFile = join(cli.cwd, SERVER_FILE);
+  if (!existsSync(serverFile)) {
     writeStateFile(cli, SERVER_FILE, SERVER_PLACEHOLDER);
     cli.log(`Wrote ${SERVER_FILE} with a placeholder server entry until the first build.`);
+    return;
   }
+  const target = adapterReExportTarget(readFileSync(serverFile, "utf8"));
+  if (target !== undefined && !existsSync(resolve(dirname(serverFile), target))) {
+    writeStateFile(cli, SERVER_FILE, SERVER_PLACEHOLDER);
+    cli.log(
+      `${SERVER_FILE} re-exported ${target}, which is gone. ` +
+        "Wrote the placeholder server entry, which answers until the next build.",
+    );
+  } else {
+    cli.log(`${SERVER_FILE} exists. Kept it.`);
+  }
+}
+
+/**
+ * The relative path that a server entry re-exports, when a framework adapter's Vite plugin wrote
+ * it: one `export { default } from "<relative path>";` line, with only comment lines around it.
+ * Undefined for anything else, such as the placeholder or an entry written by hand, which `init`
+ * keeps. The writer is `convexSsr()` in `packages/convex-hosting-tanstack-start/src/vite.ts`; a
+ * change to its format must keep this match.
+ */
+export function adapterReExportTarget(source: string): string | undefined {
+  const code = source
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("//"));
+  if (code.length !== 1) return undefined;
+  return /^export \{ default \} from "(\.\.?\/[^"\\]+)";$/.exec(code[0])?.[1];
 }
 
 function writeVersionFile(cli: Cli, versionId: string) {

@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 import { deploymentSelector, type Cli } from "./convex.js";
-import { main, SERVER_FILE, VERSION_FILE } from "./main.js";
+import { adapterReExportTarget, main, SERVER_FILE, VERSION_FILE } from "./main.js";
 
 /** What `npx convex run --component <name> --inline-query` prints when the component is missing. */
 const missing = (component: string) =>
@@ -118,6 +118,11 @@ function innerUpload(cli: Cli, args: string[]) {
   );
 }
 
+/** The server entry that `convexSsr()` writes after a build whose output is `dist/`. */
+const adapterReExport = `// Written by convexSsr() after the server build.
+export { default } from "../dist/server/server.js";
+`;
+
 const versionFile = (cwd: string) => readFileSync(join(cwd, VERSION_FILE), "utf8");
 const writtenVersionId = (cwd: string) => /"([^"]+)"/.exec(versionFile(cwd))?.[1];
 
@@ -174,12 +179,53 @@ describe("init", () => {
     const cwd = app(site);
     const { cli } = fake(cwd);
     expect(await main(["init"], cli)).toBe(0);
-    const built = 'export { default } from "../dist/server/server.js";\n';
+    const handWritten = 'export default { fetch: () => new Response("Hello") };\n';
     writeFileSync(join(cwd, VERSION_FILE), 'export const versionId = "v1";\n');
-    writeFileSync(join(cwd, SERVER_FILE), built);
+    writeFileSync(join(cwd, SERVER_FILE), handWritten);
     expect(await main(["init"], cli)).toBe(0);
     expect(versionFile(cwd)).toBe('export const versionId = "v1";\n');
-    expect(readFileSync(join(cwd, SERVER_FILE), "utf8")).toBe(built);
+    expect(readFileSync(join(cwd, SERVER_FILE), "utf8")).toBe(handWritten);
+  });
+
+  test("keeps a re-export whose target exists", async () => {
+    const cwd = app({
+      ...site,
+      "dist/server/server.js": "export default {};\n",
+      ".convex-hosting/server.js": adapterReExport,
+    });
+    const { cli, logs } = fake(cwd);
+    expect(await main(["init"], cli)).toBe(0);
+    expect(readFileSync(join(cwd, SERVER_FILE), "utf8")).toBe(adapterReExport);
+    expect(logs[1]).toBe(`${SERVER_FILE} exists. Kept it.`);
+  });
+
+  test("replaces a re-export whose target is gone with the placeholder", async () => {
+    const cwd = app(site);
+    const { cli, logs } = fake(cwd);
+    expect(await main(["init"], cli)).toBe(0);
+    const placeholder = readFileSync(join(cwd, SERVER_FILE), "utf8");
+    expect(adapterReExportTarget(placeholder)).toBeUndefined();
+    writeFileSync(join(cwd, SERVER_FILE), adapterReExport);
+    expect(await main(["init"], cli)).toBe(0);
+    expect(readFileSync(join(cwd, SERVER_FILE), "utf8")).toBe(placeholder);
+    expect(logs[3]).toBe(
+      `${SERVER_FILE} re-exported ../dist/server/server.js, which is gone. ` +
+        "Wrote the placeholder server entry, which answers until the next build.",
+    );
+  });
+
+  test("adapterReExportTarget finds only an adapter's re-export of a relative path", () => {
+    expect(adapterReExportTarget(adapterReExport)).toBe("../dist/server/server.js");
+    expect(adapterReExportTarget('export { default } from "./server.mjs";')).toBe("./server.mjs");
+    for (const source of [
+      'export { default } from "@app/server";\n',
+      'export { default } from "../a.js";\nexport { default } from "../b.js";\n',
+      'export { default } from "../dist/server/server.js";\nconsole.log(1);\n',
+      'export default { fetch: () => new Response("Hello") };\n',
+      "",
+    ]) {
+      expect(adapterReExportTarget(source)).toBeUndefined();
+    }
   });
 
   test("takes no deploy options", async () => {
