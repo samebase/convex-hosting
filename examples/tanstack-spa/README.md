@@ -42,7 +42,7 @@ so on a fresh clone it fails with the "Could not resolve" error below.
 
 `convex/http.ts` imports `.convex-hosting/version.js`, which only `deploy:dev` writes. If
 `.convex-hosting/` is deleted later, `npx convex dev` fails with a clear "Could not resolve" error,
-and `pnpm run deploy:dev` fixes it. The site URL is `VITE_CONVEX_SITE_URL` in `.env.local`.
+and `pnpm run deploy:dev` fixes it. `deploy:dev` prints the site URL when it ends.
 
 Local deployment (anonymous or `--local`): the backend must be running while `deploy:dev` uploads,
 else the upload fails with `fetch failed`. Run `npx convex dev` first and keep it running, then run

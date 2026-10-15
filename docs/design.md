@@ -99,6 +99,15 @@ The CLI parses no credential.
    deployment's URL from `.env.local`, so no nesting is needed), uploads, writes the version file,
    and pushes with `npx convex run --push`.
 
+**The site URL.** When the push, and on a first install the upload after it, have ended, the CLI
+asks the deployment for its site URL: `npx convex run --inline-query process.env.CONVEX_SITE_URL`,
+with the selector of its other calls, which needs only the permission of the first-install probe. It
+prints the URL and, when `GITHUB_OUTPUT` is set, appends `url=<site URL>` to that file, so a
+workflow step reads it as a step output. The value is the one the deployment gives its own
+functions, so it is right for every kind of deployment (production, a preview, development, local,
+self-hosted) and is the custom domain when the dashboard's "Override Environment Variables" sets
+one; the CLI never builds it from a deployment name.
+
 **First install.** The component's functions exist only after a push, and a new preview deployment
 exists only once `npx convex deploy` has created it, which happens before it runs the command. So
 the upload decides. Its first call is a probe, `npx convex run --component <name> --inline-query`,
@@ -318,9 +327,9 @@ place for those.
 
 - No live pointer that a command moves, no `activate`, no `getLiveVersion`: the pushed code names
   its version, and the serving code reports it.
-- No lock, no heartbeat, no cron, no call after the push: a version is deleted only after another
-  version has served in its place. A one-day age bounds garbage from failed deploys; it decides
-  nothing about what is served.
+- No lock, no heartbeat, no cron, no call after the push besides the read of the site URL: a version
+  is deleted only after another version has served in its place. A one-day age bounds garbage from
+  failed deploys; it decides nothing about what is served.
 - No marking of hashed files, no one-year `Cache-Control`: Cloudflare has neither. A site that wants
   them writes one `_headers` rule.
 - No component HTTP route, no `httpPrefix` mount, no second serving helper: one way for static and

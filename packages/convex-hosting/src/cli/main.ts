@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -11,6 +18,7 @@ import {
   deploymentSelector,
   probeComponent,
   runComponent,
+  siteUrl,
   type Cli,
   type Destination,
   type Target,
@@ -20,6 +28,7 @@ import { readDist, type DistEntry, type HandlingOptions } from "./files.js";
 const USAGE = `Usage:
   convex-hosting deploy --build "<command>" --dist <dir> [options]
       Builds, stores the site files, and pushes the functions. The push switches the site.
+      Prints the site URL, and appends url=<site URL> to $GITHUB_OUTPUT when it is set.
 
 Options:
   --dev                         the development deployment of this checkout, instead of production
@@ -156,8 +165,9 @@ function quote(arg: string): string {
 }
 
 /**
- * Builds, uploads, writes the version file, and pushes. The push is the switch, and the command
- * ends: the first request that the new code serves marks its version live.
+ * Builds, uploads, writes the version file, and pushes. The push is the switch: the first request
+ * that the new code serves marks its version live. Then it reports the site URL, for a person and,
+ * through `$GITHUB_OUTPUT`, for the next step of a GitHub Actions job.
  */
 async function deploy(cli: Cli, options: Options, build: string) {
   const target: Target = {
@@ -170,7 +180,9 @@ async function deploy(cli: Cli, options: Options, build: string) {
   } else {
     await deployWithConvexDeploy(cli, options, target, versionId, build);
   }
-  cli.log(`Deployed version ${versionId}.`);
+  const url = await siteUrl(cli, target.flags);
+  cli.log(`Deployed version ${versionId} to ${url}.`);
+  if (cli.env.GITHUB_OUTPUT) appendFileSync(cli.env.GITHUB_OUTPUT, `url=${url}\n`);
 }
 
 /**

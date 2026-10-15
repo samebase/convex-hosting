@@ -9,6 +9,10 @@
   and `serveAsset`, keep the routing of a Worker with a script. The component query `route` takes
   `hasUserWorker`, which `serveSite` sets from the presence of `render`; the app sets nothing.
 - Every 404 that the handler answers, including the custom 404 page, has `Cache-Control: no-store`.
+- `deploy` prints the site URL when it ends, which it asks the deployment for (`CONVEX_SITE_URL`
+  through an inline query), and appends `url=<site URL>` to `$GITHUB_OUTPUT` when that is set. A
+  workflow reads it as `steps.<id>.outputs.url` and no longer needs to record it in the build
+  command.
 
 ## 0.7.0
 

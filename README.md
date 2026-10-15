@@ -91,11 +91,11 @@ server-rendered app gets the type of its server build from the framework adapter
 ## Deploy
 
 `deploy` runs `npx convex deploy` with your build and the upload of `--dist` as its `--cmd`. The
-pushed code names the version it was built with, so the push switches the site, and the command
-ends. The first request that the new code serves marks its version live, which deletes the versions
-that were live before it. A version that never becomes live, from a deploy that failed, is deleted
-when it is a day old, with the stored files that no version uses. Nothing is deleted while a site
-gets no request.
+pushed code names the version it was built with, so the push switches the site. Then the command
+prints the site URL, which it asks the deployment for (`CONVEX_SITE_URL`), and ends. The first
+request that the new code serves marks its version live, which deletes the versions that were live
+before it. A version that never becomes live, from a deploy that failed, is deleted when it is a day
+old, with the stored files that no version uses. Nothing is deleted while a site gets no request.
 
 `deploy` goes to production. `--preview-name <name>` sends it to that preview (with a login or a
 project's preview deploy key; always pass the name with that key), and `--dev` to the development
@@ -118,9 +118,12 @@ queues them, with one `concurrency` group per deployment.
 - **A deploy key limited to some actions** needs `deployment:deploy`,
   `deployment:functions:runInternalQueries`, `deployment:functions:runInternalMutations`,
   `deployment:functions:runInternalActions` (the upload calls one internal action), and
-  `deployment:functions:runTestQuery` (the first-install check is an inline query).
+  `deployment:functions:runTestQuery` (the first-install check and the site URL are inline queries).
 - **Checks that must stop a release** run before `convex-hosting deploy`, because its push switches
   the site. Checks that need the new functions run after it.
+- **A step that needs the site URL**, such as a preview comment, reads it from the deploy step: when
+  `GITHUB_OUTPUT` is set, `deploy` appends `url=<site URL>` to it, so give the deploy step an `id`
+  and read `steps.<id>.outputs.url`.
 
 ## Development
 

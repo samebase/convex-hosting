@@ -51,9 +51,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The preview deployment is named after the branch; a second push reuses it. The example's
-      # deploy script brings its flags, and this --build replaces its own (the CLI keeps the last
-      # value) to also record the site URL, which Convex gives the build.
+      # The preview deployment is named after the branch; a second push reuses it. The deploy writes
+      # url=<site URL> to $GITHUB_OUTPUT.
       - name: Deploy the preview
         id: deploy
         working-directory: examples/${{ matrix.example }}
@@ -61,11 +60,7 @@ jobs:
         # deploy keys.
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets[matrix.deploy_key] }} # zizmor: ignore[overprovisioned-secrets]
-        run: |
-          # The single quotes are deliberate: the variables expand in the shell that npx convex deploy starts.
-          # shellcheck disable=SC2016
-          pnpm run deploy --preview-name "$GITHUB_HEAD_REF" \
-            --build 'pnpm run build && echo "url=$VITE_CONVEX_SITE_URL" >> "$GITHUB_OUTPUT"'
+        run: pnpm run deploy --preview-name "$GITHUB_HEAD_REF"
 
       # One comment per example: --edit-last would edit whichever example commented last, so this
       # finds the bot's comment for this example and edits it, or posts it the first time.
