@@ -3,10 +3,10 @@ import type { ComponentApi } from "../component/_generated/component.js";
 
 /**
  * Answers `request` with the file of version `versionId`, else with the page that `render`
- * returns, else 404. As on Cloudflare, the presence of code decides how `not_found_handling`
- * applies: with `render`, the app is a Worker with a script, so it applies to navigations only and
- * `render` answers the other misses; without `render`, the site is files only, so it applies to
- * every request.
+ * returns, else 404. `render` is the Worker script: the code that runs on a miss, with the request
+ * in its closure. As on Cloudflare, the presence of code decides how `not_found_handling` applies:
+ * with `render`, it applies to navigations only and `render` answers the other misses; without
+ * `render`, the site is files only, so it applies to every request.
  *
  * A page and a 404 answer `Cache-Control: no-store`. The deployment's Cloudflare front keeps that
  * for a path without an extension and replaces it with a four-hour browser `max-age` for a path
@@ -22,6 +22,7 @@ export async function serveSite(
 ): Promise<Response> {
   const asset = await answer(ctx, component, request, versionId, render !== undefined);
   if (asset !== null) return asset;
+  // `route` answers every files-only request itself, so this 404 only fails closed.
   if (render === undefined) return new Response(null, { status: 404, headers: NO_STORE });
   const page = await render();
   const headers = new Headers(page.headers);
@@ -30,25 +31,14 @@ export async function serveSite(
 }
 
 /**
- * Answers `request` with the asset of version `versionId` that Cloudflare's asset handler picks.
+ * Answers `request` with the asset of version `versionId` that Cloudflare's asset handler picks,
+ * or returns `null` when no asset matches. `hasUserWorker` is Cloudflare's `has_user_worker`.
  *
- * Returns `null` when no asset matches, so the caller continues, as `serveSite` with `render`
- * does: the caller is the Worker, so `not_found_handling` applies to navigations only. A version
- * that does not exist, is still uploading, or is being deleted answers 404, so a half-installed
- * site does not render pages without their files. The first request for a `ready` version marks it
- * live, which deletes the versions that were live before it; a version older than the live one is
- * never marked.
+ * A version that does not exist, is still uploading, or is being deleted answers 404, so a
+ * half-installed site does not render pages without their files. The first request for a `ready`
+ * version marks it live, which deletes the versions that were live before it; a version older than
+ * the live one is never marked.
  */
-export async function serveAsset(
-  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
-  component: ComponentApi,
-  request: Request,
-  versionId: string,
-): Promise<Response | null> {
-  return await answer(ctx, component, request, versionId, true);
-}
-
-/** `serveAsset`, with Cloudflare's `has_user_worker`: `serveSite` passes `false` without `render`. */
 async function answer(
   ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
   component: ComponentApi,

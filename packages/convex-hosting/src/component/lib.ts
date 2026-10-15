@@ -244,7 +244,7 @@ export const finishVersion = internalMutation({
 });
 
 /**
- * Marks a `ready` version `live` and schedules `collect`. `serveAsset` calls it at each request that
+ * Marks a `ready` version `live` and schedules `collect`. `serveSite` calls it at each request that
  * finds the version `ready`. An older upload never goes live over a newer one: the mark does nothing
  * when a live version was created after this one. So a request that started on replaced code, and
  * reaches its lookup or its mark after the new code's first request marked the new version, cannot
@@ -477,7 +477,7 @@ export const route = query({
       bodyEntry = found.get(eTag);
       if (bodyEntry === undefined) throw new Error(`No entry has the ETag ${eTag}.`);
       return {
-        // `serveAsset` replaces this placeholder with the stored file.
+        // `serveSite` replaces this placeholder with the stored file.
         readableStream: new ReadableStream(),
         contentType: bodyEntry.contentType,
         cacheStatus: "MISS" as const,
@@ -503,7 +503,7 @@ export const route = query({
     let bodyUrl: string | null = null;
     if (response.body !== null && bodyEntry !== undefined) {
       bodyUrl = await ctx.storage.getUrl(bodyEntry.storageId);
-      // The file is gone from storage. As in `serveAsset` when storage answers 404, the answer must
+      // The file is gone from storage. As in `serveSite` when storage answers 404, the answer must
       // not stay in a cache.
       if (bodyUrl === null) {
         return {

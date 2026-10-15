@@ -238,26 +238,25 @@ files for a year, add a `_headers` rule:
 ## Routing
 
 `serveSite` answers with the file that matches, else with the page that `render` returns (see
-[Server-rendered pages](#server-rendered-pages)), else 404. A page and a 404 answer
-`Cache-Control: no-store`. The deployment's Cloudflare front keeps that for a path without an
-extension and replaces it with a four-hour browser `max-age` for a path with one, so a browser that
-asks for a script before its upload ended keeps the 404; the deploy order prevents that case,
-because no page refers to a file that is not uploaded yet. When the version does not exist or is
-still uploading, it answers 404 naming the version. At the first request for a new version, it marks
-the version live. `serveAsset`, its first step, returns the file's response or `null`, for a route
-that does something else on a miss.
+[Server-rendered pages](#server-rendered-pages)), else 404. `render` is the code that runs on a
+miss, with the request in its closure. Everything it returns gets `Cache-Control: no-store`, and so
+does a 404, because the `*.convex.site` front caches paths with an extension. The front keeps
+`no-store` for a path without an extension and replaces it with a four-hour browser `max-age` for a
+path with one, so a browser that asks for a script before its upload ended keeps the 404; the deploy
+order prevents that case, because no page refers to a file that is not uploaded yet. When the
+version does not exist or is still uploading, it answers 404 naming the version. At the first
+request for a new version, it marks the version live.
 
 As on Cloudflare, the presence of code decides where `not_found_handling` (the single-page fallback
 or the 404 page) applies:
 
 - Without `render`, the site is files only, like a Worker without a script: `not_found_handling`
   applies to every request. `curl`, uptime monitors, and link-preview bots get what a browser gets.
-- With `render`, or in a route that calls `serveAsset`, your code is the Worker:
-  `not_found_handling` applies to navigation requests (`Sec-Fetch-Mode: navigate`) only, and other
-  requests that match no file reach your code. Browsers send that header whenever they open a page.
-  `curl`, `fetch` in scripts and tests, uptime monitors, and link-preview bots do not. To test a
-  deep link as a browser opens it, send the header: `curl -H "Sec-Fetch-Mode: navigate"`, or
-  `node:http` in Node, whose `fetch` refuses to set it.
+- With `render`, your code is the Worker: `not_found_handling` applies to navigation requests
+  (`Sec-Fetch-Mode: navigate`) only, and other requests that match no file reach your code. Browsers
+  send that header whenever they open a page. `curl`, `fetch` in scripts and tests, uptime monitors,
+  and link-preview bots do not. To test a deep link as a browser opens it, send the header:
+  `curl -H "Sec-Fetch-Mode: navigate"`, or `node:http` in Node, whose `fetch` refuses to set it.
 
 On a files-only single-page app, a missing hashed file such as `/assets/old.js` gets the shell, with
 200 and `text/html`, as on Cloudflare. A `_headers` rule for its path applies to it too, so with the
@@ -303,8 +302,8 @@ export function useReloadOnNewVersion() {
 
 ## Server-rendered pages
 
-`serveSite` takes a fifth argument, `render`, a function from the request to the page's response,
-and calls it when no file matches. `convex/http.ts` imports the server build directly, such as
+`serveSite` takes a fifth argument, `render`, a function that returns the page's response, and calls
+it when no file matches. `convex/http.ts` imports the server build directly, such as
 `../dist/server/server.js` for TanStack Start, so `npx convex dev` bundles it only after a build: on
 a fresh clone, the first `deploy --dev` builds before the first push (see [Setup](#setup)).
 [`@samebase/convex-hosting-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
