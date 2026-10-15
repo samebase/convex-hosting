@@ -82,14 +82,20 @@ async function getEntry(ctx: QueryCtx, versionId: string, path: string) {
     .unique();
 }
 
-/** The `at` of the newest live version, or `null` when no version is live. */
-async function getNewestLiveAt(ctx: QueryCtx) {
+/**
+ * The live version with the newest `at`, or `null` when no version is live. `markLive` sets an `at`
+ * later than every live one and marks only a version created after every live one, so this is also
+ * the newest live version by creation time.
+ */
+async function getNewestLive(ctx: QueryCtx) {
   const newest = await ctx.db
     .query("versions")
     .withIndex("by_live", (q) => q.eq("state.kind", "live"))
     .order("desc")
     .first();
-  return newest?.state.kind === "live" ? newest.state.at : null;
+  return newest?.state.kind === "live"
+    ? { createdAt: newest._creationTime, at: newest.state.at }
+    : null;
 }
 
 async function getVersionOrThrow(ctx: QueryCtx, versionId: string) {
@@ -238,18 +244,21 @@ export const finishVersion = internalMutation({
 });
 
 /**
- * Marks a `ready` version `live` and schedules `collect`. `serveAsset` calls it at the first
- * request that the version's pushed code serves, with the `at` of the newest live version that
- * `route` saw for that request. A mark succeeds only when the state it was based on is still the
- * state: when the newest live version changed between the request's lookup and this mark, it does
- * nothing, so a request whose code was replaced between its lookup and its mark cannot make its
- * version newest. A version that is already live stays as it is, so concurrent first requests are
- * fine.
+ * Marks a `ready` version `live` and schedules `collect`. `serveAsset` calls it at each request that
+ * finds the version `ready`. An older upload never goes live over a newer one: the mark does nothing
+ * when a live version was created after this one. So a request that started on replaced code, and
+ * reaches its lookup or its mark after the new code's first request marked the new version, cannot
+ * make the old version newest, and `collect` cannot delete the new version's files. A version that
+ * is already live stays as it is, so concurrent first requests are fine.
+ *
+ * Precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
+ * pushed last, its requests look like requests of replaced code: its version serves but stays
+ * `ready`, and nothing is deleted until the next deploy.
  */
 export const markLive = mutation({
-  args: { versionId: v.string(), expectedNewestLiveAt: v.union(v.number(), v.null()) },
+  args: { versionId: v.string() },
   returns: v.null(),
-  handler: async (ctx, { versionId, expectedNewestLiveAt }) => {
+  handler: async (ctx, { versionId }) => {
     const version = await getVersionOrThrow(ctx, versionId);
     if (version.state.kind === "live") return null;
     if (version.state.kind === "uploading") {
@@ -258,10 +267,11 @@ export const markLive = mutation({
     if (version.state.kind === "deleting") {
       throw new ConvexError(`Version ${versionId} is being deleted.`);
     }
-    const newestLiveAt = await getNewestLiveAt(ctx);
-    if (newestLiveAt !== expectedNewestLiveAt) return null;
-    // Strictly newer than the newest, also within one millisecond, so that `collect` deletes it.
-    const at = newestLiveAt === null ? Date.now() : Math.max(Date.now(), newestLiveAt + 1);
+    const newest = await getNewestLive(ctx);
+    if (newest !== null && newest.createdAt > version._creationTime) return null;
+    // Later than every live `at`, also within one millisecond or when the clock moves back, so that
+    // `at` follows creation order and `collect` deletes the versions live before this one.
+    const at = newest === null ? Date.now() : Math.max(Date.now(), newest.at + 1);
     await ctx.db.patch("versions", version._id, { state: { kind: "live", at } });
     await ctx.scheduler.runAfter(0, internal.lib.collect, { step: { kind: "files" } });
     return null;
@@ -339,7 +349,7 @@ export const collect = internalMutation({
     }
 
     const after = step.after;
-    const currentAt = await getNewestLiveAt(ctx);
+    const current = await getNewestLive(ctx);
     const page = (
       await ctx.db
         .query("versions")
@@ -357,7 +367,7 @@ export const collect = internalMutation({
       const garbage =
         state.kind === "deleting" ||
         (state.kind === "live"
-          ? currentAt !== null && state.at < currentAt
+          ? current !== null && state.at < current.at
           : version._creationTime < garbageBefore);
       if (garbage) {
         const entries = await ctx.db
@@ -404,10 +414,8 @@ const routeHeaders = v.record(v.string(), v.string());
 
 /**
  * Runs Cloudflare's asset handler for one request against one version. `state` is the kind of the
- * version's state, or `null` when the version does not exist. `newestLiveAt` is, for a `ready`
- * version, the `at` of the newest live version that this query saw, which `serveAsset` passes to
- * `markLive`; otherwise `null`, and a live version's requests read nothing more. `asset` is
- * `null` when the version is uploading, being deleted, or does not exist, or when no asset answers.
+ * version's state, or `null` when the version does not exist. `asset` is `null` when the version is
+ * uploading, being deleted, or does not exist, or when no asset answers.
  */
 export const route = query({
   args: { versionId: v.string(), method: v.string(), url: v.string(), headers: routeHeaders },
@@ -419,7 +427,6 @@ export const route = query({
       v.literal("deleting"),
       v.null(),
     ),
-    newestLiveAt: v.union(v.number(), v.null()),
     asset: v.union(
       v.null(),
       v.object({
@@ -432,12 +439,11 @@ export const route = query({
   }),
   handler: async (ctx, { versionId, method, url, headers }) => {
     const version = await getVersion(ctx, versionId);
-    if (version === null) return { state: null, newestLiveAt: null, asset: null };
+    if (version === null) return { state: null, asset: null };
     const state = version.state.kind;
     if (state === "uploading" || state === "deleting") {
-      return { state, newestLiveAt: null, asset: null };
+      return { state, asset: null };
     }
-    const newestLiveAt = state === "ready" ? await getNewestLiveAt(ctx) : null;
 
     const configuration = normalizeConfiguration({
       ...AssetConfigSchema.parse(JSON.parse(version.config)),
@@ -468,7 +474,7 @@ export const route = query({
     };
 
     if (!(await canFetch(request, env, configuration, exists))) {
-      return { state, newestLiveAt, asset: null };
+      return { state, asset: null };
     }
     const response = await handleRequest(
       request,
@@ -489,14 +495,12 @@ export const route = query({
       if (bodyUrl === null) {
         return {
           state,
-          newestLiveAt,
           asset: { status: 404, headers: [{ name: "cache-control", value: "no-store" }], bodyUrl },
         };
       }
     }
     return {
       state,
-      newestLiveAt,
       asset: {
         status: response.status,
         headers: [...response.headers].map(([name, value]) => ({ name, value })),

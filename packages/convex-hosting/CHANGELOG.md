@@ -11,6 +11,12 @@
   `../dist/server/server.js`. The package no longer declares a server module: the framework adapter
   declares the type of its build (`@samebase/convex-hosting-tanstack-start/server-build` 0.4.0). The
   package declares only `.convex-hosting/version.js`.
+- An older upload never goes live over a newer one: `markLive` marks a version only when no live
+  version was created after it. Before, a request that started on replaced code and reached its
+  lookup after the new code's first request could make its old version live, and the new version's
+  files were deleted. `markLive` takes only `versionId`, and `route` no longer returns
+  `newestLiveAt`; `serveSite` and `serveAsset` are unchanged. Deploys to one deployment must not
+  overlap.
 
 ## 0.6.0
 
