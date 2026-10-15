@@ -23,19 +23,13 @@ Create `src/server.ts`, which Vite builds as the server entry:
 export { default } from "@samebase/convex-hosting-tanstack-start/server";
 ```
 
-After each server build, the plugin writes `.convex-hosting/server.js`, which re-exports the server
-entry that the build emitted, such as `dist/server/server.js`. Like the `convex-hosting` CLI, it
-finds `.convex-hosting` in the working directory, so build from the project directory, as
-`convex-hosting deploy --build` does. Before the first build, `convex-hosting init` of
-`@samebase/convex-hosting` 0.6.0 or later writes a placeholder there, so `npx convex dev` bundles
-`convex/http.ts` on a fresh clone. That package also declares the file's type. Leave `allowJs` out
-of `convex/tsconfig.json`: with it, tsc reads the placeholder or the build instead of the type.
-
-In `convex/http.ts`, `serveSite` serves the uploaded files and renders every other path with the
-server entry:
+In `convex/http.ts`, import the server build that Vite emits from `src/server.ts`, and let
+`serveSite` serve the uploaded files and render every other path with it:
 
 ```ts
-import server from "../.convex-hosting/server.js";
+// Types of the server build imported below; the adapter owns them.
+import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
+import server from "../dist/server/server.js";
 
 http.route({
   pathPrefix: "/",
@@ -45,6 +39,16 @@ http.route({
   ),
 });
 ```
+
+Vite names the entry `server.js` when the app's `package.json` has `"type": "module"`, and
+`server.mjs` without it; import the name that the build emits. The `server-build` entry declares
+both with the type of this package's server entry, so `convex/http.ts` typechecks before the first
+build. It covers the default output only, `dist/server/server.js` and `.mjs`: an app that changes
+`build.outDir` or the entry name declares its own path with one wildcard line, such as
+`declare module "*/build/server/entry.js"` with the same default export. Leave `allowJs` out of
+`convex/tsconfig.json`: with it, tsc reads the build instead of the type. `npx convex dev` bundles
+`convex/http.ts` only after a build, so a fresh clone runs `convex-hosting deploy --dev` before its
+first push, as the [README](https://github.com/samebase/convex-hosting#setup) says.
 
 For reactive queries, use the
 [official Convex TanStack integration](https://docs.convex.dev/client/tanstack/tanstack-start/).
@@ -133,6 +137,11 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   during the server render and the hydration, so the token that `SessionProvider` was given decides
   until it settles, and both renders agree. `SignedIn` and `SignedOut` render their children by it,
   where Convex's `Authenticated` and `Unauthenticated` render nothing on the server.
+- `useSignOutSession(url)`: returns a function that posts to the app's sign-out route, such as
+  `/auth/signout`, and only after a 2xx calls Convex Auth's `signOut()`, which clears the stored
+  token in every tab, and reloads the page; otherwise it returns `false` and the session stays.
+  Convex Auth's `signOut()` resolves even when the route failed, so a reload after it alone signs
+  the user back in from the cookie.
 
 `@convex-dev/auth` is an optional peer dependency: an app with another auth provider uses only the
 plugin and the server entry.

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0
+
+- `convexSsr()` no longer writes `.convex-hosting/server.js`; it only sets the `ssr` environment's
+  options. `convex/http.ts` imports the server build directly, `../dist/server/server.js`. A fresh
+  clone runs `npx convex dev --skip-push`, then `convex-hosting deploy --dev`, before its first
+  `npx convex dev`.
+- The types-only entry `@samebase/convex-hosting-tanstack-start/server-build` declares
+  `dist/server/server.js` and `dist/server/server.mjs` with the type of the package's server entry.
+  `convex/http.ts` loads it with
+  `import type {} from "@samebase/convex-hosting-tanstack-start/server-build";`. It covers the
+  default output only; an app with another output folder or entry name declares its own path.
+- `useSignOutSession(url)` in `convex-auth` returns a sign-out function that posts to the app's
+  sign-out route, and only after a 2xx calls Convex Auth's `signOut()`, which clears the stored
+  token in every tab, and reloads the page; otherwise it returns `false`. Use it in place of
+  `signOut()` followed by a reload: `signOut()` resolves even when the route failed, and the reload
+  then signed the user back in from the cookie.
+
 ## 0.3.0
 
 - After each server build, `convexSsr()` writes `.convex-hosting/server.js` in the working

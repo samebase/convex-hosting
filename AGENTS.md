@@ -46,7 +46,5 @@ Run from the repository root with pnpm 11 and the Node version in `.node-version
   approves it with 2FA. See `CONTRIBUTING.md`.
 - An app-side script, build step, type file, or wrapper in an example or a consuming app that exists
   because a package or the adapter lacks something is a package bug. Fix it in the package in the
-  same cycle; do not keep the workaround in the app. The server placeholder that
-  `convex-hosting init` writes is such a fix: it replaced an app's script that built before
-  `npx convex dev`.
+  same cycle; do not keep the workaround in the app.
 - Never use the U+2014 em dash character. Use commas, colons, parentheses, or separate sentences.

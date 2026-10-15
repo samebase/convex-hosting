@@ -7,11 +7,12 @@ import {
 } from "@tanstack/react-router";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { convexQuery, type ConvexQueryClient } from "@convex-dev/react-query";
-import { useAuthActions } from "@convex-dev/auth/nextjs";
 import {
   SessionProvider,
   sessionBeforeLoad,
+  useSignOutSession,
 } from "@samebase/convex-hosting-tanstack-start/convex-auth";
+import { useState } from "react";
 import { api } from "../../convex/_generated/api.js";
 import styleUrl from "../style.css?url";
 
@@ -67,23 +68,17 @@ function SessionHeader() {
   // `useQuery` does not fetch on the server, so the header of a prerendered page stays empty until
   // the browser has the answer.
   const { data: me } = useQuery(convexQuery(api.users.me, {}));
-  const { signOut } = useAuthActions();
+  const signOut = useSignOutSession("/auth/signout");
+  const [signOutFailed, setSignOutFailed] = useState(false);
   if (me === undefined) return null;
   if (me === null) return <Link to="/signin">Sign in</Link>;
   return (
     <>
       {`Signed in as ${me.name}`}
-      <button
-        type="button"
-        onClick={async () => {
-          await signOut();
-          // `expectAuth` holds queries only before the first authentication, so a sign-out reloads
-          // (Convex's Better Auth guide for TanStack Start says the same).
-          location.reload();
-        }}
-      >
+      <button type="button" onClick={async () => setSignOutFailed(!(await signOut()))}>
         Sign out
       </button>
+      {signOutFailed && "Sign-out failed. Try again."}
     </>
   );
 }

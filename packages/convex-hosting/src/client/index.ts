@@ -30,8 +30,9 @@ export async function serveSite(
  *
  * Returns `null` when no asset matches, so the caller continues, as `serveSite` does. A version
  * that does not exist, is still uploading, or is being deleted answers 404, so a half-installed
- * site does not render pages without their files. The first request for a `ready` version marks it live, which deletes the versions that
- * were live before it.
+ * site does not render pages without their files. The first request for a `ready` version marks it
+ * live, which deletes the versions that were live before it; a version older than the live one is
+ * never marked.
  */
 export async function serveAsset(
   ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
@@ -39,7 +40,7 @@ export async function serveAsset(
   request: Request,
   versionId: string,
 ): Promise<Response | null> {
-  const { state, newestLiveAt, asset } = await ctx.runQuery(component.lib.route, {
+  const { state, asset } = await ctx.runQuery(component.lib.route, {
     versionId,
     method: request.method,
     url: request.url,
@@ -59,10 +60,7 @@ export async function serveAsset(
   }
   // Only the pushed code knows which version the deployment runs, so its first request reports it.
   if (state === "ready") {
-    await ctx.runMutation(component.lib.markLive, {
-      versionId,
-      expectedNewestLiveAt: newestLiveAt,
-    });
+    await ctx.runMutation(component.lib.markLive, { versionId });
   }
   if (asset === null) return null;
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.0
+
+- `convex-hosting init` is gone, with the placeholder `.convex-hosting/server.js` it wrote. On a
+  fresh clone, `npx convex dev --skip-push` creates the development deployment and writes
+  `.env.local` without a push; `convex-hosting deploy --dev` then builds, uploads, writes
+  `.convex-hosting/version.js`, and pushes; after that, `npx convex dev` works as usual. Remove
+  `init` from the app's scripts, such as `predev`.
+- A server-rendered app's `convex/http.ts` imports its server build directly, such as
+  `../dist/server/server.js`. The package no longer declares a server module: the framework adapter
+  declares the type of its build (`@samebase/convex-hosting-tanstack-start/server-build` 0.4.0). The
+  package declares only `.convex-hosting/version.js`.
+- An older upload never goes live over a newer one: `markLive` marks a version only when no live
+  version was created after it. Before, a request that started on replaced code and reached its
+  lookup after the new code's first request could make its old version live, and the new version's
+  files were deleted. `markLive` takes only `versionId`, and `route` no longer returns
+  `newestLiveAt`; `serveSite` and `serveAsset` are unchanged. Deploys to one deployment must not
+  overlap.
+- A symbolic link in `--dist` to another folder of the build no longer hides that folder when it
+  comes first in the listing: both paths are uploaded. Only a link to a folder that contains it,
+  such as a link to `--dist` itself, is skipped.
+
 ## 0.6.0
 
 - `convex-hosting init` also writes `.convex-hosting/server.js`, a placeholder server entry that

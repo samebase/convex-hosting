@@ -11,10 +11,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 import { deploymentSelector, type Cli } from "./convex.js";
-import { main, SERVER_FILE, VERSION_FILE } from "./main.js";
+import { main, VERSION_FILE } from "./main.js";
 
 /** What `npx convex run --component <name> --inline-query` prints when the component is missing. */
 const missing = (component: string) =>
@@ -145,54 +144,8 @@ describe("help", () => {
       const { cli, logs, events } = fake(app(site));
       expect(await main(args, cli)).toBe(0);
       expect(logs).toHaveLength(1);
-      expect(logs[0]).toMatch(/^Usage:\n {2}convex-hosting init\n/);
+      expect(logs[0]).toMatch(/^Usage:\n {2}convex-hosting deploy /);
       expect(events).toEqual([]);
-    }
-  });
-});
-
-describe("init", () => {
-  test("writes the version file, the server placeholder, and the folder's .gitignore", async () => {
-    const cwd = app(site);
-    const { cli, logs, events } = fake(cwd);
-    expect(await main(["init"], cli)).toBe(0);
-    expect(versionFile(cwd)).toBe('export const versionId = "not-deployed";\n');
-    expect(readFileSync(join(cwd, ".convex-hosting", ".gitignore"), "utf8")).toBe("*\n");
-    expect(logs[0]).toContain("The site answers 404 until the first convex-hosting deploy.");
-    expect(events).toEqual([]);
-
-    const placeholder: { default: { fetch: (request: Request) => Response } } = await import(
-      pathToFileURL(join(cwd, SERVER_FILE)).href
-    );
-    const response = placeholder.default.fetch(new Request("https://example.test/"));
-    expect(response.status).toBe(503);
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
-    expect(await response.text()).toBe("The site is not built yet.");
-  });
-
-  test("keeps existing files", async () => {
-    const cwd = app(site);
-    const { cli } = fake(cwd);
-    expect(await main(["init"], cli)).toBe(0);
-    const built = 'export { default } from "../dist/server/server.js";\n';
-    writeFileSync(join(cwd, VERSION_FILE), 'export const versionId = "v1";\n');
-    writeFileSync(join(cwd, SERVER_FILE), built);
-    expect(await main(["init"], cli)).toBe(0);
-    expect(versionFile(cwd)).toBe('export const versionId = "v1";\n');
-    expect(readFileSync(join(cwd, SERVER_FILE), "utf8")).toBe(built);
-  });
-
-  test("takes no deploy options", async () => {
-    for (const args of [
-      ["init", "--dist", "dist"],
-      ["init", "--dev"],
-      ["init", "extra"],
-    ]) {
-      const cwd = app(site);
-      const { cli } = fake(cwd);
-      expect(await main(args, cli)).toBe(1);
-      expect(existsSync(join(cwd, VERSION_FILE))).toBe(false);
-      expect(existsSync(join(cwd, SERVER_FILE))).toBe(false);
     }
   });
 });
@@ -446,19 +399,20 @@ describe("upload", () => {
     expect(logs).toContain(`Skipped ${join(cwd, "dist", "gone.txt")}: a symbolic link to nothing.`);
   });
 
-  test("walks a linked folder once, and skips a link back into the folder", async () => {
-    const cwd = app({ "dist/index.html": "<h1>Home</h1>", "shared/fonts/a.woff2": "font" });
-    symlinkSync(join(cwd, "shared", "fonts"), join(cwd, "dist", "fonts"));
+  test("uploads a linked sibling folder under both paths, and skips a link to dist itself", async () => {
+    const cwd = app({ "dist/assets/app.js": "console.log(1)" });
+    // `alias` comes before `assets` in the listing.
+    symlinkSync(join(cwd, "dist", "assets"), join(cwd, "dist", "alias"));
     symlinkSync(join(cwd, "dist"), join(cwd, "dist", "loop"));
     const { cli, callArgs, logs } = fake(cwd);
     expect(await main(upload(), cli)).toBe(0);
     const [{ entries }] = callArgs("lib:recordFiles");
     expect(entries.map((entry: { path: string }) => entry.path).sort()).toEqual([
-      "/fonts/a.woff2",
-      "/index.html",
+      "/alias/app.js",
+      "/assets/app.js",
     ]);
     expect(logs).toContain(
-      `Skipped ${join(cwd, "dist", "loop")}: a link to a folder that is already included.`,
+      `Skipped ${join(cwd, "dist", "loop")}: a link to a folder that contains it.`,
     );
   });
 

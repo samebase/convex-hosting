@@ -23,7 +23,7 @@ export default defineSchema({
     config: v.string(),
   })
     .index("by_versionId", ["versionId"])
-    /** `collect` finds the current live version with one read: kind `live`, the newest `at`. */
+    /** `markLive` and `collect` find the newest live version with one read: kind `live`, the newest `at`. */
     .index("by_live", ["state.kind", "state.at"]),
 
   /** One file of a version. */

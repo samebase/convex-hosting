@@ -43,13 +43,14 @@ rest comes from the adapter's `convex-auth` entry. The root route's `beforeLoad`
 `sessionBeforeLoad`, gives the token to the Convex HTTP client of the server render, so the page's
 queries run as the user. In the browser, `SessionProvider` wraps Convex Auth's
 `ConvexAuthNextjsProvider` (it contains no Next.js code), which starts from the token of the server
-render and calls `POST /auth/signin`, `/auth/refresh`, and `/auth/signout` in `convex/http.ts`.
-`expectAuth` makes the browser's Convex client wait for a token before its first subscription, so a
-page rendered as the user gets the user's live answer, and it never releases for a visitor without a
-session. Convex's AuthKit template decides `expectAuth` on the server per request; TanStack creates
-the client before the page knows the session, so `SessionProvider` releases it when the provider
-reports none. `expectAuth` holds queries only before the first authentication, so sign-out reloads
-the page.
+render and calls `POST /auth/signin` and `/auth/refresh` in `convex/http.ts`. The sign-out button
+calls `/auth/signout` through the adapter's `useSignOutSession`, which clears the session and
+reloads only when the route succeeded, and otherwise shows that sign-out failed. `expectAuth` makes
+the browser's Convex client wait for a token before its first subscription, so a page rendered as
+the user gets the user's live answer, and it never releases for a visitor without a session.
+Convex's AuthKit template decides `expectAuth` on the server per request; TanStack creates the
+client before the page knows the session, so `SessionProvider` releases it when the provider reports
+none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
 
 The example signs in anonymously: each sign-in creates a user. Password or OAuth sign-in changes the
 provider in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in
@@ -74,17 +75,30 @@ render its request context, and returns the page.
 
 ## Set up
 
-From `examples/tanstack-ssr`, after `pnpm install` at the repository root:
+From `examples/tanstack-ssr`:
 
-1. `pnpm exec convex-hosting init`. `convex/http.ts` imports `.convex-hosting/version.js` and
-   `.convex-hosting/server.js`; `init` writes the first with no site version and the second with a
-   placeholder server entry, which each build replaces.
-2. `npx convex dev`. It writes `.env.local`, then its first push fails: the deployment has no
-   `AUTH_PRIVATE_KEY` and `AUTH_JWKS`.
-3. `npx @convex-dev/auth`. It generates an RS256 key pair, sets both variables on the deployment
-   that `.env.local` names, and leaves the files in `convex/` as they are. Save a file in `convex/`
-   so that `npx convex dev` pushes again. The site answers 404 until the first deploy.
-4. `pnpm run deploy:dev`, then open the site URL, `VITE_CONVEX_SITE_URL` in `.env.local`.
+```sh
+pnpm install
+npx convex dev --skip-push        # creates your dev deployment and .env.local, no push
+npx @convex-dev/auth              # new deployment only: sets AUTH_PRIVATE_KEY and AUTH_JWKS on it
+pnpm run deploy:dev               # builds, uploads, writes .convex-hosting/version.js, pushes
+npx convex dev                    # then work as usual
+```
+
+The example commits `convex/_generated`, as Convex recommends, so a fresh clone can build:
+`npx convex dev --skip-push` does not write it, and `npx convex codegen` bundles `convex/http.ts`,
+so on a fresh clone it fails with the "Could not resolve" error below.
+
+`convex/http.ts` imports `dist/server/server.js` and `.convex-hosting/version.js`, which only
+`deploy:dev` writes. If `dist/` or `.convex-hosting/` is deleted later, `npx convex dev` fails with
+a clear "Could not resolve" error, and `pnpm run deploy:dev` fixes it. The site URL is
+`VITE_CONVEX_SITE_URL` in `.env.local`.
+
+Local deployment (anonymous or `--local`): the backend must be running while `deploy:dev` uploads,
+else the upload fails with `fetch failed`. Run `npx convex dev` first and keep it running, then run
+`npx @convex-dev/auth` and `pnpm run deploy:dev` in a second terminal. `deploy:dev` pushes by
+itself, so the site works when it ends. The running `npx convex dev` keeps its "Could not resolve"
+error until the next change under `convex/`, then pushes as usual.
 
 Production needs its own key pair on the production deployment before the first `pnpm run deploy`.
 
@@ -106,12 +120,13 @@ hosting component's files go with it. The workflow needs two things once per pro
 
 ## Commands
 
-- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. It renders the pages
-  in Vite's own server without the session: `/`, `/about`, and `/signin` show, `/todos` moves to
-  `/signin`, and sign-in works only on the deployed site, where `convex/http.ts` serves the `/auth`
-  routes.
+- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. The proxy in
+  `vite.config.ts` sends `/auth/` to the deployment's `VITE_CONVEX_SITE_URL`, so sign-in and
+  sign-out work and the session cookies belong to the dev origin. Vite renders the pages without the
+  session: `/todos` answers 200 with no todos, and the browser fills it in as the user after
+  hydration, or moves to `/signin` without a session.
 - `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`,
-  point `.convex-hosting/server.js` at the server, and prerender `/about`.
+  and prerender `/about`.
 - `pnpm run deploy:dev`: build, upload, and push to the development deployment.
 - `pnpm run deploy`: build, upload, and push to production.
 

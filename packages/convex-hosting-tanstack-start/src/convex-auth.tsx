@@ -1,7 +1,7 @@
 // Convex Auth cookie sessions for pages that `convex/http.ts` renders with
 // `server.fetch(request, { context: { token } })`, the access token of the session cookie.
 
-import { ConvexAuthNextjsProvider } from "@convex-dev/auth/nextjs";
+import { ConvexAuthNextjsProvider, useAuthActions } from "@convex-dev/auth/nextjs";
 import type { ConvexQueryClient } from "@convex-dev/react-query";
 import {
   redirect,
@@ -110,6 +110,25 @@ export function SignedIn({ children }: { children: ReactNode }) {
 /** `Unauthenticated` of `convex/react`, rendered by the server render too. */
 export function SignedOut({ children }: { children: ReactNode }) {
   return useSignedIn() === false ? children : null;
+}
+
+/**
+ * A sign-out through the app's sign-out route, such as `/auth/signout`. The returned function posts
+ * to the route; when it fails or cannot be reached, it returns `false` and changes nothing, because
+ * the cookie and the session stay. Convex Auth's `signOut()` resolves even when the route failed, so
+ * the route's answer decides. After a 2xx, `signOut()` clears the stored access token and tells the
+ * other tabs (its own call to the route is then redundant), and the page reloads, because
+ * `expectAuth` holds queries only before the first authentication.
+ */
+export function useSignOutSession(url: string): () => Promise<boolean> {
+  const { signOut } = useAuthActions();
+  return async () => {
+    const response = await fetch(url, { method: "POST", credentials: "include" }).catch(() => null);
+    if (!response?.ok) return false;
+    await signOut();
+    location.reload();
+    return true;
+  };
 }
 
 /**

@@ -50,9 +50,10 @@ export async function readDist(
   const { assetsIgnoreFunction } = await createAssetsIgnoreFunction(dist);
   const entries: DistEntry[] = [];
 
-  // The real paths of the folders already walked. A link to a folder that is already included, for
-  // example a link to `dist` itself, would otherwise be walked without end.
-  const walked = new Set([realpathSync(dist)]);
+  // The real paths of the folders that contain the one being walked. A link to one of them, for
+  // example a link to `dist` itself, is a cycle and would otherwise be walked without end. A link to
+  // any other folder, such as a sibling, is walked, so its files are uploaded under both paths.
+  const ancestors = new Set([realpathSync(dist)]);
   const walk = (directory: string) => {
     for (const name of readdirSync(directory)) {
       const file = join(directory, name);
@@ -66,16 +67,16 @@ export async function readDist(
       // `ignore` takes paths relative to `dist` with `/`, and a directory with a trailing `/`.
       const ignorePath = relative(dist, file).replaceAll("\\", "/");
       if (stats.isDirectory()) {
-        // An ignored directory is not walked: gitignore rules cannot re-include a file in it. It
-        // does not count as walked either, so an ignored link does not hide the folder it points to.
+        // An ignored directory is not walked: gitignore rules cannot re-include a file in it.
         if (assetsIgnoreFunction(`${ignorePath}/`)) continue;
         const real = realpathSync(file);
-        if (walked.has(real)) {
-          log(`Skipped ${file}: a link to a folder that is already included.`);
+        if (ancestors.has(real)) {
+          log(`Skipped ${file}: a link to a folder that contains it.`);
           continue;
         }
-        walked.add(real);
+        ancestors.add(real);
         walk(file);
+        ancestors.delete(real);
       } else if (stats.isFile() && !assetsIgnoreFunction(ignorePath)) {
         const bytes = readFileSync(file);
         // Cloudflare's limit per asset, 25 MiB. The HTTP action that serves a file cannot answer
