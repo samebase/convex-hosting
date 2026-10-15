@@ -27,12 +27,18 @@ The example has its own schema, so it needs its own Convex project.
 
 ## Set up
 
-From `examples/tanstack-spa`, after `pnpm install` at the repository root:
+From `examples/tanstack-spa`:
 
-1. `pnpm exec convex-hosting init`, so that `npx convex dev` can bundle `convex/http.ts`.
-2. `npx convex dev`. It writes `.env.local` and pushes the functions.
-3. In a second terminal, `pnpm run deploy:dev`, then open the site URL, `VITE_CONVEX_SITE_URL` in
-   `.env.local`.
+```sh
+pnpm install
+npx convex dev --skip-push        # creates your dev deployment and .env.local, no push
+pnpm run deploy:dev               # builds, uploads, writes .convex-hosting/version.js, pushes
+npx convex dev                    # then work as usual
+```
+
+`convex/http.ts` imports `.convex-hosting/version.js`, which only `deploy:dev` writes. If
+`.convex-hosting/` is deleted later, `npx convex dev` fails with a clear "Could not resolve" error,
+and `pnpm run deploy:dev` fixes it. The site URL is `VITE_CONVEX_SITE_URL` in `.env.local`.
 
 The build creates the Convex client from `VITE_CONVEX_URL` when it prerenders the shell, but sends
 no query, so any URL builds.

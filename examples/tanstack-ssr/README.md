@@ -74,17 +74,20 @@ render its request context, and returns the page.
 
 ## Set up
 
-From `examples/tanstack-ssr`, after `pnpm install` at the repository root:
+From `examples/tanstack-ssr`:
 
-1. `pnpm exec convex-hosting init`. `convex/http.ts` imports `.convex-hosting/version.js` and
-   `.convex-hosting/server.js`; `init` writes the first with no site version and the second with a
-   placeholder server entry, which each build replaces.
-2. `npx convex dev`. It writes `.env.local`, then its first push fails: the deployment has no
-   `AUTH_PRIVATE_KEY` and `AUTH_JWKS`.
-3. `npx @convex-dev/auth`. It generates an RS256 key pair, sets both variables on the deployment
-   that `.env.local` names, and leaves the files in `convex/` as they are. Save a file in `convex/`
-   so that `npx convex dev` pushes again. The site answers 404 until the first deploy.
-4. `pnpm run deploy:dev`, then open the site URL, `VITE_CONVEX_SITE_URL` in `.env.local`.
+```sh
+pnpm install
+npx convex dev --skip-push        # creates your dev deployment and .env.local, no push
+npx @convex-dev/auth              # new deployment only: sets AUTH_PRIVATE_KEY and AUTH_JWKS on it
+pnpm run deploy:dev               # builds, uploads, writes .convex-hosting/version.js, pushes
+npx convex dev                    # then work as usual
+```
+
+`convex/http.ts` imports `dist/server/server.js` and `.convex-hosting/version.js`, which only
+`deploy:dev` writes. If `dist/` or `.convex-hosting/` is deleted later, `npx convex dev` fails with
+a clear "Could not resolve" error, and `pnpm run deploy:dev` fixes it. The site URL is
+`VITE_CONVEX_SITE_URL` in `.env.local`.
 
 Production needs its own key pair on the production deployment before the first `pnpm run deploy`.
 
@@ -111,7 +114,7 @@ hosting component's files go with it. The workflow needs two things once per pro
   `/signin`, and sign-in works only on the deployed site, where `convex/http.ts` serves the `/auth`
   routes.
 - `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`,
-  point `.convex-hosting/server.js` at the server, and prerender `/about`.
+  and prerender `/about`.
 - `pnpm run deploy:dev`: build, upload, and push to the development deployment.
 - `pnpm run deploy`: build, upload, and push to production.
 
