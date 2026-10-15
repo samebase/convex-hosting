@@ -222,6 +222,10 @@ transaction, so a request whose code was replaced, whenever it reaches its looku
 cannot make its version newest, and concurrent first requests mark once. That is the only write the
 serving path ever makes, once per deploy.
 
+`route` and `markLive` are the component's only public functions, because `serveAsset` runs in the
+app and an app can call only a component's public functions; clients cannot call them at all. The
+CLI calls the other functions, which are internal, with `npx convex run --component`.
+
 The two callbacks that Cloudflare's code takes map to the version's entries: `exists(path)` reads
 one index entry and returns its ETag, the sha256 followed by a short hash of the content type, so
 that identical bytes stored under two content types stay distinct; `getByETag` returns the content
@@ -234,12 +238,8 @@ longer prefixes, by Convex's router rules for the same method.
 
 ## Component
 
-Two tables.
-
-| Table      | Fields                                                                                                                  | Indexes                                        |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `versions` | `versionId`, `state` (`uploading`, `ready`, `live` with the time it became live, or `deleting`), `config` (JSON string) | `by_versionId`                                 |
-| `entries`  | `versionId`, `path`, `sha256` (hex), `contentType` (absent when the file name has no known type), `storageId`           | `by_version_path`, `by_sha256`, `by_storageId` |
+Two tables, `versions` and `entries`, in `src/component/schema.ts`; the functions are in
+`src/component/lib.ts`.
 
 The time a version became live lives inside the `live` state, so a version cannot carry a live time
 without being live; a mark sets it strictly later than the newest live time, so two marks in one
@@ -252,21 +252,6 @@ CLI refuses a config above 900 KiB, leaving room for the other fields and the en
 the file that causes it. An entry keeps its own content type because the type belongs to the path,
 not to the bytes: paths with identical bytes share one stored file but keep their own types, and
 `route` serves without reading `_storage`.
-
-Functions. The CLI calls the internal ones with `npx convex run --component`, by typed function
-reference; `serveAsset` calls the two public ones through the component reference (an app can call
-only a component's public functions, and clients cannot call them at all).
-
-| Function             | Kind              | Does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| -------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `generateUploadUrls` | internal mutation | Returns `count` upload URLs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `createVersion`      | internal action   | Reads the config from storage and creates the version in state `uploading`. Idempotent for the same id and config.                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `knownFiles`         | internal query    | For a list of hashes, the stored file ids that entries of any version already have.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `recordFiles`        | internal mutation | Inserts complete entries after checking each stored file's sha256; an entry that exists with the same hash is skipped.                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `finishVersion`      | internal mutation | Marks the version `ready`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `route`              | public query      | Runs Cloudflare's `canFetch` and `handleRequest` for one request against one version; reports the version's state.                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `markLive`           | public mutation   | Marks a `ready` version `live`, strictly later than the newest live time, and schedules `collect`, only when no live version was created after it; otherwise, and for a version already live, a no-op; a version in `deleting` is refused.                                                                                                                                                                                                                                                                                             |
-| `collect`            | internal mutation | Deletes the versions that were live before the current live one and the versions that are not live and a day old, with their entries; then the `_storage` files that no entry references and are a day old. The sweep runs before the version deletion in each chain, so a file freed by a switch is deleted at a later switch; an upload that took a file from `knownFiles` fails only if two switches happen during that one upload, and a retry works; one batch per call, scheduling itself with `runAfter(0)` while work remains. |
 
 The package sets one limit of its own, 25 MiB per file, for the reason above. Convex's limits apply:
 1 MiB per document, and the transaction limits (16,000 writes, 32,000 documents scanned, 16 MiB read
