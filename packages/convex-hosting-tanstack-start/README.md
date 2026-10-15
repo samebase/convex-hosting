@@ -82,6 +82,12 @@ makes `context` required and typed in `server.fetch` and gives every route a typ
 The `convex/` folder is its own TypeScript program, which is why `convex/http.ts` loads the entry
 itself. The app creates its Convex client with `expectAuth: true`.
 
+Nothing in this entry is about hosting: it is the TanStack Start integration that Convex Auth does
+not ship, and the
+[Cloudflare Workers twin](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr-workers)
+of the SSR example uses it unchanged. It lives here next to its first user until it exists upstream
+as `@convex-dev/auth/tanstack-start`.
+
 The root route gives the token to the server render's Convex client and wraps the document in the
 session provider:
 
