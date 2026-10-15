@@ -18,10 +18,6 @@ import {
 import { readDist, type DistEntry, type HandlingOptions } from "./files.js";
 
 const USAGE = `Usage:
-  convex-hosting init
-      Once per clone, before npx convex dev: writes .convex-hosting/version.js with no site
-      version and .convex-hosting/server.js with a placeholder server entry, so convex/http.ts
-      bundles. Keeps existing files.
   convex-hosting deploy --build "<command>" --dist <dir> [options]
       Builds, stores the site files, and pushes the functions. The push switches the site.
 
@@ -44,33 +40,10 @@ const STATE_DIR = ".convex-hosting";
 export const VERSION_FILE = join(STATE_DIR, "version.js");
 
 /**
- * The server entry that a server-rendered app's `convex/http.ts` imports. A framework adapter's
- * Vite plugin writes it after a server build; `init` writes a placeholder before the first one.
- */
-export const SERVER_FILE = join(STATE_DIR, "server.js");
-
-/** What `init` writes as the server entry. `serveSite` calls it only for a version that exists. */
-const SERVER_PLACEHOLDER = `// Written by convex-hosting init: a fresh clone pushes convex/http.ts before its first build.
-export default {
-  fetch: () =>
-    new Response("The site is not built yet.", {
-      status: 503,
-      headers: { "Cache-Control": "no-store" },
-    }),
-};
-`;
-
-/**
  * The inner `upload` of a first install writes this file when the component is not installed yet.
  * `deploy` then uploads after the push.
  */
 const FIRST_INSTALL_MARKER = join(STATE_DIR, "first-install");
-
-/**
- * The version that `init` writes. Deploys name versions with random UUIDs, so no version has this
- * id, and `serveAsset` answers 404 naming it until the first deploy writes a real one.
- */
-const NOT_DEPLOYED = "not-deployed";
 
 /** Files that the upload sends to storage at once. */
 const UPLOAD_CONCURRENCY = 4;
@@ -99,7 +72,6 @@ type Options = HandlingOptions & {
 
 type Command =
   | { name: "help" }
-  | { name: "init" }
   | { name: "deploy"; build: string; options: Options }
   | { name: "upload"; versionId: string; options: Options };
 
@@ -122,12 +94,6 @@ function parseCommand(args: string[]): Command {
   });
   if (args.length === 0 || values.help) return { name: "help" };
   const [name, ...rest] = positionals;
-  if (name === "init") {
-    const deployOption =
-      values.dist ?? values.build ?? values["version-id"] ?? values["preview-name"];
-    if (rest.length > 0 || deployOption !== undefined || values.dev) throw new Error(USAGE);
-    return { name };
-  }
   if ((name !== "deploy" && name !== "upload") || rest.length > 0) throw new Error(USAGE);
   if (values.dist === undefined) throw new Error(`--dist is required.\n\n${USAGE}`);
   if (values.dev && values["preview-name"] !== undefined) {
@@ -172,8 +138,6 @@ export async function main(args: string[], cli: Cli): Promise<number> {
     const command = parseCommand(args);
     if (command.name === "help") {
       cli.log(USAGE);
-    } else if (command.name === "init") {
-      init(cli);
     } else if (command.name === "deploy") {
       await deploy(cli, command.options, command.build);
     } else {
@@ -399,30 +363,6 @@ async function upload(
   writeVersionFile(cli, versionId);
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
   return undefined;
-}
-
-/**
- * Makes a fresh clone bundle: `convex/http.ts` imports `.convex-hosting/version.js`, which only a
- * deploy writes, and in a server-rendered app `.convex-hosting/server.js`, which only a build
- * writes. Keeps an existing file, which names the version that this checkout last deployed or the
- * server entry of its last build.
- */
-function init(cli: Cli) {
-  if (existsSync(join(cli.cwd, VERSION_FILE))) {
-    cli.log(`${VERSION_FILE} exists. Kept it.`);
-  } else {
-    writeVersionFile(cli, NOT_DEPLOYED);
-    cli.log(
-      `Wrote ${VERSION_FILE} with no site version. ` +
-        "The site answers 404 until the first convex-hosting deploy.",
-    );
-  }
-  if (existsSync(join(cli.cwd, SERVER_FILE))) {
-    cli.log(`${SERVER_FILE} exists. Kept it.`);
-  } else {
-    writeStateFile(cli, SERVER_FILE, SERVER_PLACEHOLDER);
-    cli.log(`Wrote ${SERVER_FILE} with a placeholder server entry until the first build.`);
-  }
 }
 
 function writeVersionFile(cli: Cli, versionId: string) {

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0
+
+- `convex-hosting init` is gone, with the placeholder `.convex-hosting/server.js` it wrote. On a
+  fresh clone, `npx convex dev --skip-push` creates the development deployment and writes
+  `.env.local` without a push; `convex-hosting deploy --dev` then builds, uploads, writes
+  `.convex-hosting/version.js`, and pushes; after that, `npx convex dev` works as usual. Remove
+  `init` from the app's scripts, such as `predev`.
+- A server-rendered app's `convex/http.ts` imports its server build directly, such as
+  `../dist/server/server.js`. The package declares the type of `dist/server/server.js` instead of
+  `.convex-hosting/server.js`.
+
 ## 0.6.0
 
 - `convex-hosting init` also writes `.convex-hosting/server.js`, a placeholder server entry that

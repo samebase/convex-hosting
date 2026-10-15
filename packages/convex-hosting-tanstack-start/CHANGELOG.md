@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- `convexSsr()` no longer writes `.convex-hosting/server.js`; it only sets the `ssr` environment's
+  options. `convex/http.ts` imports the server build directly, `../dist/server/server.js`, whose
+  type `@samebase/convex-hosting` 0.7.0 declares. A fresh clone runs `npx convex dev --skip-push`,
+  then `convex-hosting deploy --dev`, before its first `npx convex dev`.
+
 ## 0.3.0
 
 - After each server build, `convexSsr()` writes `.convex-hosting/server.js` in the working

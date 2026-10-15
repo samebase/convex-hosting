@@ -1,6 +1,6 @@
 {
   "name": "@samebase/convex-hosting",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A Convex component that hosts a web app: static files, with optional server rendering.",
   "keywords": [
     "component",

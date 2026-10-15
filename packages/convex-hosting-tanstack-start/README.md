@@ -23,19 +23,11 @@ Create `src/server.ts`, which Vite builds as the server entry:
 export { default } from "@samebase/convex-hosting-tanstack-start/server";
 ```
 
-After each server build, the plugin writes `.convex-hosting/server.js`, which re-exports the server
-entry that the build emitted, such as `dist/server/server.js`. Like the `convex-hosting` CLI, it
-finds `.convex-hosting` in the working directory, so build from the project directory, as
-`convex-hosting deploy --build` does. Before the first build, `convex-hosting init` of
-`@samebase/convex-hosting` 0.6.0 or later writes a placeholder there, so `npx convex dev` bundles
-`convex/http.ts` on a fresh clone. That package also declares the file's type. Leave `allowJs` out
-of `convex/tsconfig.json`: with it, tsc reads the placeholder or the build instead of the type.
-
-In `convex/http.ts`, `serveSite` serves the uploaded files and renders every other path with the
-server entry:
+In `convex/http.ts`, import the server build that Vite emits from `src/server.ts`, and let
+`serveSite` serve the uploaded files and render every other path with it:
 
 ```ts
-import server from "../.convex-hosting/server.js";
+import server from "../dist/server/server.js";
 
 http.route({
   pathPrefix: "/",
@@ -45,6 +37,13 @@ http.route({
   ),
 });
 ```
+
+Vite names the entry `server.js` when the app's `package.json` has `"type": "module"`, and
+`server.mjs` without it. `@samebase/convex-hosting` 0.7.0 or later declares the type of
+`dist/server/server.js`. Leave `allowJs` out of `convex/tsconfig.json`: with it, tsc reads the build
+instead of the type. `npx convex dev` bundles `convex/http.ts` only after a build, so a fresh clone
+runs `convex-hosting deploy --dev` before its first push, as the
+[README](https://github.com/samebase/convex-hosting#setup) says.
 
 For reactive queries, use the
 [official Convex TanStack integration](https://docs.convex.dev/client/tanstack/tanstack-start/).
