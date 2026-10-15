@@ -18,13 +18,16 @@ code remains.
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with the single-page-application
   fallback.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
+- `examples/tanstack-ssr-workers`: the same app as a Cloudflare Worker. Its diff from
+  `examples/tanstack-ssr` is committed as `examples/tanstack-ssr-workers.patch`; after a commit that
+  changes either example, run `pnpm run examples:diff` and commit the patch, or CI fails.
 
 ## Commands
 
 Run from the repository root with pnpm 11 and the Node version in `.node-version`.
 
 - `pnpm install`: install dependencies. The component's `prepare` script builds it.
-- `pnpm run build`: build the component and both examples.
+- `pnpm run build`: build the packages and the examples.
 - `pnpm run check`: format check, lint, typecheck, and tests. Build first: the examples typecheck
   against the built component.
 - `pnpm run format`: format with oxfmt.

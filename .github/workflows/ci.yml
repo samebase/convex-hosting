@@ -15,6 +15,28 @@ permissions:
   contents: read
 
 jobs:
+  # examples/tanstack-ssr-workers is examples/tanstack-ssr on a Cloudflare Worker. Their diff, the
+  # part that is specific to convex-hosting, is committed as examples/tanstack-ssr-workers.patch.
+  # diff-tree is plumbing, so user diff settings such as diff.algorithm never change the patch.
+  examples-diff:
+    name: examples-diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Compare the SSR examples with the committed patch
+        run: |
+          git diff-tree -p --full-index HEAD:examples/tanstack-ssr HEAD:examples/tanstack-ssr-workers > examples/tanstack-ssr-workers.patch
+          git diff --exit-code -- examples/tanstack-ssr-workers.patch || {
+            echo "::error::examples/tanstack-ssr-workers.patch is stale. Run pnpm run examples:diff and commit the result."
+            exit 1
+          }
+
   supply-chain:
     name: supply-chain
     runs-on: ubuntu-latest

@@ -2,7 +2,8 @@
 
 The goal: an app on convex-hosting stays a standard TanStack Start app that can move to Cloudflare
 Workers with almost no changes. The Convex-specific parts are exactly `convex/http.ts`, the
-`src/server.ts` re-export, the `convexSsr()` plugin, and the deploy command.
+`src/server.ts` re-export, the `convexSsr()` plugin, `app.use(hosting)`, and the deploy command: the
+files in which the example differs from [the same app on Workers](#the-same-app-on-workers).
 
 A Convex deployment serves the app's site: the files of a build and, when the app renders pages,
 those pages. It behaves like Cloudflare Workers with static assets, so a developer who knows that
@@ -406,6 +407,20 @@ are not proposed again.
 - **Wrapping the Convex Auth session lines in this package.** The hosting package must not depend on
   Convex Auth, and the lines are Convex Auth's own API; a helper for HTTP actions belongs upstream.
 
+## The same app on Workers
+
+`examples/tanstack-ssr-workers` is `examples/tanstack-ssr` deployed as a Cloudflare Worker with
+static assets, with Convex still the backend. The diff between the two folders, committed as
+`examples/tanstack-ssr-workers.patch`, is the definition of what is Convex-specific. CI writes it
+again from the committed folders with `git diff-tree -p --full-index` and fails when it differs from
+the committed file; `pnpm run examples:diff` refreshes it. It covers `convex/http.ts`,
+`app.use(hosting)` in `convex/convex.config.ts` and the generated API that follows it,
+`src/server.ts`, `vite.config.ts`, `package.json`, the README, and the Worker's `wrangler.jsonc`. On
+the Worker, `src/server.ts` holds what `convex/http.ts` holds on Convex, the `/auth` routes and the
+session lines, around TanStack Start's default server entry. Its one addition is a header with which
+the build's prerender skips the session: on Workers the prerender runs through the Worker, on Convex
+through Start's own preview server, which passes no request context.
+
 ## What an app writes
 
 One row per piece of a TanStack Start app with Convex Auth cookie sessions on this host, with its
@@ -473,6 +488,8 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with
   `--not-found-handling single-page-application`.
 - `examples/tanstack-ssr`: pages rendered in the `render` of `serveSite`.
+- `examples/tanstack-ssr-workers`: the same app as a Cloudflare Worker, the reference for what is
+  Convex-specific.
 - One `README.md` at the repository root, copied into the package at `prepack`.
 - An app has `.convex-hosting/` (ignored, written by the CLI) and nothing else of ours outside
   `convex/convex.config.ts` and `convex/http.ts`.
