@@ -15,6 +15,27 @@ permissions:
   contents: read
 
 jobs:
+  # examples/tanstack-ssr-workers is examples/tanstack-ssr on a Cloudflare Worker. The excluded
+  # files are what is specific to convex-hosting; every other file must stay identical. `-x` matches
+  # file names, and each of these names occurs once in the examples.
+  examples-diff:
+    name: examples-diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Compare the SSR examples
+        run: |
+          diff -r \
+            -x README.md -x package.json -x vite.config.ts -x server.ts -x http.ts \
+            -x convex.config.ts -x api.d.ts -x wrangler.jsonc \
+            examples/tanstack-ssr examples/tanstack-ssr-workers
+
   supply-chain:
     name: supply-chain
     runs-on: ubuntu-latest
