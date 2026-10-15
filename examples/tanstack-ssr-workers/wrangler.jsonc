@@ -4,4 +4,6 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server.ts",
   "preview_urls": true,
+  // `wrangler preview`, the Workers Builds preview command, requires this block.
+  "previews": {},
 }

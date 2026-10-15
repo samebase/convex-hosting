@@ -72,7 +72,8 @@ Requires `convex` 1.46 or later.
    ```
 
 An app set up this way: the
-[SPA example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa).
+[SPA example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa), live at
+[quick-fish-630.convex.site](https://quick-fish-630.convex.site).
 
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
 Wrangler's `.wrangler/`. The folder has its own `.gitignore`, so git ignores it. The package
@@ -315,7 +316,8 @@ live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
 
 [`examples/tanstack-ssr-workers`](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr-workers)
 is the TanStack Start example deployed as a Cloudflare Worker with static assets, with Convex still
-the backend.
+the backend. Live at
+[convex-hosting-tanstack-ssr-workers.pfp.workers.dev](https://convex-hosting-tanstack-ssr-workers.pfp.workers.dev).
 [`examples/tanstack-ssr-workers.patch`](https://github.com/samebase/convex-hosting/blob/main/examples/tanstack-ssr-workers.patch)
 is the diff between the two folders, and so the definition of what convex-hosting adds to an app. CI
 writes the patch again from the committed folders and fails when it differs from the committed file;
