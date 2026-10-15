@@ -10,7 +10,7 @@ import { convexQuery, type ConvexQueryClient } from "@convex-dev/react-query";
 import {
   SessionProvider,
   sessionBeforeLoad,
-  signOutSession,
+  useSignOutSession,
 } from "@samebase/convex-hosting-tanstack-start/convex-auth";
 import { useState } from "react";
 import { api } from "../../convex/_generated/api.js";
@@ -68,16 +68,14 @@ function SessionHeader() {
   // `useQuery` does not fetch on the server, so the header of a prerendered page stays empty until
   // the browser has the answer.
   const { data: me } = useQuery(convexQuery(api.users.me, {}));
+  const signOut = useSignOutSession("/auth/signout");
   const [signOutFailed, setSignOutFailed] = useState(false);
   if (me === undefined) return null;
   if (me === null) return <Link to="/signin">Sign in</Link>;
   return (
     <>
       {`Signed in as ${me.name}`}
-      <button
-        type="button"
-        onClick={async () => setSignOutFailed(!(await signOutSession("/auth/signout")))}
-      >
+      <button type="button" onClick={async () => setSignOutFailed(!(await signOut()))}>
         Sign out
       </button>
       {signOutFailed && "Sign-out failed. Try again."}
