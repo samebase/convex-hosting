@@ -257,6 +257,9 @@ renders TanStack Start pages in it. See the
 [TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr),
 live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
 
+Because the path is fixed, the route in `convex/http.ts` is the same for every framework; the
+adapter's build step points the file at the framework's own server output.
+
 ## License
 
 Apache-2.0, with the notices in

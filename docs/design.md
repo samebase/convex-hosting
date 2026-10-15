@@ -126,6 +126,12 @@ from the same checkout writes production's id, which a running `npx convex dev` 
 development deployment, where that version does not exist, until the next `deploy --dev`. Production
 deploys belong in CI or a separate checkout.
 
+The fixed path is also what keeps `convex/http.ts` the same for every framework: the route imports
+`../.convex-hosting/server.js` whatever the framework, and the adapter's build step points that file
+at the framework's own output, a `server.js` or `server.mjs` under `dist/server` for TanStack Start,
+a prebundled module for another framework. The hosting package's declaration of that module, a
+default export with `fetch(request, ...)`, is the contract an adapter meets.
+
 **Failures.** A deploy that dies before the push leaves a version that nothing serves; a later
 switch deletes it when it is a day old. An upload that dies leaves a version in state `uploading`,
 deleted the same way, and a retry reuses the files it stored. Stored files are deleted by one rule:
