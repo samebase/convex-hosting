@@ -76,8 +76,8 @@ An app set up this way: the
 
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
 Wrangler's `.wrangler/`. The folder has its own `.gitignore`, so git ignores it. The package
-declares the types of `.convex-hosting/version.js` and of a server build at `dist/server/server.js`,
-so the app typechecks without them.
+declares the type of `.convex-hosting/version.js`, so the app typechecks without it. A
+server-rendered app gets the type of its server build from the framework adapter.
 
 ## Rules
 

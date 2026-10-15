@@ -3,9 +3,14 @@
 ## 0.4.0
 
 - `convexSsr()` no longer writes `.convex-hosting/server.js`; it only sets the `ssr` environment's
-  options. `convex/http.ts` imports the server build directly, `../dist/server/server.js`, whose
-  type `@samebase/convex-hosting` 0.7.0 declares. A fresh clone runs `npx convex dev --skip-push`,
-  then `convex-hosting deploy --dev`, before its first `npx convex dev`.
+  options. `convex/http.ts` imports the server build directly, `../dist/server/server.js`. A fresh
+  clone runs `npx convex dev --skip-push`, then `convex-hosting deploy --dev`, before its first
+  `npx convex dev`.
+- The types-only entry `@samebase/convex-hosting-tanstack-start/server-build` declares
+  `dist/server/server.js` and `dist/server/server.mjs` with the type of the package's server entry.
+  `convex/http.ts` loads it with
+  `import type {} from "@samebase/convex-hosting-tanstack-start/server-build";`. It covers the
+  default output only; an app with another output folder or entry name declares its own path.
 
 ## 0.3.0
 

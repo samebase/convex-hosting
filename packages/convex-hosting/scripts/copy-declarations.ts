@@ -3,6 +3,6 @@
 // only allowed in an ambient context), so they cannot be .ts sources.
 import { copyFileSync } from "node:fs";
 
-for (const name of ["types", "version-module", "server-module"]) {
+for (const name of ["types", "version-module"]) {
   copyFileSync(`src/client/${name}.d.ts`, `dist/client/${name}.d.ts`);
 }

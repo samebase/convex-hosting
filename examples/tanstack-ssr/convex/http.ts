@@ -4,6 +4,8 @@ import { serveSite } from "@samebase/convex-hosting";
 import { api, components } from "./_generated/api.js";
 import { env, httpAction } from "./_generated/server.js";
 import { versionId } from "../.convex-hosting/version.js";
+// Types of the server build imported below; the adapter owns them.
+import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
 const http = httpRouter();

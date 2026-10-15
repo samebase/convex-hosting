@@ -22,13 +22,16 @@
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
+    "./server-build": {
+      "types": "./dist/server-build.d.ts"
+    },
     "./vite": {
       "types": "./dist/vite.d.ts",
       "default": "./dist/vite.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"for (const name of ['server-build', 'server-module']) require('node:fs').copyFileSync('src/' + name + '.d.ts', 'dist/' + name + '.d.ts')\"",
     "prepare": "pnpm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

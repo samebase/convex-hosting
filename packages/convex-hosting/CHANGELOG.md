@@ -8,9 +8,9 @@
   `.convex-hosting/version.js`, and pushes; after that, `npx convex dev` works as usual. Remove
   `init` from the app's scripts, such as `predev`.
 - A server-rendered app's `convex/http.ts` imports its server build directly, such as
-  `../dist/server/server.js`. The package declares the type of `dist/server/server.js`, and of
-  `dist/server/server.mjs` for an app without `"type": "module"`, instead of
-  `.convex-hosting/server.js`.
+  `../dist/server/server.js`. The package no longer declares a server module: the framework adapter
+  declares the type of its build (`@samebase/convex-hosting-tanstack-start/server-build` 0.4.0). The
+  package declares only `.convex-hosting/version.js`.
 
 ## 0.6.0
 

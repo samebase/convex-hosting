@@ -134,10 +134,13 @@ development deployment, where that version does not exist, until the next `deplo
 deploys belong in CI or a separate checkout.
 
 The server import names the framework's own output, `../dist/server/server.js` for TanStack Start,
-with nothing in between. The hosting package declares that module, a default export with
-`fetch(request, ...)`, which is the contract an adapter's build meets, so `http.ts` typechecks
-before the first build. An app leaves `allowJs` out of `convex/tsconfig.json`, because with it tsc
-reads the build instead of the declaration.
+with nothing in between. The adapter declares that module with the type of its own server entry, a
+default export with `fetch(request, ...)`, in its types-only `server-build` entry, which `http.ts`
+loads with `import type {}`, so `http.ts` typechecks before the first build. The declaration covers
+the framework's default output only (`dist/server/server.js`, or `.mjs` without `"type": "module"`);
+an app that changes the output folder or the entry name declares its own path with one wildcard
+line. The hosting package declares only the version module, which it writes. An app leaves `allowJs`
+out of `convex/tsconfig.json`, because with it tsc reads the build instead of the declaration.
 
 **Failures.** A deploy that dies before the push leaves a version that nothing serves; a later
 switch deletes it when it is a day old. An upload that dies leaves a version in state `uploading`,
@@ -395,7 +398,7 @@ owner since `@samebase/convex-hosting` 0.7.0 and `@samebase/convex-hosting-tanst
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | File serving, and `no-store` on rendered pages and misses | Hosting package: `serveSite`                                                                                                 | The Cloudflare front caches answers on static-looking paths of every site          |
 | The server entry import and `fetch(request, { context })` | App: `import server from "../dist/server/server.js"`, called in `serveSite`'s `render`                                       | Convex bundles what `http.ts` imports, and the import names the build's own output |
-| The type of `dist/server/server.js`                       | Hosting package: an ambient declaration next to the version module's; the app leaves `allowJs` out of `convex/tsconfig.json` | A build output has no declaration, and with `allowJs` tsc reads the file instead   |
+| The type of `dist/server/server.js`                       | Adapter: types-only `server-build` entry, loaded by `import type {}`; the app leaves `allowJs` out of `convex/tsconfig.json` | The adapter knows its build's entry; with `allowJs` tsc reads the file instead     |
 | `src/server.ts`                                           | App: one line that re-exports the adapter's `server`                                                                         | Start builds its server entry from a file in the app's `src/`                      |
 | `convexSsr()`                                             | Adapter, added to the app's `vite.config.ts`                                                                                 | The Vite config is the app's; the settings are the adapter's                       |
 | The `requestContext` type                                 | Adapter `convex-auth`, on the `Register` of `@tanstack/react-start`                                                          | The token is the Convex Auth session's, and Start reads that `Register`            |
@@ -413,8 +416,7 @@ owner since `@samebase/convex-hosting` 0.7.0 and `@samebase/convex-hosting-tanst
 
 - `packages/convex-hosting`
   - `src/component`: `schema.ts`, `lib.ts`, `convex.config.ts`, and its generated files.
-  - `src/client`: `serveSite`, `serveAsset`, and the shipped declarations of the version and server
-    modules.
+  - `src/client`: `serveSite`, `serveAsset`, and the shipped declaration of the version module.
   - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, the inner step that
     `npx convex deploy --cmd` has to call as a program.
   - `src/workers-shared`: Cloudflare's asset worker and its tests, copied by
@@ -424,8 +426,9 @@ owner since `@samebase/convex-hosting` 0.7.0 and `@samebase/convex-hosting-tanst
     local deployment, and nothing more; `CONTRIBUTING.md` says what that is. No example is involved.
 - `packages/convex-hosting-tanstack-start`: the Vite settings and the server entry that make
   TanStack Start's server build run inside a Convex HTTP action (Convex cannot bundle `node:stream`,
-  so pages render with React's Web Stream renderer), and the `convex-auth` session helpers. It knows
-  nothing about versions.
+  so pages render with React's Web Stream renderer), the types-only `server-build` entry that
+  declares the build's server module, and the `convex-auth` session helpers. It knows nothing about
+  versions.
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with
   `--not-found-handling single-page-application`.
 - `examples/tanstack-ssr`: pages rendered in the `render` of `serveSite`.
