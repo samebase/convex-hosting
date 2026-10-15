@@ -18,8 +18,9 @@ code remains.
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with the single-page-application
   fallback.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.
-- `examples/tanstack-ssr-workers`: the same app as a Cloudflare Worker. CI fails when it differs
-  from `examples/tanstack-ssr` outside the files that are specific to convex-hosting.
+- `examples/tanstack-ssr-workers`: the same app as a Cloudflare Worker. Its diff from
+  `examples/tanstack-ssr` is committed as `examples/tanstack-ssr-workers.patch`; after a commit that
+  changes either example, run `pnpm run examples:diff` and commit the patch, or CI fails.
 
 ## Commands
 

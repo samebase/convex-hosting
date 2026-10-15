@@ -410,13 +410,15 @@ are not proposed again.
 ## The same app on Workers
 
 `examples/tanstack-ssr-workers` is `examples/tanstack-ssr` deployed as a Cloudflare Worker with
-static assets, with Convex still the backend. The diff between the two folders is the definition of
-what is Convex-specific, and CI fails on any other difference: `convex/http.ts`, `app.use(hosting)`
-in `convex/convex.config.ts` and the generated API that follows it, `src/server.ts`,
-`vite.config.ts`, `package.json`, the README, and the Worker's `wrangler.jsonc`. On the Worker,
-`src/server.ts` holds what `convex/http.ts` holds on Convex, the `/auth` routes and the session
-lines, around TanStack Start's default server entry. Its one addition is a header with which the
-build's prerender skips the session: on Workers the prerender runs through the Worker, on Convex
+static assets, with Convex still the backend. The diff between the two folders, committed as
+`examples/tanstack-ssr-workers.patch`, is the definition of what is Convex-specific. CI writes it
+again from the committed folders with `git diff-tree -p --full-index` and fails when it differs from
+the committed file; `pnpm run examples:diff` refreshes it. It covers `convex/http.ts`,
+`app.use(hosting)` in `convex/convex.config.ts` and the generated API that follows it,
+`src/server.ts`, `vite.config.ts`, `package.json`, the README, and the Worker's `wrangler.jsonc`. On
+the Worker, `src/server.ts` holds what `convex/http.ts` holds on Convex, the `/auth` routes and the
+session lines, around TanStack Start's default server entry. Its one addition is a header with which
+the build's prerender skips the session: on Workers the prerender runs through the Worker, on Convex
 through Start's own preview server, which passes no request context.
 
 ## What an app writes

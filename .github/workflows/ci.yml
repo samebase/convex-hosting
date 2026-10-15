@@ -15,9 +15,9 @@ permissions:
   contents: read
 
 jobs:
-  # examples/tanstack-ssr-workers is examples/tanstack-ssr on a Cloudflare Worker. The excluded
-  # files are what is specific to convex-hosting; every other file must stay identical. `-x` matches
-  # file names, and each of these names occurs once in the examples.
+  # examples/tanstack-ssr-workers is examples/tanstack-ssr on a Cloudflare Worker. Their diff, the
+  # part that is specific to convex-hosting, is committed as examples/tanstack-ssr-workers.patch.
+  # diff-tree is plumbing, so user diff settings such as diff.algorithm never change the patch.
   examples-diff:
     name: examples-diff
     runs-on: ubuntu-latest
@@ -29,12 +29,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Compare the SSR examples
+      - name: Compare the SSR examples with the committed patch
         run: |
-          diff -r \
-            -x README.md -x package.json -x vite.config.ts -x server.ts -x http.ts \
-            -x convex.config.ts -x api.d.ts -x wrangler.jsonc \
-            examples/tanstack-ssr examples/tanstack-ssr-workers
+          git diff-tree -p --full-index HEAD:examples/tanstack-ssr HEAD:examples/tanstack-ssr-workers > examples/tanstack-ssr-workers.patch
+          git diff --exit-code -- examples/tanstack-ssr-workers.patch || {
+            echo "::error::examples/tanstack-ssr-workers.patch is stale. Run pnpm run examples:diff and commit the result."
+            exit 1
+          }
 
   supply-chain:
     name: supply-chain

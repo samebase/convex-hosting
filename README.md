@@ -315,8 +315,11 @@ live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
 
 [`examples/tanstack-ssr-workers`](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr-workers)
 is the TanStack Start example deployed as a Cloudflare Worker with static assets, with Convex still
-the backend. The files in which the two folders differ are what convex-hosting adds to an app, and
-CI fails on any other difference:
+the backend.
+[`examples/tanstack-ssr-workers.patch`](https://github.com/samebase/convex-hosting/blob/main/examples/tanstack-ssr-workers.patch)
+is the diff between the two folders, and so the definition of what convex-hosting adds to an app. CI
+writes the patch again from the committed folders and fails when it differs from the committed file;
+`pnpm run examples:diff` refreshes it. The patch covers:
 
 - `convex/http.ts`: on Convex only. It serves the files, renders the pages with the session token,
   and answers the `/auth` routes.
