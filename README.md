@@ -113,20 +113,23 @@ queues them, with one `concurrency` group per deployment.
 ## Deploy tools and CI
 
 - **The deploy keys** go into repository secrets. Create the production key with the Convex CLI and
-  pipe it into `gh secret set`, which keeps it off the screen:
+  hand it to `gh secret set` on standard input, which keeps it off the screen and out of process
+  arguments:
 
   ```sh
-  npx convex deployment token create "<repository> deploy.yml" --prod | gh secret set CONVEX_DEPLOY_KEY
+  key=$(npx convex deployment token create "<repository> deploy.yml" --prod) && printf '%s' "$key" | gh secret set CONVEX_DEPLOY_KEY
   ```
 
   The CLI cannot create a project's preview deploy key, so use the management API, with a personal
   or team access token from the Convex dashboard in `CONVEX_TOKEN`:
 
   ```sh
-  curl -s -X POST "https://api.convex.dev/v1/projects/<project id>/create_preview_deploy_key" \
+  key=$(curl -s -X POST "https://api.convex.dev/v1/projects/<project id>/create_preview_deploy_key" \
     -H "Authorization: Bearer $CONVEX_TOKEN" -H "Content-Type: application/json" \
-    -d '{"name": "<repository> preview.yml"}' | jq -r .previewDeployKey | gh secret set CONVEX_PREVIEW_DEPLOY_KEY
+    -d '{"name": "<repository> preview.yml"}' | jq -er .previewDeployKey) && printf '%s' "$key" | gh secret set CONVEX_PREVIEW_DEPLOY_KEY
   ```
+
+  A failed first command stops before anything is stored.
 
 - **A tool that runs `convex deploy` itself**, such as Alchemy's `Convex.Code`, has no place for the
   upload, which must happen between the build and the push. Run `convex-hosting deploy` in place of
