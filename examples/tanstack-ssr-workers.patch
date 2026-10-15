@@ -456,14 +456,16 @@ index d5a473126d915c87a0fdade5e9a93627bf996966..eb86e003db9795b322470a5c594b6a87
  });
 diff --git a/wrangler.jsonc b/wrangler.jsonc
 new file mode 100644
-index 0000000000000000000000000000000000000000..61478a12a72e53b1046586dc6038b85757b8b595
+index 0000000000000000000000000000000000000000..0514290649d7d95f8a16f528db32522d804ba834
 --- /dev/null
 +++ b/wrangler.jsonc
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,9 @@
 +{
 +  "$schema": "node_modules/wrangler/config-schema.json",
 +  "compatibility_date": "2026-10-01",
 +  "compatibility_flags": ["nodejs_compat"],
 +  "main": "src/server.ts",
 +  "preview_urls": true,
++  // `wrangler preview`, the Workers Builds preview command, requires this block.
++  "previews": {},
 +}
