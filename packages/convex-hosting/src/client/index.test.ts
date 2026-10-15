@@ -11,7 +11,8 @@ const modules = import.meta.glob(["../component/**/*.ts", "!../component/**/*.te
 /** The component's public functions, as an app reaches them through `components.hosting`. */
 const component = { lib: { route: anyApi.lib.route, markLive: anyApi.lib.markLive } };
 
-async function setup() {
+/** Version `v1` with `/index.html` and `config`, and version `v2`, still uploading. */
+async function setup(config = "{}") {
   // `markLive` schedules `collect`; the tests run it with `finish`.
   vi.useFakeTimers();
   const t = convexTest(schema, modules);
@@ -21,7 +22,7 @@ async function setup() {
     "",
   );
   const createVersion = async (versionId: string) => {
-    const configId = await t.run((ctx) => ctx.storage.store(new Blob(["{}"])));
+    const configId = await t.run((ctx) => ctx.storage.store(new Blob([config])));
     await t.action(internal.lib.createVersion, { versionId, configId });
   };
   await createVersion("v1");
@@ -158,8 +159,8 @@ describe("serveAsset", () => {
 });
 
 describe("serveSite", () => {
-  async function site(path: string, render?: () => Promise<Response>) {
-    const { t } = await setup();
+  async function site(path: string, render?: () => Promise<Response>, config?: string) {
+    const { t } = await setup(config);
     return t.action(async (ctx) => {
       const url = `https://example.convex.site${path}`;
       const response = await serveSite(ctx, component, new Request(url), "v1", render);
@@ -205,5 +206,23 @@ describe("serveSite", () => {
     const miss = await site("/missing");
     expect(miss.status).toBe(404);
     expect(miss.cacheControl).toBe("no-store");
+  });
+
+  test("without render, the single-page fallback answers a request that is not a navigation", async () => {
+    vi.stubGlobal("fetch", async () => new Response("<h1>Home</h1>"));
+    const spa = JSON.stringify({ not_found_handling: "single-page-application" });
+    const page = await site("/about", undefined, spa);
+    expect(page.status).toBe(200);
+    expect(page.body).toBe("<h1>Home</h1>");
+  });
+
+  test("with render, a request that is not a navigation and matches no file is rendered", async () => {
+    const spa = JSON.stringify({ not_found_handling: "single-page-application" });
+    const render = vi.fn(async () => new Response("<h1>About</h1>"));
+    const page = await site("/about", render, spa);
+    expect(render).toHaveBeenCalledOnce();
+    expect(page.status).toBe(200);
+    expect(page.body).toBe("<h1>About</h1>");
+    expect(page.cacheControl).toBe("no-store");
   });
 });

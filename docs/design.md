@@ -161,10 +161,11 @@ itself live at its first request, and the next deploy is a normal one. No resume
 deploys at once are an overlap, which the precondition rules out: both push and upload, and the last
 push serves.
 
-**Browsers.** A page opened before a deploy keeps asking for its hashed files, which now answer 404,
-exactly as on Cloudflare. An app that wants to reload on a new version adds one query that returns
-the bundled `versionId` and reloads when its value changes. The README shows it. The component has
-no part in it.
+**Browsers.** A page opened before a deploy keeps asking for its hashed files, which the new version
+does not have, exactly as on Cloudflare: they answer 404, or the shell on a files-only single-page
+app. An app that wants to reload on a new version adds one query that returns the bundled
+`versionId` and reloads when its value changes. The README shows it. The component has no part in
+it.
 
 ## Serve
 
@@ -189,24 +190,31 @@ any page refers to them, and a first install serves no page until its upload end
 its first step, exported for a route that does something else on a miss: it returns `null` when no
 file matches.
 
-`serveAsset` calls the component query `route` with the method, the URL, and the four request
-headers that Cloudflare's handler reads (`If-None-Match`, `Sec-Fetch-Mode`, and the presence of
-`Authorization` and `Range`). Inside the query, Cloudflare's `canFetch` decides whether an asset
-answers. The app is the Worker, so Cloudflare's routing with a Worker applies: a request that does
-not resolve to a file goes to the app, and `not_found_handling` (the 404 page, the single-page
-fallback) applies to navigation requests only. Two differences from Cloudflare follow from Convex's
-router and are stated, not fixed: an exact app route wins over an asset at the same path, and a
-static site's non-navigation miss (`curl /missing`) answers 404 instead of the single-page fallback.
+`serveAsset` calls the component query `route` with the method, the URL, the four request headers
+that Cloudflare's handler reads (`If-None-Match`, `Sec-Fetch-Mode`, and the presence of
+`Authorization` and `Range`), and `hasUserWorker`. As on Cloudflare, the presence of code decides,
+and `hasUserWorker` is Cloudflare's `has_user_worker`: `serveAsset` and `serveSite` with `render`
+pass `true`, `serveSite` without `render` passes `false`; the app sets no option. With code, the app
+is the Worker, and Cloudflare's routing with a Worker applies: inside the query, Cloudflare's
+`canFetch` decides whether an asset answers, a request that does not resolve to a file goes to the
+app, and `not_found_handling` (the 404 page, the single-page fallback) applies to navigation
+requests only. Without code, the site is a Worker without a script, whose router sends every request
+to the asset handler: the query skips `canFetch` and runs `handleRequest`, so `not_found_handling`
+applies to every request, and a missing hashed file on a single-page app gets the shell with 200.
+One difference from Cloudflare follows from Convex's router and is stated, not fixed: an exact app
+route wins over an asset at the same path.
+
 The component runs the handler with a fixed compatibility date at or after 2025-04-01, the date from
 which Cloudflare treats `Sec-Fetch-Mode: navigate` requests this way; the date is package code, not
 configuration. When an asset answers, Cloudflare's `handleRequest` computes the status and headers:
 `Cache-Control: public, max-age=0, must-revalidate` (Cloudflare omits it when the request carries
 `Authorization` or `Range`, and so do we), `ETag`, 304 for `If-None-Match`, `_headers` rules,
 `_redirects`, `html_handling`, and the custom 404 page with its body. The query drops
-`CF-Cache-Status`, which describes a cache we do not run, and returns the status, the headers, and
-the storage URL of the body when the response has one, whatever the status. `serveAsset` fetches
-that body and returns the response. When the query finds no storage URL for the entry, or storage
-answers 404, because a deletion pass removed the file, the answer is 404 with
+`CF-Cache-Status`, which describes a cache we do not run, sets `Cache-Control: no-store` on every
+404, because the deployment's Cloudflare front caches 404 answers on static paths, and returns the
+status, the headers, and the storage URL of the body when the response has one, whatever the status.
+`serveAsset` fetches that body and returns the response. When the query finds no storage URL for the
+entry, or storage answers 404, because a deletion pass removed the file, the answer is 404 with
 `Cache-Control: no-store`; any other fetch failure answers 502 with no caching. An app cannot read a
 component's storage, so each asset hit costs that one fetch.
 
@@ -230,8 +238,8 @@ The two callbacks that Cloudflare's code takes map to the version's entries: `ex
 one index entry and returns its ETag, the sha256 followed by a short hash of the content type, so
 that identical bytes stored under two content types stay distinct; `getByETag` returns the content
 type of the entry that `exists` found and a placeholder stream, which `serveAsset` replaces with the
-body. Nothing is added to Cloudflare's headers. Long caching of hashed files is a `_headers` rule,
-as on Cloudflare.
+body. Nothing is added to Cloudflare's headers besides `no-store` on a 404. Long caching of hashed
+files is a `_headers` rule, as on Cloudflare.
 
 Other HTTP routes of the app (auth, APIs) win over the site route when they are exact paths or
 longer prefixes, by Convex's router rules for the same method.

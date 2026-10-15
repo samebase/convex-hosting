@@ -16,11 +16,11 @@ The example has its own schema, so it needs its own Convex project.
   page.
 
   ```sh
-  curl -s -o /dev/null -w "%{http_code}" -H "Sec-Fetch-Mode: navigate" <site>/about
+  curl -s -o /dev/null -w "%{http_code}" <site>/about
   ```
 
-  answers 200 with the shell. Without the header, the same path answers 404 with
-  `Cache-Control: no-store`: the fallback applies to navigations only, as on Cloudflare.
+  answers 200 with the shell, without a `Sec-Fetch-Mode: navigate` header too: the site has no
+  `render`, so the fallback applies to every request, as on a Cloudflare Worker without a script.
 
 - `public/_headers` caches the hashed files under `/assets/` for a year, and `public/_redirects`
   sends `/home` to `/`: `curl -I <site>/home` answers 301 with `Location: /`.

@@ -35,6 +35,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         {
+          hasUserWorker: boolean;
           headers: Record<string, string>;
           method: string;
           url: string;

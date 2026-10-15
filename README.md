@@ -202,23 +202,32 @@ still uploading, it answers 404 naming the version. At the first request for a n
 the version live. `serveAsset`, its first step, returns the file's response or `null`, for a route
 that does something else on a miss.
 
-`not_found_handling` applies to navigation requests (`Sec-Fetch-Mode: navigate`) only, as on
-Cloudflare when a Worker runs: other requests that match no file reach your code. Browsers send that
-header whenever they open a page. `curl`, `fetch` in scripts and tests, uptime monitors, and
-link-preview bots do not, so they get your route's answer for a deep link of a single-page app,
-a 404. To test a deep link as a browser opens it, send the header:
-`curl -H "Sec-Fetch-Mode: navigate"`, or `node:http` in Node, whose `fetch` refuses to set it.
+As on Cloudflare, the presence of code decides where `not_found_handling` (the single-page fallback
+or the 404 page) applies:
 
-Two differences from Cloudflare follow from Convex's router:
+- Without `render`, the site is files only, like a Worker without a script: `not_found_handling`
+  applies to every request. `curl`, uptime monitors, and link-preview bots get what a browser gets.
+- With `render`, or in a route that calls `serveAsset`, your code is the Worker:
+  `not_found_handling` applies to navigation requests (`Sec-Fetch-Mode: navigate`) only, and other
+  requests that match no file reach your code. Browsers send that header whenever they open a page.
+  `curl`, `fetch` in scripts and tests, uptime monitors, and link-preview bots do not. To test a
+  deep link as a browser opens it, send the header: `curl -H "Sec-Fetch-Mode: navigate"`, or
+  `node:http` in Node, whose `fetch` refuses to set it.
 
-- An exact route in `convex/http.ts` wins over an asset at the same path.
-- On a static site, a request that is not a navigation and matches no file (`curl /missing`) answers
-  404, not the single-page fallback.
+On a files-only single-page app, a missing hashed file such as `/assets/old.js` gets the shell, with
+200 and `text/html`, as on Cloudflare. A `_headers` rule for its path applies to it too, so with the
+one-year rule above a browser keeps that HTML for a year; without a rule, the deployment's
+Cloudflare front gives a path with an extension a four-hour browser `max-age`. Hashed names do not
+come back.
+
+One difference from Cloudflare follows from Convex's router: an exact route in `convex/http.ts` wins
+over an asset at the same path.
 
 ## Open tabs after a deploy
 
-A page opened before a deploy keeps asking for its hashed files, which now answer 404, as on
-Cloudflare. To reload open tabs on a new version, add a query that returns the bundled version:
+A page opened before a deploy keeps asking for its hashed files, which the new version does not
+have, as on Cloudflare: they answer 404, or the shell on a files-only single-page app. To reload
+open tabs on a new version, add a query that returns the bundled version:
 
 ```ts
 // convex/siteVersion.ts
