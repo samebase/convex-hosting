@@ -1,5 +1,9 @@
 # TanStack Start SSR example on Cloudflare Workers
 
+Live at
+[convex-hosting-tanstack-ssr-workers.pfp.workers.dev](https://convex-hosting-tanstack-ssr-workers.pfp.workers.dev),
+deployed from `main`.
+
 The app of [`examples/tanstack-ssr`](../tanstack-ssr), deployed as a Cloudflare Worker with static
 assets instead of on Convex. Convex stays the backend. The files that differ between the two folders
 are what is specific to convex-hosting; CI fails on any other difference.

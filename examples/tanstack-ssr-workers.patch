@@ -1,15 +1,15 @@
 diff --git a/README.md b/README.md
-index f1de781361f66c51d34528306becf3c82908bb0e..206ea3a92cc9e729e1cd3a51baa419b5fab19eb2 100644
+index f1de781361f66c51d34528306becf3c82908bb0e..654e28bf022bf780c16c7d9ab4902569ed832fbf 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,13 +1,14 @@
+@@ -1,13 +1,18 @@
 -# TanStack Start SSR example
 +# TanStack Start SSR example on Cloudflare Workers
  
 -Live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site), deployed from `main`.
-+The app of [`examples/tanstack-ssr`](../tanstack-ssr), deployed as a Cloudflare Worker with static
-+assets instead of on Convex. Convex stays the backend. The files that differ between the two folders
-+are what is specific to convex-hosting; CI fails on any other difference.
++Live at
++[convex-hosting-tanstack-ssr-workers.pfp.workers.dev](https://convex-hosting-tanstack-ssr-workers.pfp.workers.dev),
++deployed from `main`.
  
 -TanStack Start pages rendered inside a Convex HTTP action, with
 -[Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies.
@@ -17,6 +17,10 @@ index f1de781361f66c51d34528306becf3c82908bb0e..206ea3a92cc9e729e1cd3a51baa419b5
 -`render` callback with the server build, through
 -[`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start). The
 -example has its own schema, so it needs its own Convex project.
++The app of [`examples/tanstack-ssr`](../tanstack-ssr), deployed as a Cloudflare Worker with static
++assets instead of on Convex. Convex stays the backend. The files that differ between the two folders
++are what is specific to convex-hosting; CI fails on any other difference.
++
 +TanStack Start pages rendered in a Worker, with
 +[Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies. Cloudflare
 +serves the browser files, and `src/server.ts`, the Worker, answers the `/auth` routes and renders
@@ -25,7 +29,7 @@ index f1de781361f66c51d34528306becf3c82908bb0e..206ea3a92cc9e729e1cd3a51baa419b5
  
  ## Kinds of pages
  
-@@ -16,11 +17,12 @@ user gets a readable name when it is created, todos have an author and a done st
+@@ -16,11 +21,12 @@ user gets a readable name when it is created, todos have an author and a done st
  site needs caps on text length and todos per user.
  
  - `/about`: a static file from the build. `vite.config.ts` has TanStack Start prerender this page
@@ -43,7 +47,7 @@ index f1de781361f66c51d34528306becf3c82908bb0e..206ea3a92cc9e729e1cd3a51baa419b5
  - `/`: rendered per request, and needs no session. The first HTML response contains the latest
    twenty todos of all users with their authors from `todos.latest`, and the list stays live after
    React hydrates.
-@@ -36,14 +38,14 @@ site needs caps on text length and todos per user.
+@@ -36,14 +42,14 @@ site needs caps on text length and todos per user.
  ## Sessions
  
  The refresh token lives in an httpOnly cookie; browser code holds only the access token, which
@@ -61,7 +65,7 @@ index f1de781361f66c51d34528306becf3c82908bb0e..206ea3a92cc9e729e1cd3a51baa419b5
  calls `/auth/signout` through the adapter's `useSignOutSession`, which clears the session and
  reloads only when the route succeeded, and otherwise shows that sign-out failed. `expectAuth` makes
  the browser's Convex client wait for a token before its first subscription, so a page rendered as
-@@ -52,82 +54,72 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
+@@ -52,82 +58,72 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
  client before the page knows the session, so `SessionProvider` releases it when the provider reports
  none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
  
