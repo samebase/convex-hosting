@@ -311,6 +311,40 @@ renders TanStack Start pages in it. See the
 [TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr),
 live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
 
+## The same app on Cloudflare Workers
+
+[`examples/tanstack-ssr-workers`](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr-workers)
+is the TanStack Start example deployed as a Cloudflare Worker with static assets, with Convex still
+the backend. The files in which the two folders differ are what convex-hosting adds to an app, and
+CI fails on any other difference:
+
+- `convex/http.ts`: on Convex only. It serves the files, renders the pages with the session token,
+  and answers the `/auth` routes.
+- `src/server.ts`: on Convex, a re-export of the adapter's server entry. On the Worker, the Worker
+  itself: the `/auth` routes and the session lines of `convex/http.ts`, around TanStack Start's
+  default server entry.
+- `convex/convex.config.ts` and `convex/_generated/api.d.ts`: `app.use(hosting)` on Convex only.
+- `vite.config.ts`: `convexSsr()` and the dev proxy for `/auth` on Convex; Cloudflare's Vite plugin
+  and a header that makes the build's prerender skip the session on the Worker.
+- `package.json`: `@samebase/convex-hosting` and `convex-hosting deploy` on Convex; `wrangler`,
+  `@cloudflare/vite-plugin`, and the Workers Builds scripts on the Worker.
+- `wrangler.jsonc`: on the Worker only.
+- `README.md`.
+
+Workers Builds deploys it. Once, in the Cloudflare dashboard, create a Worker from this repository
+with:
+
+- Root directory: `examples/tanstack-ssr-workers`.
+- Build command: `pnpm run build`. Deploy command: `pnpm run deploy`. Builds for non-production
+  branches on, with the preview command `pnpm run deploy:preview`.
+- Build variable `CONVEX_DEPLOY_KEY`: a production deploy key of the example's own Convex project in
+  the production build variables, and the project's preview deploy key in Previews Base.
+- Build variables `NODE_VERSION` `24.21.0` and `PNPM_VERSION` `12.10.1`, the versions this
+  repository pins, in both. The Builds image defaults to Node 22.16.0, below the 22.18 that Vite+
+  needs, and to pnpm 10.11.1.
+
+The example's README describes the Convex side: the signing keys of production and of previews.
+
 ## License
 
 Apache-2.0, with the notices in
