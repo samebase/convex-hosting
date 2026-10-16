@@ -143,10 +143,10 @@ export default http;
 
 /**
  * Waits until `npx convex dev` has written the deployment into `.env.local`, which `deploy --dev`
- * reads, the site answers HTTP, and its first push has ended: it fails to resolve the version
- * module that only the deploy writes, as the README says, or it succeeds on a reused project. The
- * backend listens before the file is written, and a deploy that bundles while that push still runs
- * sees files change under it.
+ * reads, and the site answers HTTP. The backend listens before the file is written. The holder's
+ * own first push fails on the version module that only the deploy writes, as the README says, and
+ * may still be running when the deploy starts; without codegen it writes nothing, so the deploy's
+ * bundling is undisturbed.
  */
 async function waitForDeployment(
   project: string,
@@ -157,10 +157,7 @@ async function waitForDeployment(
   for (let attempt = 0; attempt < 600; attempt++) {
     if (exited()) throw new Error(`npx convex dev exited:\n${getOutput()}`);
     try {
-      if (
-        readFileSync(join(project, ".env.local"), "utf8").includes("CONVEX_DEPLOYMENT=") &&
-        /Could not resolve|Convex functions ready/.test(getOutput())
-      ) {
+      if (readFileSync(join(project, ".env.local"), "utf8").includes("CONVEX_DEPLOYMENT=")) {
         await fetch(url);
         return;
       }
