@@ -119,8 +119,8 @@ const token = await session.getToken();
 const page = await handler.fetch(request, { context: { token } });
 ```
 
-`convex/http.ts` then forwards the three `/auth` `POST`s and the page render to the build with
-`server.fetch(request)`, as the example's
+`convex/http.ts` then forwards every request that is not a GET, and the page render, to the build
+with `server.fetch(request)`, as the example's
 [`convex/http.ts`](https://github.com/samebase/convex-hosting/blob/main/examples/tanstack-ssr/convex/http.ts)
 does. `@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and loading it declares
 `requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`, which

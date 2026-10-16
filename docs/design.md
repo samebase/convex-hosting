@@ -181,10 +181,12 @@ it.
 
 ## Serve
 
-The app's `convex/http.ts` has one `GET` route with `pathPrefix: "/"`, and one exact `POST` route
-per `/auth` path, which calls the app's server directly. Convex answers `HEAD` through the `GET`
-handler and drops the body. On Cloudflare every method reaches the Worker; here each other method is
-a route of its own.
+The app's `convex/http.ts` has one `GET` route with `pathPrefix: "/"`, one `pathPrefix: "/"` route
+per other method that calls the app's server directly, as every request that is not a GET or HEAD
+goes to a Cloudflare Worker, and one exact `POST` route per `/auth` path: the Convex Auth component
+holds the `/auth` prefix, where it serves the key set, and Convex picks the longest matching prefix,
+so only an exact route reaches the app there. Convex answers `HEAD` through the `GET` handler and
+drops the body.
 
 ```ts
 import { serveSite } from "@samebase/convex-hosting";
