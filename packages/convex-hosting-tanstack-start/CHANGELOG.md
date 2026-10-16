@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- The server entry renders with `progressiveChunkSize: Number.POSITIVE_INFINITY`. It sends the
+  document only when it is complete, and React still outlined every Suspense boundary above 12.8 kB
+  into a hidden segment with a reveal script: the content showed one frame late and the document was
+  larger. Measured on a page with a 20 kB boundary: no hidden segment, 1 kB less.
+
 ## 0.5.0
 
 - `convex-auth` no longer exports `useSignedIn`. `SignedIn` and `SignedOut` keep the same behavior.
