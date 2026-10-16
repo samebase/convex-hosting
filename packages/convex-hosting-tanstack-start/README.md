@@ -107,17 +107,24 @@ does in its
 [`src/server.ts`](https://github.com/samebase/convex-hosting/blob/main/examples/tanstack-ssr/src/server.ts):
 
 ```ts
-const token = await session.getToken();
+const token = request.headers.has("x-prerender") ? undefined : await session.getToken();
 const page = await handler.fetch(request, { context: { token } });
 ```
+
+The build's prerender renders a page without a visitor, and every visitor gets that page, so its
+render must not say signed out. TanStack's prerender sends the request headers of
+`tanstackStart({ prerender: { headers } })`; the example sets one, and `src/server.ts` gives such a
+request no token at all. `SignedIn` and `SignedOut` then wait for the browser on that page, and a
+gate redirects it as it redirects a request without a session.
 
 `convex/http.ts` then forwards every request that is not a GET, and the page render, to the build
 with `server.fetch(request)`, as the example's
 [`convex/http.ts`](https://github.com/samebase/convex-hosting/blob/main/examples/tanstack-ssr/convex/http.ts)
 does. `@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and loading it declares
-`requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`, which
-makes `context` required and typed in `handler.fetch` and gives every route a typed `serverContext`.
-The app creates its Convex client with `expectAuth: true`.
+`requestContext` as `{ token: string | null | undefined }` in the `Register` of
+`@tanstack/react-start`, which makes `context` required and typed in `handler.fetch` and gives every
+route a typed `serverContext`. The token is `undefined` for a render that knows nothing about a
+session, the prerender. The app creates its Convex client with `expectAuth: true`.
 
 Nothing in this entry is about hosting: it is the TanStack Start integration that Convex Auth does
 not ship, and the

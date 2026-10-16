@@ -282,7 +282,7 @@ index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f
    }
  }
 diff --git a/src/server.ts b/src/server.ts
-index 98c671d10f422e183216c3c6ac33b9d3ff07e712..200022cafe2f901c7cee6a6c92dc89f7a241e25c 100644
+index 276e876364b7ec56cc28b6a2a57229c2835d681e..73deca587d2c5dc5a35d40e073f2b6ed737cec38 100644
 --- a/src/server.ts
 +++ b/src/server.ts
 @@ -1,5 +1,5 @@
@@ -293,7 +293,7 @@ index 98c671d10f422e183216c3c6ac33b9d3ff07e712..200022cafe2f901c7cee6a6c92dc89f7
  import { api } from "../convex/_generated/api.js";
  
 diff --git a/vite.config.ts b/vite.config.ts
-index c1fa9a2d4c1224a8cbda8132e633b7b066e137b4..3e6badb4024aed63c5e612137eb9fc19df6cbb9c 100644
+index 8e68d2fff175c09d037e869b6661cae7188aaa51..3e156c689f99f1e5ada6dd2e38c10494338c9504 100644
 --- a/vite.config.ts
 +++ b/vite.config.ts
 @@ -1,12 +1,12 @@
@@ -309,8 +309,8 @@ index c1fa9a2d4c1224a8cbda8132e633b7b066e137b4..3e6badb4024aed63c5e612137eb9fc19
 -    convexSsr(),
 +    cloudflare({ viteEnvironment: { name: "ssr" } }),
      // Prerenders /about only. `prerender: { enabled: true }` would also prerender every static
-     // route, and crawling would follow /about's links.
-     tanstackStart({ pages: [{ path: "/about", prerender: { enabled: true, crawlLinks: false } }] }),
+     // route, and crawling would follow /about's links. The header marks the prerender's requests
+     // for src/server.ts; a prerender renders without a visitor.
 diff --git a/wrangler.jsonc b/wrangler.jsonc
 new file mode 100644
 index 0000000000000000000000000000000000000000..48c90a9e2b5789638c5baf349fe0cd88dcbbb282

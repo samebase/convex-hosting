@@ -8,6 +8,11 @@
   override of 0.6.0 is gone with it. `convexSsr()` resolves `node:stream` to a stub for the server
   build: TanStack imports Node's stream classes for a branch that never runs where React's Web
   Stream renderer exists, and Convex's bundler had nothing to resolve them to.
+- The request context's token may be `undefined`: a render that knows nothing about a session, the
+  build's prerender, whose page every visitor gets. `SignedIn` and `SignedOut` wait for the browser
+  on it, and `redirectWithoutSession` redirects it like a render without a session. The app's
+  `src/server.ts` passes `undefined` for the prerender's requests, which it tells apart by the
+  request header that `tanstackStart({ prerender: { headers } })` sends.
 
 ## 0.8.0
 

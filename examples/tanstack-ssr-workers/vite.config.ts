@@ -8,8 +8,12 @@ export default defineConfig({
   plugins: [
     cloudflare({ viteEnvironment: { name: "ssr" } }),
     // Prerenders /about only. `prerender: { enabled: true }` would also prerender every static
-    // route, and crawling would follow /about's links.
-    tanstackStart({ pages: [{ path: "/about", prerender: { enabled: true, crawlLinks: false } }] }),
+    // route, and crawling would follow /about's links. The header marks the prerender's requests
+    // for src/server.ts; a prerender renders without a visitor.
+    tanstackStart({
+      prerender: { headers: { "x-prerender": "1" } },
+      pages: [{ path: "/about", prerender: { enabled: true, crawlLinks: false } }],
+    }),
     react(),
   ],
 });
