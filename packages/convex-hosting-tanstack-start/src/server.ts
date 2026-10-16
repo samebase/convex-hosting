@@ -33,6 +33,9 @@ const server: { fetch: RequestHandler<Register> } = {
         // handler also imports node:stream, which Convex cannot bundle.
         const stream = await renderToReadableStream(createElement(StartServer, { router }), {
           signal: request.signal,
+          // The document is sent only when it is complete, so React's progressive reveal of a
+          // large Suspense boundary (a hidden segment plus a script) would add bytes and a frame.
+          progressiveChunkSize: Number.POSITIVE_INFINITY,
           ...(router.options.ssr?.nonce === undefined ? {} : { nonce: router.options.ssr.nonce }),
         });
         await stream.allReady;
