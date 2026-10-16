@@ -32,7 +32,7 @@ type Outcome = { tests: Map<string, string>; errors: string[] };
 /** Runs the fixtures project once, with a test-name filter, and collects the outcome. */
 async function run(pass: string, testNamePattern: RegExp | undefined): Promise<Outcome> {
   console.log(`\n== ${pass}`);
-  const vitest = await startVitest("test", [], {
+  const vitest = await startVitest([], {
     root: ROOT,
     run: true,
     watch: false,

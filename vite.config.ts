@@ -39,6 +39,9 @@ export default defineConfig({
     ],
     rules: {
       "typescript/no-floating-promises": "error",
+      // tsc never reports a deprecated API (TS6387 is an editor suggestion); the editor does, so
+      // the type-aware lint must.
+      "typescript/no-deprecated": "error",
       // The react plugin does not turn this on by itself.
       "react/rules-of-hooks": "error",
     },
