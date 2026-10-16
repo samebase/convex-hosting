@@ -1,5 +1,5 @@
 diff --git a/README.md b/README.md
-index f1de781361f66c51d34528306becf3c82908bb0e..654e28bf022bf780c16c7d9ab4902569ed832fbf 100644
+index 9ef28027861ca136b275478de75a76b45fbfb62c..20791bff71331e1b3e3cc278aaf4e2e2f4c2c15b 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,13 +1,18 @@
@@ -13,8 +13,8 @@ index f1de781361f66c51d34528306becf3c82908bb0e..654e28bf022bf780c16c7d9ab4902569
  
 -TanStack Start pages rendered inside a Convex HTTP action, with
 -[Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies.
--`convex/http.ts` serves the browser files with `serveSite` and renders every other path in its
--`render` callback with the server build, through
+-`convex/http.ts` serves the browser files with `serveSite` and hands every other path to the server
+-build of `src/server.ts`, which renders it through
 -[`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start). The
 -example has its own schema, so it needs its own Convex project.
 +The app of [`examples/tanstack-ssr`](../tanstack-ssr), deployed as a Cloudflare Worker with static
@@ -40,32 +40,14 @@ index f1de781361f66c51d34528306becf3c82908bb0e..654e28bf022bf780c16c7d9ab4902569
 -  keeps no request-time data.
 +  only, into `dist/client/about/index.html`, and Cloudflare serves it like any other file: `/about`
 +  answers 307 to `/about/`, which answers the file with an ETag and
-+  `Cache-Control: public, max-age=0, must-revalidate`. The prerender runs through the Worker with a
-+  header that makes `src/server.ts` render without a session, so the build sends no query to Convex.
-+  A navigation inside the app renders the route in the browser like any other, so a prerendered
-+  route keeps no request-time data.
++  `Cache-Control: public, max-age=0, must-revalidate`. The prerender runs through the Worker without
++  cookies, as a signed-out request, and sends no query to Convex. A navigation inside the app
++  renders the route in the browser like any other, so a prerendered route keeps no request-time
++  data.
  - `/`: rendered per request, and needs no session. The first HTML response contains the latest
    twenty todos of all users with their authors from `todos.latest`, and the list stays live after
    React hydrates.
-@@ -36,14 +42,14 @@ site needs caps on text length and todos per user.
- ## Sessions
- 
- The refresh token lives in an httpOnly cookie; browser code holds only the access token, which
--expires after 60 seconds. For each page, `convex/http.ts` reads the cookies, refreshes the access
-+expires after 60 seconds. For each page, `src/server.ts` reads the cookies, refreshes the access
- token when it expires within 10 seconds (the refresh rotates both cookies), renders the page with
--`server.fetch(request, { context: { token } })`, and returns the page with the rotated cookies. The
-+`handler.fetch(request, { context: { token } })`, and returns the page with the rotated cookies. The
- rest comes from the adapter's `convex-auth` entry. The root route's `beforeLoad`,
- `sessionBeforeLoad`, gives the token to the Convex HTTP client of the server render, so the page's
- queries run as the user. In the browser, `SessionProvider` wraps Convex Auth's
- `ConvexAuthNextjsProvider` (it contains no Next.js code), which starts from the token of the server
--render and calls `POST /auth/signin` and `/auth/refresh` in `convex/http.ts`. The sign-out button
-+render and calls `POST /auth/signin` and `/auth/refresh` in `src/server.ts`. The sign-out button
- calls `/auth/signout` through the adapter's `useSignOutSession`, which clears the session and
- reloads only when the route succeeded, and otherwise shows that sign-out failed. `expectAuth` makes
- the browser's Convex client wait for a token before its first subscription, so a page rendered as
-@@ -52,82 +58,72 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
+@@ -52,81 +58,72 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
  client before the page knows the session, so `SessionProvider` releases it when the provider reports
  none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
  
@@ -74,14 +56,14 @@ index f1de781361f66c51d34528306becf3c82908bb0e..654e28bf022bf780c16c7d9ab4902569
 +
  The example signs in anonymously: each sign-in creates a user. Password or OAuth sign-in changes the
  provider in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in
--`convex/http.ts`, and the button on `/signin`. The other routes stay the same.
-+`src/server.ts`, and the button on `/signin`. The other routes stay the same.
+ `src/server.ts`, and the button on `/signin`. The other routes stay the same.
  
  ## Where code goes
  
--TanStack Start is the renderer here, and Convex is the backend. `convex/http.ts` is the server
--entry, what Nitro or Node is on another host: it serves the files, reads the cookies, gives the
--render its request context, and returns the page.
+-TanStack Start is the renderer here, and Convex is the backend. `src/server.ts` is the server entry,
+-what the Worker is on Cloudflare: it answers the `/auth` routes, reads the cookies, gives the render
+-its request context, and returns the page. `convex/http.ts` serves the files and calls it for
+-everything else; Vite's dev server calls it directly.
 +TanStack Start is the renderer here, and Convex is the backend. `src/server.ts` is the Worker: it
 +answers the `/auth` routes, reads the cookies, gives the render its request context, and returns the
 +page.
@@ -89,12 +71,10 @@ index f1de781361f66c51d34528306becf3c82908bb0e..654e28bf022bf780c16c7d9ab4902569
  - Pages, loaders, `head`, and prerender live in `src/routes`.
  - Data and endpoints live in `convex/`. A Convex query or mutation is what a TanStack server
    function would be, with `ctx` and the user's identity, and the browser subscribes to it live. The
--  `/auth` routes are Convex HTTP actions for the same reason.
--- Request work, such as the cookies and the token, happens in `convex/http.ts` before
--  `server.fetch`, not in TanStack middleware.
+-  `/auth` routes live in `src/server.ts`, because the session cookies belong to the site's origin.
 +  `/auth` routes live in the Worker, because the session cookies belong to the site's origin.
-+- Request work, such as the cookies and the token, happens in `src/server.ts` before
-+  `handler.fetch`, not in TanStack middleware.
+ - Request work, such as the cookies and the token, happens in `src/server.ts` before
+   `handler.fetch`, not in TanStack middleware.
  - The example has no `createServerFn`, no `routes/api`, and no `createStart` middleware. They would
 -  run inside the HTTP action and then call Convex over HTTP to do anything.
 +  run inside the Worker and then call Convex over HTTP to do anything.
@@ -169,11 +149,9 @@ index f1de781361f66c51d34528306becf3c82908bb0e..654e28bf022bf780c16c7d9ab4902569
  
  ## Commands
  
--- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. The proxy in
--  `vite.config.ts` sends `/auth/` to the deployment's `VITE_CONVEX_SITE_URL`, so sign-in and
--  sign-out work and the session cookies belong to the dev origin. Vite renders the pages without the
--  session: `/todos` answers 200 with no todos, and the browser fills it in as the user after
--  hydration, or moves to `/signin` without a session.
+-- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. Vite calls
+-  `src/server.ts`, so the `/auth` routes answer on the dev origin and the pages render with the
+-  session, as on the deployment.
 -- `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`,
 -  and prerender `/about`.
 -- `pnpm run deploy:dev`: build, upload, and push to the development deployment.
@@ -233,67 +211,38 @@ index 60a75e8eab323c608072534ae02fd139765d2c14..637b40dfc520ceab54ff05b3fee7061f
  export default app;
 diff --git a/convex/http.ts b/convex/http.ts
 deleted file mode 100644
-index e12ee25d182c9e352d1da2ca50c0a468320868c4..0000000000000000000000000000000000000000
+index 4a1fe0bc21cb016cfc7befecf13855abe1200ef9..0000000000000000000000000000000000000000
 --- a/convex/http.ts
 +++ /dev/null
-@@ -1,61 +0,0 @@
+@@ -1,32 +0,0 @@
 -import { httpRouter } from "convex/server";
--import { httpCookies, ServerAuthSession, setupConvexAuthServer } from "@convex-dev/auth/server";
 -import { serveSite } from "@samebase/convex-hosting";
--import { api, components } from "./_generated/api.js";
--import { env, httpAction } from "./_generated/server.js";
+-import { components } from "./_generated/api.js";
+-import { httpAction } from "./_generated/server.js";
 -import { versionId } from "../.convex-hosting/version.js";
--// Types only, nothing is bundled: the server build's type, and the request context that
--// `convex-auth` registers on TanStack's `Register`, which types `context` in `server.fetch` below.
+-// Type only, nothing is bundled: the server build imported below.
 -import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
--import type {} from "@samebase/convex-hosting-tanstack-start/convex-auth";
 -import server from "../dist/server/server.js";
 -
 -const http = httpRouter();
 -
--// A local backend serves plain HTTP.
--const cookieOptions = { secure: env.CONVEX_SITE_URL.startsWith("https:") };
--
--// The browser signs in, refreshes, and signs out through these routes, and the refresh token stays
--// in an httpOnly cookie. Exact routes win over the Convex Auth core component mounted at /auth/.
--const auth = setupConvexAuthServer({
--  convexUrl: env.CONVEX_CLOUD_URL,
--  refreshSession: api.auth.refreshSession,
--  signOut: api.auth.signOut,
--  signIn: [api.auth.signInAnonymous],
--  cookieOptions,
--});
--for (const [path, handler] of [
--  ["/auth/signin", auth.convexProxyHandler],
--  ["/auth/refresh", auth.refreshHandler],
--  ["/auth/signout", auth.signOutHandler],
--] as const) {
+-// The app's server (src/server.ts) answers these. Exact routes win over the Convex Auth component
+-// mounted at /auth/.
+-for (const path of ["/auth/signin", "/auth/refresh", "/auth/signout"]) {
 -  http.route({
 -    path,
 -    method: "POST",
--    handler: httpAction((_ctx, request) => handler(request)),
+-    handler: httpAction((_ctx, request) => server.fetch(request)),
 -  });
 -}
 -
+-// A file for a path that has one, the app's server for every other path, as a Cloudflare Worker
+-// with static assets does.
 -http.route({
 -  pathPrefix: "/",
 -  method: "GET",
--  // A path without a file is a page. TanStack Start renders it, including its own 404 page.
 -  handler: httpAction((ctx, request) =>
--    serveSite(ctx, components.hosting, request, versionId, async () => {
--      const cookies = httpCookies(request);
--      const session = new ServerAuthSession({
--        refreshSession: (refreshToken) =>
--          ctx.runMutation(api.auth.refreshSession, { refreshToken }),
--        cookies,
--        cookieOptions,
--      });
--      const token = await session.getToken();
--      const page = await server.fetch(request, { context: { token } });
--      const headers = new Headers(page.headers);
--      cookies.applyTo(headers);
--      return new Response(page.body, { status: page.status, headers });
--    }),
+-    serveSite(ctx, components.hosting, request, versionId, () => server.fetch(request)),
 -  ),
 -});
 -
@@ -340,120 +289,44 @@ index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f
    }
  }
 diff --git a/src/server.ts b/src/server.ts
-index ebcfaaaacd664392fd5198fdd516cad12a4c4f85..210475056362cfd9f82c006506627821999529d4 100644
+index 0fb4ae112e74758103f7fddbc7462fe0bff3daef..84f75370ee301a5bdca832f19c2ab6ce401da6cd 100644
 --- a/src/server.ts
 +++ b/src/server.ts
-@@ -1 +1,52 @@
--export { default } from "@samebase/convex-hosting-tanstack-start/server";
-+import { httpCookies, ServerAuthSession, setupConvexAuthServer } from "@convex-dev/auth/server";
+@@ -1,5 +1,5 @@
+ import { httpCookies, ServerAuthSession, setupConvexAuthServer } from "@convex-dev/auth/server";
+-import handler from "@samebase/convex-hosting-tanstack-start/server";
 +import handler from "@tanstack/react-start/server-entry";
-+import { ConvexHttpClient } from "convex/browser";
-+import { api } from "../convex/_generated/api.js";
-+
-+const convexUrl: string = import.meta.env.VITE_CONVEX_URL;
-+const convex = new ConvexHttpClient(convexUrl);
-+
-+// Secure in a production build, as Convex Auth's Next.js integration decides: Vite's dev server
-+// serves plain HTTP.
-+const cookieOptions = { secure: import.meta.env.PROD };
-+
-+// The browser signs in, refreshes, and signs out through these routes, and the refresh token stays
-+// in an httpOnly cookie on this origin.
-+const auth = setupConvexAuthServer({
-+  convexUrl,
-+  refreshSession: api.auth.refreshSession,
-+  signOut: api.auth.signOut,
-+  signIn: [api.auth.signInAnonymous],
-+  cookieOptions,
-+});
-+const routes = new Map([
-+  ["/auth/signin", auth.convexProxyHandler],
-+  ["/auth/refresh", auth.refreshHandler],
-+  ["/auth/signout", auth.signOutHandler],
-+]);
-+
-+// The Worker runs when no file matches the path. TanStack Start renders the page, including its own
-+// 404 page.
-+export default {
-+  async fetch(request: Request) {
-+    const route = request.method === "POST" && routes.get(new URL(request.url).pathname);
-+    if (route) return route(request);
-+    // The build's prerender of /about sends this header (vite.config.ts). It renders without a
-+    // session and sends no query, because in Workers Builds the build runs before Convex's push.
-+    // @ts-expect-error The registered request context is required, and the prerender has none.
-+    if (request.headers.has("x-prerender")) return handler.fetch(request);
-+    const cookies = httpCookies(request);
-+    const session = new ServerAuthSession({
-+      refreshSession: (refreshToken) => convex.mutation(api.auth.refreshSession, { refreshToken }),
-+      cookies,
-+      cookieOptions,
-+    });
-+    const token = await session.getToken();
-+    const page = await handler.fetch(request, { context: { token } });
-+    const headers = new Headers(page.headers);
-+    cookies.applyTo(headers);
+ import { ConvexHttpClient } from "convex/browser";
+ import { api } from "../convex/_generated/api.js";
+ 
+@@ -44,6 +44,8 @@ export default {
+     const page = await handler.fetch(request, { context: { token } });
+     const headers = new Headers(page.headers);
+     cookies.applyTo(headers);
 +    // Session-bearing HTML must never be reused by a cache, the rule `serveSite` applies on Convex.
 +    headers.set("Cache-Control", "no-store");
-+    return new Response(page.body, { status: page.status, headers });
-+  },
-+};
+     return new Response(page.body, { status: page.status, headers });
+   },
+ };
 diff --git a/vite.config.ts b/vite.config.ts
-index d5a473126d915c87a0fdade5e9a93627bf996966..eb86e003db9795b322470a5c594b6a8702a57cc3 100644
+index c1fa9a2d4c1224a8cbda8132e633b7b066e137b4..3e6badb4024aed63c5e612137eb9fc19df6cbb9c 100644
 --- a/vite.config.ts
 +++ b/vite.config.ts
-@@ -1,39 +1,23 @@
--import { defineConfig, loadEnv } from "vite-plus";
-+import { defineConfig } from "vite-plus";
+@@ -1,12 +1,12 @@
+ import { defineConfig } from "vite-plus";
  import { tanstackStart } from "@tanstack/react-start/plugin/vite";
  import react from "@vitejs/plugin-react";
 -import { convexSsr } from "@samebase/convex-hosting-tanstack-start/vite";
--
--// The dev server sends the `/auth` routes of convex/http.ts to the deployment, so the session
--// cookies belong to the dev origin. A cloud deployment needs its own Host, and the routes trust a
--// request whose Origin matches its Host, so a request from the dev origin gets the deployment's
--// origin; a request from another origin keeps its Origin and gets 403.
--const { VITE_CONVEX_SITE_URL: siteUrl } = loadEnv(
--  "development",
--  import.meta.dirname,
--  "VITE_CONVEX_SITE_URL",
--);
 +import { cloudflare } from "@cloudflare/vite-plugin";
  
  export default defineConfig({
    root: import.meta.dirname,
--  server: {
--    proxy: {
--      "/auth/": {
--        target: siteUrl,
--        changeOrigin: true,
--        configure: (proxy) =>
--          proxy.on("proxyReq", (proxyRequest, request) => {
--            if (request.headers.origin === `http://${request.headers.host}`) {
--              proxyRequest.setHeader("origin", new URL(siteUrl).origin);
--            }
--          }),
--      },
--    },
--  },
    plugins: [
 -    convexSsr(),
 +    cloudflare({ viteEnvironment: { name: "ssr" } }),
      // Prerenders /about only. `prerender: { enabled: true }` would also prerender every static
--    // route, and crawling would follow /about's links.
--    tanstackStart({ pages: [{ path: "/about", prerender: { enabled: true, crawlLinks: false } }] }),
-+    // route, and crawling would follow /about's links. The prerender runs through the Worker, and
-+    // the header tells src/server.ts to render without a session.
-+    tanstackStart({
-+      pages: [
-+        {
-+          path: "/about",
-+          prerender: { enabled: true, crawlLinks: false, headers: { "x-prerender": "1" } },
-+        },
-+      ],
-+    }),
-     react(),
-   ],
- });
+     // route, and crawling would follow /about's links.
+     tanstackStart({ pages: [{ path: "/about", prerender: { enabled: true, crawlLinks: false } }] }),
 diff --git a/wrangler.jsonc b/wrangler.jsonc
 new file mode 100644
 index 0000000000000000000000000000000000000000..0514290649d7d95f8a16f528db32522d804ba834

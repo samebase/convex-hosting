@@ -323,14 +323,13 @@ is the diff between the two folders, and so the definition of what convex-hostin
 writes the patch again from the committed folders and fails when it differs from the committed file;
 `pnpm run examples:diff` refreshes it. The patch covers:
 
-- `convex/http.ts`: on Convex only. It serves the files, renders the pages with the session token,
-  and answers the `/auth` routes.
-- `src/server.ts`: on Convex, a re-export of the adapter's server entry. On the Worker, the Worker
-  itself: the `/auth` routes and the session lines of `convex/http.ts`, around TanStack Start's
-  default server entry.
+- `convex/http.ts`: on Convex only. It serves the files and forwards the page render and the `/auth`
+  POSTs to `src/server.ts`.
+- `src/server.ts`: the same file on both hosts, the `/auth` routes and the session lines around the
+  server entry, but for two lines: the entry it wraps (the adapter's on Convex, TanStack Start's
+  default on the Worker) and `no-store` on rendered pages, which `serveSite` sets on Convex.
 - `convex/convex.config.ts` and `convex/_generated/api.d.ts`: `app.use(hosting)` on Convex only.
-- `vite.config.ts`: `convexSsr()` and the dev proxy for `/auth` on Convex; Cloudflare's Vite plugin
-  and a header that makes the build's prerender skip the session on the Worker.
+- `vite.config.ts`: `convexSsr()` on Convex; Cloudflare's Vite plugin on the Worker.
 - `package.json`: `@samebase/convex-hosting` and `convex-hosting deploy` on Convex; `wrangler`,
   `@cloudflare/vite-plugin`, and the Workers Builds scripts on the Worker.
 - `wrangler.jsonc`: on the Worker only.

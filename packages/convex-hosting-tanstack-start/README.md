@@ -27,7 +27,7 @@ In `convex/http.ts`, import the server build that Vite emits from `src/server.ts
 `serveSite` serve the uploaded files and render every other path with it:
 
 ```ts
-// Types of the server build imported below; the adapter owns them.
+// Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
@@ -35,25 +35,28 @@ http.route({
   pathPrefix: "/",
   method: "GET",
   handler: httpAction((ctx, request) =>
-    serveSite(ctx, components.hosting, request, versionId, async () => server.fetch(request)),
+    serveSite(ctx, components.hosting, request, versionId, () => server.fetch(request)),
   ),
 });
 ```
 
 Vite names the entry `server.js` when the app's `package.json` has `"type": "module"`, and
 `server.mjs` without it; import the name that the build emits. The `server-build` entry declares
-both with the type of this package's server entry, so `convex/http.ts` typechecks before the first
-build. It covers the default output only, `dist/server/server.js` and `.mjs`: an app that changes
-`build.outDir` or the entry name declares its own path with one wildcard line, such as
+both as a module whose default export is `{ fetch(request: Request): Promise<Response> }`, the shape
+of the app's `src/server.ts`, so `convex/http.ts` typechecks before the first build. It covers the
+default output only, `dist/server/server.js` and `.mjs`: an app that changes `build.outDir` or the
+entry name declares its own path with one wildcard line, such as
 `declare module "*/build/server/entry.js"` with the same default export. Leave `allowJs` out of
 `convex/tsconfig.json`: with it, tsc reads the build instead of the type. `npx convex dev` bundles
 `convex/http.ts` only after a build, so a fresh clone runs `convex-hosting deploy --dev` before its
 first push, as the [README](https://github.com/samebase/convex-hosting#setup) says.
 
-To give the pages data of the request, pass it as `context`: `server.fetch(request, { context })`.
-Start gives it to each route's `beforeLoad` and loader on the server as `serverContext`, typed as
-`requestContext` in Start's `Register`. `fetch` is TanStack's `RequestHandler<Register>`: with a
-registered `requestContext`, `context` is required and has that type.
+To give the pages data of the request, `src/server.ts` wraps this package's entry and passes it as
+`context`: `handler.fetch(request, { context })`. Start gives it to each route's `beforeLoad` and
+loader on the server as `serverContext`, typed as `requestContext` in Start's `Register`. `fetch` is
+TanStack's `RequestHandler<Register>`: with a registered `requestContext`, `context` is required and
+has that type. Vite's dev server calls `src/server.ts` too, so what it reads off the request holds
+in development.
 
 ## Queries and loaders
 
@@ -105,24 +108,24 @@ in development.
 ## Convex Auth sessions
 
 With [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies,
-`convex/http.ts` reads the session in `render` and passes its access token as the context, as the
+`src/server.ts` answers the `/auth` routes, reads the session of the request's cookies, and passes
+its access token as the context, as the
 [TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
-does:
+does in its
+[`src/server.ts`](https://github.com/samebase/convex-hosting/blob/main/examples/tanstack-ssr/src/server.ts):
 
 ```ts
-// Type only, nothing is bundled: the request context this entry registers on TanStack's `Register`.
-import type {} from "@samebase/convex-hosting-tanstack-start/convex-auth";
-
-// In `render`, with the session of the request's cookies:
 const token = await session.getToken();
-const page = await server.fetch(request, { context: { token } });
+const page = await handler.fetch(request, { context: { token } });
 ```
 
-`@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and loading it declares
+`convex/http.ts` then forwards the three `/auth` `POST`s and the page render to the build with
+`server.fetch(request)`, as the example's
+[`convex/http.ts`](https://github.com/samebase/convex-hosting/blob/main/examples/tanstack-ssr/convex/http.ts)
+does. `@samebase/convex-hosting-tanstack-start/convex-auth` has the rest, and loading it declares
 `requestContext` as `{ token: string | null }` in the `Register` of `@tanstack/react-start`, which
-makes `context` required and typed in `server.fetch` and gives every route a typed `serverContext`.
-The `convex/` folder is its own TypeScript program, which is why `convex/http.ts` loads the entry
-itself. The app creates its Convex client with `expectAuth: true`.
+makes `context` required and typed in `handler.fetch` and gives every route a typed `serverContext`.
+The app creates its Convex client with `expectAuth: true`.
 
 Nothing in this entry is about hosting: it is the TanStack Start integration that Convex Auth does
 not ship, and the
