@@ -193,23 +193,24 @@ picks the longest matching prefix, so only an exact route reaches the app there.
 import { serveSite } from "@samebase/convex-hosting";
 import { versionId } from "../.convex-hosting/version.js";
 
-return serveSite(ctx, components.hosting, request, versionId, () => server.fetch(request));
+const site = httpAction(serveSite(components.hosting, versionId, server));
 ```
 
 `serveSite` answers with the file when one matches. Otherwise it answers with the page that the
-optional `render()` returns, else 404, both with `Cache-Control: no-store`; the page keeps every
-other header, several `Set-Cookie` included. Measured on 2026-10-14: the deployment's Cloudflare
-front keeps `no-store` for a path without an extension and answers `public, max-age=14400` with
-`cf-cache-status: BYPASS` for a path with one, so the browser, not the edge, caches a 404 for a
-missing script for four hours. The deploy order prevents that case: a version's files exist before
-any page refers to them, and a first install serves no page until its upload ends. `render` is the
-Worker script: the code that runs on a miss, with the request in its closure. Its absence is the
-files-only Worker, so `serveSite` is the one entry.
+optional `worker.fetch()` returns, else 404, both with `Cache-Control: no-store`; the page keeps
+every other header, several `Set-Cookie` included. Measured on 2026-10-14: the deployment's
+Cloudflare front keeps `no-store` for a path without an extension and answers
+`public, max-age=14400` with `cf-cache-status: BYPASS` for a path with one, so the browser, not the
+edge, caches a 404 for a missing script for four hours. The deploy order prevents that case: a
+version's files exist before any page refers to them, and a first install serves no page until its
+upload ends. `worker` is the Worker script, the object with `fetch(request)` that the server entry
+exports: the code that runs on a miss. Its absence is the files-only Worker, so `serveSite` is the
+one entry.
 
 `serveSite` calls the component query `route` with the method, the URL, the four request headers
 that Cloudflare's handler reads (`If-None-Match`, `Sec-Fetch-Mode`, and the presence of
 `Authorization` and `Range`), and `hasUserWorker`. As on Cloudflare, the presence of code decides,
-and `hasUserWorker` is Cloudflare's `has_user_worker`: `serveSite` passes `true` with `render` and
+and `hasUserWorker` is Cloudflare's `has_user_worker`: `serveSite` passes `true` with `worker` and
 `false` without it; the app sets no option. With code, the app is the Worker, and Cloudflare's
 routing with a Worker applies: inside the query, Cloudflare's `canFetch` decides whether an asset
 answers, a request that does not resolve to a file goes to the app, and `not_found_handling` (the
@@ -247,7 +248,7 @@ When the version does not exist, is still `uploading`, or is `deleting`, `serveS
 response that names the version, with `Cache-Control: no-store`, so a half-installed site answers
 404 rather than rendering pages without their files, and the deployment's Cloudflare front, which
 caches 404 answers on static paths, does not keep that answer after the upload ends. A `null` asset
-means one thing: no asset matched, and `render` answers.
+means one thing: no asset matched, and `worker` answers.
 
 When `route` reports the version in state `ready`, `serveSite` calls `markLive` once, before it
 answers. `markLive` marks the version only when no live version was created after it, inside its own
@@ -393,7 +394,7 @@ are not proposed again.
 - **A component HTTP mount and a second serving helper.** Two ways to serve, and a component route
   cannot hand a request to the app's renderer, so server-rendered sites could not use the mount.
 - **`serveAsset`, an exported first step of `serveSite` that returned the file or `null`, for a
-  route that did something else on a miss.** That something else is `render`: it is the Worker
+  route that did something else on a miss.** That something else is `worker`: it is the Worker
   script, and its absence is the files-only Worker, so a second entry only gave `hasUserWorker` a
   second source. `serveSite` is the one entry.
 - **The session lines in `convex/http.ts` (adapter 0.2.0 to 0.5.0).** Vite's dev server never ran
@@ -444,7 +445,7 @@ owner since `@samebase/convex-hosting` 0.7.0 and `@samebase/convex-hosting-tanst
 | Piece                                                     | Owner                                                                                                                        | Why                                                                                                                                              |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | File serving, and `no-store` on rendered pages and misses | Hosting package: `serveSite`                                                                                                 | The Cloudflare front caches answers on static-looking paths of every site                                                                        |
-| The server entry import and `fetch(request)`              | App: `import server from "../dist/server/server.js"`, called in `serveSite`'s `render` and by the `/auth` routes             | Convex bundles what `http.ts` imports, and the import names the build's own output                                                               |
+| The server entry import and `fetch(request)`              | App: `import server from "../dist/server/server.js"`, called in `serveSite`'s `worker` and by the `/auth` routes             | Convex bundles what `http.ts` imports, and the import names the build's own output                                                               |
 | The type of `dist/server/server.js`                       | Adapter: types-only `server-build` entry, loaded by `import type {}`; the app leaves `allowJs` out of `convex/tsconfig.json` | The declaration is the shape of the app's `src/server.ts`, `{ fetch(request) }`; with `allowJs` tsc reads the file instead                       |
 | `src/server.ts`                                           | App: the session lines and the `/auth` routes around the adapter's `server`; one re-export line without sessions             | Start builds its server entry from a file in the app's `src/`, and Vite's dev server calls that file, so what runs there runs in development too |
 | `convexSsr()`                                             | Adapter, added to the app's `vite.config.ts`                                                                                 | The Vite config is the app's; the settings are the adapter's                                                                                     |
@@ -467,7 +468,7 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
 
 | Export                                                                    | Used by                                              | Why                                                                                                                                                                   |
 | ------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| hosting `serveSite`                                                       | `convex/http.ts` of every app                        | The one entry: files, then `render`, which is the Worker script; its absence is the files-only Worker                                                                 |
+| hosting `serveSite`                                                       | `convex/http.ts` of every app                        | The one entry: files, then `worker`, which is the Worker script; its absence is the files-only Worker                                                                 |
 | hosting `convex.config`                                                   | `convex/convex.config.ts` of every app               | Convex's component definition, for `app.use`                                                                                                                          |
 | hosting `_generated/component.js` (types)                                 | The generated `api.d.ts` of every app                | Convex's codegen imports it for the component's API type                                                                                                              |
 | CLI `deploy --build --dist [--dev \| --preview-name]`                     | App scripts and CI                                   | The upload must run between the build and the push, with the deployment chosen by the same flags as Convex's CLI                                                      |
@@ -503,7 +504,7 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
   versions.
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with
   `--not-found-handling single-page-application`.
-- `examples/tanstack-ssr`: pages rendered in the `render` of `serveSite`.
+- `examples/tanstack-ssr`: pages rendered in the `worker` of `serveSite`.
 - `examples/tanstack-ssr-workers`: the same app as a Cloudflare Worker, the reference for what is
   Convex-specific.
 - One `README.md` at the repository root, copied into the package at `prepack`.

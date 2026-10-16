@@ -12,9 +12,7 @@ const http = httpRouter();
 // Every method, every path: a file for a path that has one (another method than GET or HEAD on it
 // answers 405), the app's server (src/server.ts) for every other path, as a Cloudflare Worker with
 // static assets does. Convex answers HEAD through GET without the body.
-const site = httpAction((ctx, request) =>
-  serveSite(ctx, components.hosting, request, versionId, () => server.fetch(request)),
-);
+const site = httpAction(serveSite(components.hosting, versionId, server));
 for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
   http.route({ pathPrefix: "/", method, handler: site });
 }

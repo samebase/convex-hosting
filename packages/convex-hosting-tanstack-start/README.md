@@ -24,17 +24,15 @@ export { default } from "@samebase/convex-hosting-tanstack-start/server";
 ```
 
 In `convex/http.ts`, import the server build that Vite emits from `src/server.ts`, and send every
-method to `serveSite` with it as `render`: a file answers GET, another method on a file answers 405,
-and every other request goes to the server, as it goes to a Cloudflare Worker:
+method to `serveSite` with it as the Worker: a file answers GET, another method on a file answers
+405, and every other request goes to the server, as it goes to a Cloudflare Worker:
 
 ```ts
 // Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
-const site = httpAction((ctx, request) =>
-  serveSite(ctx, components.hosting, request, versionId, () => server.fetch(request)),
-);
+const site = httpAction(serveSite(components.hosting, versionId, server));
 for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
   http.route({ pathPrefix: "/", method, handler: site });
 }

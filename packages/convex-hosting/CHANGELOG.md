@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0
+
+- `serveSite(component, versionId, worker?)` returns the handler of the site routes, so
+  `convex/http.ts` reads `httpAction(serveSite(components.hosting, versionId, server))`. The third
+  argument is the Worker script itself, the object with `fetch(request)` that the app's server entry
+  exports, in place of a `render` callback that closed over the request. Breaking: the old
+  `serveSite(ctx, component, request, versionId, render?)` is gone.
+- `convex/http.ts` registers the handler for every method, as every request reaches a Cloudflare
+  Worker: a file answers 405 to any method but GET and HEAD, a miss goes to the Worker or answers
+  404 without one. The README and the examples show the loop; the package code is unchanged.
+
 ## 0.8.0
 
 - `serveSite` without `render` routes like a Cloudflare Worker without a script:
