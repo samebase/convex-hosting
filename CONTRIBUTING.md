@@ -30,12 +30,13 @@ Do not edit the generated files.
 
 ## Cloudflare's asset worker
 
-`src/workers-shared` is a copy of Cloudflare's asset worker from cloudflare/workers-sdk, at the
-commit in `src/workers-shared/UPSTREAM`. Do not edit it by hand. To update it, from
+`src/workers-sdk` is a copy of Cloudflare's asset worker and of its test cases from
+cloudflare/workers-sdk, each file at its upstream path, at the commit in `src/workers-sdk/UPSTREAM`.
+Do not edit it by hand: CI runs the sync and fails when the folder differs. To update it, from
 `packages/convex-hosting`:
 
 ```sh
-node scripts/sync-workers-shared.ts [<commit>]
+node scripts/sync-workers-sdk.ts [<commit>]
 ```
 
 ## Releasing

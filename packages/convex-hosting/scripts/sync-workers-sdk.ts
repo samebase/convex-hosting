@@ -1,12 +1,13 @@
 // Copies the parts of Cloudflare's Workers Static Assets implementation that this package uses
-// from cloudflare/workers-sdk (MIT OR Apache-2.0) into src/workers-shared, at the commit recorded
-// in src/workers-shared/UPSTREAM: the asset Worker and its tests from packages/workers-shared, and
+// from cloudflare/workers-sdk (MIT OR Apache-2.0) into src/workers-sdk, at the commit recorded in
+// src/workers-sdk/UPSTREAM: the asset Worker and its tests from packages/workers-shared, and
 // Cloudflare's html_handling and encoding cases from fixtures/workers-shared-asset-config, which
 // src/component/conformance.test.ts runs through `route`.
 //
-//   node scripts/sync-workers-shared.ts [<commit>]
+//   node scripts/sync-workers-sdk.ts [<commit>]
 //
-// The copied files keep their upstream paths, so their relative imports keep working. The `.ts`
+// src/workers-sdk mirrors the repository tree: a file is at the path it has upstream, so its
+// relative imports keep working and its upstream location is its path. The `.ts`
 // files get three mechanical changes, and nothing else differs from upstream:
 //
 // - Relative import and export specifiers without an extension get `.js` (`"./types"` becomes
@@ -25,12 +26,9 @@ import { dirname, extname, join } from "node:path";
 
 const REPOSITORY = "https://github.com/cloudflare/workers-sdk.git";
 const UPSTREAM_DIRECTORIES = ["packages/workers-shared", "fixtures/workers-shared-asset-config"];
-const TARGET = join(import.meta.dirname, "../src/workers-shared");
+const TARGET = join(import.meta.dirname, "../src/workers-sdk");
 
-/**
- * Files copied from the repository, at their path inside packages/workers-shared; a file outside
- * it lands at its repository path.
- */
+/** Files copied from the repository, at their repository path. */
 const UPSTREAM_FILES = [
   "fixtures/workers-shared-asset-config/test-cases/encoding-test-cases.ts",
   "fixtures/workers-shared-asset-config/test-cases/html-handling-test-cases.ts",
@@ -76,14 +74,9 @@ const LICENSE_FILES = ["LICENSE-APACHE", "LICENSE-MIT"];
 /** Our own files in the target folder. The sync keeps them. */
 const LOCAL_FILES = [
   "UPSTREAM",
-  "asset-worker/src/worker.ts",
+  "packages/workers-shared/asset-worker/src/worker.ts",
   "fixtures/workers-shared-asset-config/html-handling.test.d.ts",
 ];
-
-/** Where a repository file lands in TARGET. */
-function targetPath(file: string): string {
-  return file.replace(/^packages\/workers-shared\//, "");
-}
 
 /** A relative specifier in `from "./types"`, `import "./polyfill"`, or `import("./module")`. */
 const RELATIVE_SPECIFIER = /(\bfrom\s*|\bimport\s*\(?\s*)(["'])(\.{1,2}\/[^"'\n]*)\2/g;
@@ -137,7 +130,7 @@ try {
 
   for (const file of UPSTREAM_FILES) {
     const source = join(checkout, file);
-    const target = join(TARGET, targetPath(file));
+    const target = join(TARGET, file);
     mkdirSync(dirname(target), { recursive: true });
     if (file.endsWith(".ts")) {
       let contents = addJsExtensions(readFileSync(source, "utf8"));
@@ -162,18 +155,19 @@ try {
   writeFileSync(
     join(TARGET, "UPSTREAM"),
     [
-      "Copied from https://github.com/cloudflare/workers-sdk: packages/workers-shared, and under",
-      "fixtures/ the test cases of fixtures/workers-shared-asset-config.",
+      "Copied from https://github.com/cloudflare/workers-sdk, at the paths the files have there:",
+      "packages/workers-shared, and the test cases of fixtures/workers-shared-asset-config.",
       "License: MIT OR Apache-2.0 (LICENSE-MIT, LICENSE-APACHE).",
       `commit: ${commit}`,
       `synced: ${new Date().toISOString().slice(0, 10)}`,
       "",
-      "Run `node scripts/sync-workers-shared.ts [<commit>]` from packages/convex-hosting to update.",
+      "Run `node scripts/sync-workers-sdk.ts [<commit>]` from packages/convex-hosting to update.",
       "Relative import and export specifiers without an extension get .js, for Node's ESM loader.",
       "Test files import from vite-plus/test instead of vitest. The test-cases files import their",
-      "TestCase type with `import type`. asset-worker/src/worker.ts is ours: it declares the types",
-      "that handler.ts imports from the upstream entrypoint. fixtures/.../html-handling.test.d.ts is",
-      "ours: the TestCase type at the path the test-cases files import it from.",
+      "TestCase type with `import type`. Ours: packages/workers-shared/asset-worker/src/worker.ts",
+      "declares the types that handler.ts imports from the upstream entrypoint, and",
+      "fixtures/workers-shared-asset-config/html-handling.test.d.ts holds the TestCase type at the",
+      "path the test-cases files import it from.",
       "",
     ].join("\n"),
   );

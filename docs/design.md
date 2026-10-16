@@ -485,9 +485,10 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
   - `src/client`: `serveSite` and the shipped declaration of the version module.
   - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, the inner step that
     `npx convex deploy --cmd` has to call as a program.
-  - `src/workers-shared`: Cloudflare's asset worker and its tests, copied by
-    `scripts/sync-workers-shared.ts` from cloudflare/workers-sdk at the commit in `UPSTREAM`. Only
-    the sync script changes it.
+  - `src/workers-sdk`: Cloudflare's asset worker, its tests, and its html_handling and encoding
+    cases, copied by `scripts/sync-workers-sdk.ts` from cloudflare/workers-sdk at the commit in
+    `UPSTREAM`, each file at its upstream path, so the folder mirrors that repository. Only the sync
+    script changes it, and CI fails when the folder differs from what it writes.
   - Whatever `npx convex codegen --component-dir ./src/component` needs to run against an anonymous
     local deployment, and nothing more; `CONTRIBUTING.md` says what that is. No example is involved.
 - `packages/convex-hosting-tanstack-start`: the Vite settings and the server entry that make

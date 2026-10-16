@@ -7,8 +7,8 @@ import { describe, expect, test } from "vite-plus/test";
 import type { Config } from "./lib.js";
 import { api, internal } from "./_generated/api.js";
 import schema from "./schema.js";
-import { encodingTestCases } from "../workers-shared/fixtures/workers-shared-asset-config/test-cases/encoding-test-cases.js";
-import { htmlHandlingTestCases } from "../workers-shared/fixtures/workers-shared-asset-config/test-cases/html-handling-test-cases.js";
+import { encodingTestCases } from "../workers-sdk/fixtures/workers-shared-asset-config/test-cases/encoding-test-cases.js";
+import { htmlHandlingTestCases } from "../workers-sdk/fixtures/workers-shared-asset-config/test-cases/html-handling-test-cases.js";
 
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts"]);
 

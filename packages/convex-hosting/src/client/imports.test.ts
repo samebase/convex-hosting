@@ -6,7 +6,7 @@ import { expect, test } from "vite-plus/test";
 
 // The component's functions and `serveSite` run in Convex's default runtime: Convex bundles the
 // component, and the app's `convex/http.ts` with `serveSite`, without Node modules. Only the CLI
-// may import `node:` modules, and in src/workers-shared only utils/helpers.ts and
+// may import `node:` modules, and in src/workers-sdk/packages/workers-shared only utils/helpers.ts and
 // utils/configuration/constructConfiguration.ts do.
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRIES = [
