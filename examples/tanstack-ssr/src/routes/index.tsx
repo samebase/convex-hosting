@@ -5,7 +5,7 @@ import { api } from "../../convex/_generated/api.js";
 
 export const Route = createFileRoute("/")({
   loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(convexQuery(api.todos.latest, {}));
+    await context.queryClient.query(convexQuery(api.todos.latest, {}));
   },
   component: Home,
 });
