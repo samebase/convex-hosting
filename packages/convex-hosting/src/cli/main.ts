@@ -13,7 +13,7 @@ import { parseArgs } from "node:util";
 import { z } from "zod";
 import { internal } from "../component/_generated/api.js";
 import type { Id } from "../component/_generated/dataModel.js";
-import { AssetConfigSchema } from "../workers-shared/utils/types.js";
+import { AssetConfigSchema } from "../workers-sdk/packages/workers-shared/utils/types.js";
 import {
   deploymentSelector,
   probeComponent,

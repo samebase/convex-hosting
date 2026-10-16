@@ -1,10 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { z } from "zod";
-import { Analytics } from "../workers-shared/asset-worker/src/analytics.js";
-import { normalizeConfiguration } from "../workers-shared/asset-worker/src/configuration.js";
-import { canFetch, handleRequest } from "../workers-shared/asset-worker/src/handler.js";
-import { mockJaegerBinding } from "../workers-shared/utils/tracing.js";
-import { AssetConfigSchema } from "../workers-shared/utils/types.js";
+import { Analytics } from "../workers-sdk/packages/workers-shared/asset-worker/src/analytics.js";
+import { normalizeConfiguration } from "../workers-sdk/packages/workers-shared/asset-worker/src/configuration.js";
+import {
+  canFetch,
+  handleRequest,
+} from "../workers-sdk/packages/workers-shared/asset-worker/src/handler.js";
+import { mockJaegerBinding } from "../workers-sdk/packages/workers-shared/utils/tracing.js";
+import { AssetConfigSchema } from "../workers-sdk/packages/workers-shared/utils/types.js";
 import { internal } from "./_generated/api.js";
 import type { Doc, Id } from "./_generated/dataModel.js";
 import {

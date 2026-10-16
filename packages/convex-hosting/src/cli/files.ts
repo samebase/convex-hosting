@@ -5,20 +5,20 @@ import type { Config } from "../component/lib.js";
 import {
   constructHeaders,
   constructRedirects,
-} from "../workers-shared/utils/configuration/constructConfiguration.js";
-import { parseHeaders } from "../workers-shared/utils/configuration/parseHeaders.js";
-import { parseRedirects } from "../workers-shared/utils/configuration/parseRedirects.js";
+} from "../workers-sdk/packages/workers-shared/utils/configuration/constructConfiguration.js";
+import { parseHeaders } from "../workers-sdk/packages/workers-shared/utils/configuration/parseHeaders.js";
+import { parseRedirects } from "../workers-sdk/packages/workers-shared/utils/configuration/parseRedirects.js";
 import {
   HEADERS_FILENAME,
   MAX_ASSET_SIZE,
   REDIRECTS_FILENAME,
-} from "../workers-shared/utils/constants.js";
+} from "../workers-sdk/packages/workers-shared/utils/constants.js";
 import {
   createAssetsIgnoreFunction,
   getContentType,
   maybeGetFile,
   normalizeFilePath,
-} from "../workers-shared/utils/helpers.js";
+} from "../workers-sdk/packages/workers-shared/utils/helpers.js";
 
 /**
  * Convex limits a document to 1 MiB. The version document holds the config next to two short

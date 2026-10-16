@@ -1,9 +1,0 @@
-Copied from https://github.com/cloudflare/workers-sdk, packages/workers-shared.
-License: MIT OR Apache-2.0 (LICENSE-MIT, LICENSE-APACHE).
-commit: f3608290da40c11b248fff40101f30fc295652be
-synced: 2026-10-13
-
-Run `node scripts/sync-workers-shared.ts [<commit>]` from packages/convex-hosting to update.
-Relative import and export specifiers without an extension get .js, for Node's ESM loader.
-Test files import from vite-plus/test instead of vitest. asset-worker/src/worker.ts is ours:
-it declares the types that handler.ts imports from the upstream entrypoint.

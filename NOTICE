@@ -6,7 +6,8 @@ This project began in 2026 as a fork of static-hosting
 License, Version 2.0. Since version 0.4 none of that code remains; the git history of
 https://github.com/samebase/convex-hosting records the origin.
 
-packages/convex-hosting/src/workers-shared is copied from cloudflare/workers-sdk
-(https://github.com/cloudflare/workers-sdk, packages/workers-shared), developed by Cloudflare and
-licensed under the MIT License or the Apache License, Version 2.0, at your option. The file UPSTREAM
-in that folder records the copied commit, and scripts/sync-workers-shared.ts refreshes it.
+packages/convex-hosting/src/workers-sdk is copied from cloudflare/workers-sdk
+(https://github.com/cloudflare/workers-sdk: packages/workers-shared and the test cases of
+fixtures/workers-shared-asset-config), developed by Cloudflare and licensed under the MIT License
+or the Apache License, Version 2.0, at your option. The file UPSTREAM in that folder records the
+copied commit, and scripts/sync-workers-sdk.ts refreshes it.
