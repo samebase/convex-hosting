@@ -6,31 +6,34 @@ import { api } from "../convex/_generated/api.js";
 const convexUrl: string = import.meta.env.VITE_CONVEX_URL;
 const convex = new ConvexHttpClient(convexUrl);
 
-// A local backend serves plain HTTP.
-const cookieOptions = { secure: convexUrl.startsWith("https:") };
-
-// The browser signs in, refreshes, and signs out through these routes, and the refresh token stays
-// in an httpOnly cookie on this origin.
-const auth = setupConvexAuthServer({
-  convexUrl,
-  refreshSession: api.auth.refreshSession,
-  signOut: api.auth.signOut,
-  signIn: [api.auth.signInAnonymous],
-  cookieOptions,
-});
-const routes = new Map([
-  ["/auth/signin", auth.convexProxyHandler],
-  ["/auth/refresh", auth.refreshHandler],
-  ["/auth/signout", auth.signOutHandler],
-]);
-
 // Runs when no file matches the path: on Convex, convex/http.ts calls it; in development, Vite's dev
 // server does; on Cloudflare, it is the Worker. TanStack Start renders the page, including its own
 // 404 page.
 export default {
   async fetch(request: Request) {
-    const route = request.method === "POST" && routes.get(new URL(request.url).pathname);
-    if (route) return route(request);
+    const url = new URL(request.url);
+    // `Secure` when the browser reached the site over HTTPS. A local backend, Vite's dev server, and
+    // wrangler dev serve plain HTTP, so the request decides, not the build or the backend URL.
+    const cookieOptions = { secure: url.protocol === "https:" };
+    if (request.method === "POST") {
+      // The browser signs in, refreshes, and signs out through these routes, and the refresh token
+      // stays in an httpOnly cookie on this origin.
+      const auth = setupConvexAuthServer({
+        convexUrl,
+        refreshSession: api.auth.refreshSession,
+        signOut: api.auth.signOut,
+        signIn: [api.auth.signInAnonymous],
+        cookieOptions,
+      });
+      switch (url.pathname) {
+        case "/auth/signin":
+          return auth.convexProxyHandler(request);
+        case "/auth/refresh":
+          return auth.refreshHandler(request);
+        case "/auth/signout":
+          return auth.signOutHandler(request);
+      }
+    }
     const cookies = httpCookies(request);
     const session = new ServerAuthSession({
       refreshSession: (refreshToken) => convex.mutation(api.auth.refreshSession, { refreshToken }),

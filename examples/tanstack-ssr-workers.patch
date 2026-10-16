@@ -289,7 +289,7 @@ index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f
    }
  }
 diff --git a/src/server.ts b/src/server.ts
-index 38b00935f77d87eef24d04d8d07a354b83299e88..623f10ebd0b73b0de0fe964e750f00a3f6749b3c 100644
+index 0fb4ae112e74758103f7fddbc7462fe0bff3daef..84f75370ee301a5bdca832f19c2ab6ce401da6cd 100644
 --- a/src/server.ts
 +++ b/src/server.ts
 @@ -1,5 +1,5 @@
@@ -299,7 +299,7 @@ index 38b00935f77d87eef24d04d8d07a354b83299e88..623f10ebd0b73b0de0fe964e750f00a3
  import { ConvexHttpClient } from "convex/browser";
  import { api } from "../convex/_generated/api.js";
  
-@@ -41,6 +41,8 @@ export default {
+@@ -44,6 +44,8 @@ export default {
      const page = await handler.fetch(request, { context: { token } });
      const headers = new Headers(page.headers);
      cookies.applyTo(headers);
