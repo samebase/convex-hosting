@@ -53,7 +53,10 @@ function Root() {
               <Link to="/">Home</Link>
               <Link to="/about">About</Link>
               <Link to="/todos">Todos</Link>
-              <Link to="/stream">Stream</Link>
+              {/* A document request: a navigation inside the app would run the loader in the browser. */}
+              <Link to="/stream" reloadDocument>
+                Stream
+              </Link>
             </nav>
             <SessionHeader />
           </header>
