@@ -1,16 +1,20 @@
 // Copies the parts of Cloudflare's Workers Static Assets implementation that this package uses
-// from cloudflare/workers-sdk (packages/workers-shared, MIT OR Apache-2.0) into
-// src/workers-shared, at the commit recorded in src/workers-shared/UPSTREAM.
+// from cloudflare/workers-sdk (MIT OR Apache-2.0) into src/workers-shared, at the commit recorded
+// in src/workers-shared/UPSTREAM: the asset Worker and its tests from packages/workers-shared, and
+// Cloudflare's html_handling and encoding cases from fixtures/workers-shared-asset-config, which
+// src/component/conformance.test.ts runs through `route`.
 //
 //   node scripts/sync-workers-shared.ts [<commit>]
 //
 // The copied files keep their upstream paths, so their relative imports keep working. The `.ts`
-// files get two mechanical changes, and nothing else differs from upstream:
+// files get three mechanical changes, and nothing else differs from upstream:
 //
 // - Relative import and export specifiers without an extension get `.js` (`"./types"` becomes
 //   `"./types.js"`), because Node's ESM loader runs the built CLI and needs the extension. A
 //   specifier with an extension, such as `.json`, stays as is.
 // - Test files import from "vite-plus/test" instead of "vitest".
+// - The test-cases files import their `TestCase` type with `import type`, which
+//   `verbatimModuleSyntax` requires; upstream writes `import { TestCase }`.
 //
 // The files in LOCAL_FILES are ours and are never overwritten.
 
@@ -20,52 +24,66 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 
 const REPOSITORY = "https://github.com/cloudflare/workers-sdk.git";
-const UPSTREAM_DIRECTORY = "packages/workers-shared";
+const UPSTREAM_DIRECTORIES = ["packages/workers-shared", "fixtures/workers-shared-asset-config"];
 const TARGET = join(import.meta.dirname, "../src/workers-shared");
 
-/** Files copied from UPSTREAM_DIRECTORY, at the same relative path. */
+/**
+ * Files copied from the repository, at their path inside packages/workers-shared; a file outside
+ * it lands at its repository path.
+ */
 const UPSTREAM_FILES = [
-  "asset-worker/src/analytics.ts",
-  "asset-worker/src/compatibility-flags.ts",
-  "asset-worker/src/configuration.ts",
-  "asset-worker/src/constants.ts",
-  "asset-worker/src/handler.ts",
-  "asset-worker/src/types.ts",
-  "asset-worker/src/utils/base-path.ts",
-  "asset-worker/src/utils/headers.ts",
-  "asset-worker/src/utils/rules-engine.ts",
-  "asset-worker/tests/analytics.test.ts",
-  "asset-worker/tests/compatibility-flags.test.ts",
-  "asset-worker/tests/handler.test.ts",
-  "asset-worker/tests/rules-engine.test.ts",
-  "utils/base-path.ts",
-  "utils/configuration/constants.ts",
-  "utils/configuration/constructConfiguration.ts",
-  "utils/configuration/parseHeaders.ts",
-  "utils/configuration/parseRedirects.ts",
-  "utils/configuration/parseStaticRouting.ts",
-  "utils/configuration/types.ts",
-  "utils/configuration/validateURL.ts",
-  "utils/constants.ts",
-  "utils/helpers.ts",
-  "utils/responses.ts",
-  "utils/testdata/base-path-normalization.json",
-  "utils/tests/base-path.test.ts",
-  "utils/tests/helpers.test.ts",
-  "utils/tests/parseHeaders.invalid.test.ts",
-  "utils/tests/parseHeaders.valid.test.ts",
-  "utils/tests/parseRedirects.invalid.test.ts",
-  "utils/tests/parseRedirects.valid.test.ts",
-  "utils/tests/parseStaticRouting.test.ts",
-  "utils/tracing.ts",
-  "utils/types.ts",
+  "fixtures/workers-shared-asset-config/test-cases/encoding-test-cases.ts",
+  "fixtures/workers-shared-asset-config/test-cases/html-handling-test-cases.ts",
+  "packages/workers-shared/asset-worker/src/analytics.ts",
+  "packages/workers-shared/asset-worker/src/compatibility-flags.ts",
+  "packages/workers-shared/asset-worker/src/configuration.ts",
+  "packages/workers-shared/asset-worker/src/constants.ts",
+  "packages/workers-shared/asset-worker/src/handler.ts",
+  "packages/workers-shared/asset-worker/src/types.ts",
+  "packages/workers-shared/asset-worker/src/utils/base-path.ts",
+  "packages/workers-shared/asset-worker/src/utils/headers.ts",
+  "packages/workers-shared/asset-worker/src/utils/rules-engine.ts",
+  "packages/workers-shared/asset-worker/tests/analytics.test.ts",
+  "packages/workers-shared/asset-worker/tests/compatibility-flags.test.ts",
+  "packages/workers-shared/asset-worker/tests/handler.test.ts",
+  "packages/workers-shared/asset-worker/tests/rules-engine.test.ts",
+  "packages/workers-shared/utils/base-path.ts",
+  "packages/workers-shared/utils/configuration/constants.ts",
+  "packages/workers-shared/utils/configuration/constructConfiguration.ts",
+  "packages/workers-shared/utils/configuration/parseHeaders.ts",
+  "packages/workers-shared/utils/configuration/parseRedirects.ts",
+  "packages/workers-shared/utils/configuration/parseStaticRouting.ts",
+  "packages/workers-shared/utils/configuration/types.ts",
+  "packages/workers-shared/utils/configuration/validateURL.ts",
+  "packages/workers-shared/utils/constants.ts",
+  "packages/workers-shared/utils/helpers.ts",
+  "packages/workers-shared/utils/responses.ts",
+  "packages/workers-shared/utils/testdata/base-path-normalization.json",
+  "packages/workers-shared/utils/tests/base-path.test.ts",
+  "packages/workers-shared/utils/tests/helpers.test.ts",
+  "packages/workers-shared/utils/tests/parseHeaders.invalid.test.ts",
+  "packages/workers-shared/utils/tests/parseHeaders.valid.test.ts",
+  "packages/workers-shared/utils/tests/parseRedirects.invalid.test.ts",
+  "packages/workers-shared/utils/tests/parseRedirects.valid.test.ts",
+  "packages/workers-shared/utils/tests/parseStaticRouting.test.ts",
+  "packages/workers-shared/utils/tracing.ts",
+  "packages/workers-shared/utils/types.ts",
 ];
 
 /** Files copied from the repository root. */
 const LICENSE_FILES = ["LICENSE-APACHE", "LICENSE-MIT"];
 
 /** Our own files in the target folder. The sync keeps them. */
-const LOCAL_FILES = ["UPSTREAM", "asset-worker/src/worker.ts"];
+const LOCAL_FILES = [
+  "UPSTREAM",
+  "asset-worker/src/worker.ts",
+  "fixtures/workers-shared-asset-config/html-handling.test.d.ts",
+];
+
+/** Where a repository file lands in TARGET. */
+function targetPath(file: string): string {
+  return file.replace(/^packages\/workers-shared\//, "");
+}
 
 /** A relative specifier in `from "./types"`, `import "./polyfill"`, or `import("./module")`. */
 const RELATIVE_SPECIFIER = /(\bfrom\s*|\bimport\s*\(?\s*)(["'])(\.{1,2}\/[^"'\n]*)\2/g;
@@ -97,7 +115,7 @@ const checkout = mkdtempSync(join(tmpdir(), "workers-shared-"));
 try {
   git(checkout, "init", "--quiet");
   git(checkout, "remote", "add", "origin", REPOSITORY);
-  git(checkout, "sparse-checkout", "set", UPSTREAM_DIRECTORY);
+  git(checkout, "sparse-checkout", "set", ...UPSTREAM_DIRECTORIES);
   git(checkout, "fetch", "--quiet", "--depth", "1", "--filter=blob:none", "origin", commit);
   git(checkout, "checkout", "--quiet", "--detach", "FETCH_HEAD");
 
@@ -118,13 +136,19 @@ try {
   }
 
   for (const file of UPSTREAM_FILES) {
-    const source = join(checkout, UPSTREAM_DIRECTORY, file);
-    const target = join(TARGET, file);
+    const source = join(checkout, file);
+    const target = join(TARGET, targetPath(file));
     mkdirSync(dirname(target), { recursive: true });
     if (file.endsWith(".ts")) {
       let contents = addJsExtensions(readFileSync(source, "utf8"));
       if (file.endsWith(".test.ts")) {
         contents = contents.replaceAll('from "vitest"', 'from "vite-plus/test"');
+      }
+      if (file.includes("/test-cases/")) {
+        contents = contents.replace(
+          /^import \{ TestCase \} from/m,
+          "import type { TestCase } from",
+        );
       }
       writeFileSync(target, contents);
     } else {
@@ -138,15 +162,18 @@ try {
   writeFileSync(
     join(TARGET, "UPSTREAM"),
     [
-      "Copied from https://github.com/cloudflare/workers-sdk, packages/workers-shared.",
+      "Copied from https://github.com/cloudflare/workers-sdk: packages/workers-shared, and under",
+      "fixtures/ the test cases of fixtures/workers-shared-asset-config.",
       "License: MIT OR Apache-2.0 (LICENSE-MIT, LICENSE-APACHE).",
       `commit: ${commit}`,
       `synced: ${new Date().toISOString().slice(0, 10)}`,
       "",
       "Run `node scripts/sync-workers-shared.ts [<commit>]` from packages/convex-hosting to update.",
       "Relative import and export specifiers without an extension get .js, for Node's ESM loader.",
-      "Test files import from vite-plus/test instead of vitest. asset-worker/src/worker.ts is ours:",
-      "it declares the types that handler.ts imports from the upstream entrypoint.",
+      "Test files import from vite-plus/test instead of vitest. The test-cases files import their",
+      "TestCase type with `import type`. asset-worker/src/worker.ts is ours: it declares the types",
+      "that handler.ts imports from the upstream entrypoint. fixtures/.../html-handling.test.d.ts is",
+      "ours: the TestCase type at the path the test-cases files import it from.",
       "",
     ].join("\n"),
   );

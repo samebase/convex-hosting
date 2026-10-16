@@ -37,6 +37,34 @@ jobs:
             exit 1
           }
 
+  # packages/convex-hosting/src/workers-shared is copied from cloudflare/workers-sdk at the commit
+  # in its UPSTREAM file. The sync script writes the copy again, so a hand edit of a copied file
+  # fails here; the `synced:` date line is the script's own.
+  workers-shared-sync:
+    name: workers-shared-sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+
+      - name: Compare the copied files with upstream
+        working-directory: packages/convex-hosting
+        run: |
+          node scripts/sync-workers-shared.ts
+          git diff --exit-code -I '^synced: ' -- src/workers-shared || {
+            echo "::error::src/workers-shared differs from upstream. Run node scripts/sync-workers-shared.ts and commit the result."
+            exit 1
+          }
+
   supply-chain:
     name: supply-chain
     runs-on: ubuntu-latest

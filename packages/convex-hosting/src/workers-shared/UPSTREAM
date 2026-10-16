@@ -1,9 +1,12 @@
-Copied from https://github.com/cloudflare/workers-sdk, packages/workers-shared.
+Copied from https://github.com/cloudflare/workers-sdk: packages/workers-shared, and under
+fixtures/ the test cases of fixtures/workers-shared-asset-config.
 License: MIT OR Apache-2.0 (LICENSE-MIT, LICENSE-APACHE).
 commit: f3608290da40c11b248fff40101f30fc295652be
-synced: 2026-10-13
+synced: 2026-10-16
 
 Run `node scripts/sync-workers-shared.ts [<commit>]` from packages/convex-hosting to update.
 Relative import and export specifiers without an extension get .js, for Node's ESM loader.
-Test files import from vite-plus/test instead of vitest. asset-worker/src/worker.ts is ours:
-it declares the types that handler.ts imports from the upstream entrypoint.
+Test files import from vite-plus/test instead of vitest. The test-cases files import their
+TestCase type with `import type`. asset-worker/src/worker.ts is ours: it declares the types
+that handler.ts imports from the upstream entrypoint. fixtures/.../html-handling.test.d.ts is
+ours: the TestCase type at the path the test-cases files import it from.

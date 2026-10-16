@@ -224,7 +224,10 @@ which Cloudflare treats `Sec-Fetch-Mode: navigate` requests this way; the date i
 configuration. When an asset answers, Cloudflare's `handleRequest` computes the status and headers:
 `Cache-Control: public, max-age=0, must-revalidate` (Cloudflare omits it when the request carries
 `Authorization` or `Range`, and so do we), `ETag`, 304 for `If-None-Match`, `_headers` rules,
-`_redirects`, `html_handling`, and the custom 404 page with its body. The query drops
+`_redirects`, `html_handling`, and the custom 404 page with its body. Cloudflare's own cases for
+`html_handling` and path encoding (the test-cases files of `fixtures/workers-shared-asset-config` in
+workers-sdk, copied by the same sync script as the handler) run through `route` in
+`src/component/conformance.test.ts`, with each case's files as a version's entries. The query drops
 `CF-Cache-Status`, which describes a cache we do not run, sets `Cache-Control: no-store` on every
 404, because the deployment's Cloudflare front caches 404 answers on static paths, and returns the
 status, the headers, and the storage URL of the body when the response has one, whatever the status.
