@@ -209,11 +209,13 @@ ignore the unmet-peer warning that pnpm prints; npm refuses the install instead,
 - `worker` selects TanStack's server exports; `browser` selects Web API adapters.
 - `react-dom/server.edge` avoids the browser renderer's `MessageChannel` dependency.
 - `ssr.noExternal` bundles dependencies instead of leaving runtime Node imports.
-- React's Web Stream renderer waits for Suspense, then TanStack's `renderSsrHtmlResponse` handles
-  the buffered HTML, hydration scripts, status, and cleanup. The default streaming handler imports
-  Node stream modules that Convex cannot bundle.
-- React emits a doctype and TanStack's HTML helper adds its own, so the server entry removes
-  React's.
+- `node:stream` resolves to a stub. TanStack's stream renderer imports Node's stream classes at the
+  top of its files for a branch that runs only where React has no Web Stream renderer; on Convex
+  that renderer exists, the branch never runs, and the bundler has no `node:stream`. The stub's
+  classes throw if anything calls them.
+- The server entry is TanStack's own stream handler, so pages stream as they do on a Worker: the
+  document goes out as it renders, and each Suspense boundary or deferred loader value follows in
+  its own chunk. A client that TanStack takes for a bot, by its user agent, gets the whole document.
 - The server entry supplies the missing `URLSearchParams.size` getter on Convex. TanStack needs it
   to normalize URLs with query parameters. Native implementations are left intact.
 
