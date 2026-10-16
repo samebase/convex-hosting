@@ -60,9 +60,9 @@ jobs:
         working-directory: packages/convex-hosting
         run: |
           node scripts/sync-workers-shared.ts
-          # A copied file deleted in the branch comes back untracked; intent-to-add puts it in the diff.
-          git add --intent-to-add -- src/workers-shared
-          git diff --exit-code -I '^synced: ' -- src/workers-shared || {
+          # Staged, the diff shows a file the branch changed, deleted, or added under the folder.
+          git add -A -- src/workers-shared
+          git diff --cached --exit-code -I '^synced: ' -- src/workers-shared || {
             echo "::error::src/workers-shared differs from upstream. Run node scripts/sync-workers-shared.ts and commit the result."
             exit 1
           }
