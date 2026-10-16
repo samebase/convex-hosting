@@ -8,27 +8,18 @@ import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
 const http = httpRouter();
-const toServer = httpAction((_ctx, request) => server.fetch(request));
 
-// Every request that is not a GET goes to the app's server (src/server.ts), as every request that
-// is not a GET or HEAD goes to a Cloudflare Worker. Convex answers HEAD through GET without the body.
-for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
-  http.route({ pathPrefix: "/", method, handler: toServer });
+// Every method, every path: a file for a path that has one (another method than GET or HEAD on it
+// answers 405), the app's server (src/server.ts) for every other path, as a Cloudflare Worker with
+// static assets does. Convex answers HEAD through GET without the body.
+const site = httpAction(serveSite(components.hosting, versionId, server));
+for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
+  http.route({ pathPrefix: "/", method, handler: site });
 }
 // Exact routes for the three auth paths: the Convex Auth component holds the /auth prefix, where it
 // serves the key set, and the longest prefix wins, so the catch-all above never sees them.
 for (const path of ["/auth/signin", "/auth/refresh", "/auth/signout"]) {
-  http.route({ path, method: "POST", handler: toServer });
+  http.route({ path, method: "POST", handler: site });
 }
-
-// A file for a path that has one, the app's server for every other path, as a Cloudflare Worker
-// with static assets does.
-http.route({
-  pathPrefix: "/",
-  method: "GET",
-  handler: httpAction((ctx, request) =>
-    serveSite(ctx, components.hosting, request, versionId, () => server.fetch(request)),
-  ),
-});
 
 export default http;

@@ -77,10 +77,11 @@ function route(
   path: string,
   headers: Record<string, string> = {},
   hasUserWorker = true,
+  method = "GET",
 ) {
   return t.query(api.lib.route, {
     versionId,
-    method: "GET",
+    method,
     url: `https://example.convex.site${path}`,
     headers,
     hasUserWorker,
@@ -515,6 +516,22 @@ describe("route", () => {
     const index = await route(t, "v1", "/index.html", {}, false);
     expect(asset?.status).toBe(200);
     expect(header(asset, "etag")).toBe(header(index.asset, "etag"));
+  });
+
+  test("another method than GET or HEAD on a file answers 405; on a miss, the code or 404", async () => {
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "v1", site);
+    for (const hasUserWorker of [true, false]) {
+      const post = await route(t, "v1", "/index.html", {}, hasUserWorker, "POST");
+      expect(post.asset?.status).toBe(405);
+      expect(post.asset?.bodyUrl).toBeNull();
+    }
+    expect(await route(t, "v1", "/missing", {}, true, "POST")).toEqual({
+      state: "ready",
+      asset: null,
+    });
+    const miss = await route(t, "v1", "/missing", {}, false, "POST");
+    expect(miss.asset?.status).toBe(404);
   });
 
   test("without code, a miss with not_found_handling none answers 404 with no-store", async () => {

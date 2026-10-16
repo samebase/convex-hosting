@@ -40,7 +40,8 @@ async function setup(config = "{}") {
     t.action(async (ctx) => {
       const runMutation = vi.spyOn(ctx, "runMutation");
       const url = `https://example.convex.site${path}`;
-      const response = await serveSite(ctx, component, new Request(url), versionId, render);
+      const worker = render === undefined ? undefined : { fetch: render };
+      const response = await serveSite(component, versionId, worker)(ctx, new Request(url));
       return {
         mutations: runMutation.mock.calls.length,
         status: response.status,

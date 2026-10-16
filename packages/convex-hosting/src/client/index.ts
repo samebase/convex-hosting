@@ -2,32 +2,36 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
 
 /**
- * Answers `request` with the file of version `versionId`, else with the page that `render`
- * returns, else 404. `render` is the Worker script: the code that runs on a miss, with the request
- * in its closure. As on Cloudflare, the presence of code decides how `not_found_handling` applies:
- * with `render`, it applies to navigations only and `render` answers the other misses; without
- * `render`, the site is files only, so it applies to every request.
+ * The handler of the app's site routes, for every method: it answers a request with the file of
+ * version `versionId`, else with what `worker` answers, else 404. `worker` is the Worker script,
+ * the object with `fetch(request)` that the app's server entry exports: the code that runs on a
+ * miss. As on Cloudflare, the presence of code decides how `not_found_handling` applies: with
+ * `worker`, it applies to navigations only and `worker` answers the other misses; without it, the
+ * site is files only, so it applies to every request.
  *
  * A page and a 404 answer `Cache-Control: no-store`. The deployment's Cloudflare front keeps that
  * for a path without an extension and replaces it with a four-hour browser `max-age` for a path
  * with one, so a browser that asks for a script before its upload ended keeps the 404; the deploy
  * order prevents that case, because no page refers to a file that is not uploaded yet.
  */
-export async function serveSite(
-  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
+export function serveSite(
   component: ComponentApi,
-  request: Request,
   versionId: string,
-  render?: () => Promise<Response>,
-): Promise<Response> {
-  const asset = await answer(ctx, component, request, versionId, render !== undefined);
-  if (asset !== null) return asset;
-  // `route` answers every files-only request itself, so this 404 only fails closed.
-  if (render === undefined) return new Response(null, { status: 404, headers: NO_STORE });
-  const page = await render();
-  const headers = new Headers(page.headers);
-  headers.set("Cache-Control", "no-store");
-  return new Response(page.body, { status: page.status, headers });
+  worker?: { fetch(request: Request): Promise<Response> },
+): (
+  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
+  request: Request,
+) => Promise<Response> {
+  return async (ctx, request) => {
+    const asset = await answer(ctx, component, request, versionId, worker !== undefined);
+    if (asset !== null) return asset;
+    // `route` answers every files-only request itself, so this 404 only fails closed.
+    if (worker === undefined) return new Response(null, { status: 404, headers: NO_STORE });
+    const page = await worker.fetch(request);
+    const headers = new Headers(page.headers);
+    headers.set("Cache-Control", "no-store");
+    return new Response(page.body, { status: page.status, headers });
+  };
 }
 
 /**
