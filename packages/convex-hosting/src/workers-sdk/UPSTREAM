@@ -1,7 +1,7 @@
 Copied from https://github.com/cloudflare/workers-sdk, at the paths the files have there:
 packages/workers-shared, and the test cases of fixtures/workers-shared-asset-config.
 License: MIT OR Apache-2.0 (LICENSE-MIT, LICENSE-APACHE).
-commit: f3608290da40c11b248fff40101f30fc295652be
+commit: 855812b79fcb8ee77cac5ab0b01ebc167741951d
 synced: 2026-10-16
 
 Run `node scripts/sync-workers-sdk.ts [<commit>]` from packages/convex-hosting to update.

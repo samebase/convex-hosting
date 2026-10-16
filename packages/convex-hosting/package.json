@@ -58,6 +58,7 @@
     "convex": "catalog:",
     "convex-test": "catalog:",
     "typescript": "catalog:",
+    "undici": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

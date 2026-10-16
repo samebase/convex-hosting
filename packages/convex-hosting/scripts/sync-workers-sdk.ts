@@ -25,11 +25,18 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 
 const REPOSITORY = "https://github.com/cloudflare/workers-sdk.git";
-const UPSTREAM_DIRECTORIES = ["packages/workers-shared", "fixtures/workers-shared-asset-config"];
+const UPSTREAM_DIRECTORIES = [
+  "packages/workers-shared",
+  "fixtures/workers-shared-asset-config",
+  "fixtures/workers-with-assets-only",
+];
 const TARGET = join(import.meta.dirname, "../src/workers-sdk");
 
-/** Files copied from the repository, at their repository path. */
+/** Files copied from the repository, at their repository path. An entry ending in `/` is a folder. */
 const UPSTREAM_FILES = [
+  "fixtures/workers-with-assets-only/public/",
+  "fixtures/workers-with-assets-only/tests/index.test.ts",
+  "fixtures/workers-with-assets-only/wrangler.jsonc",
   "fixtures/workers-shared-asset-config/test-cases/encoding-test-cases.ts",
   "fixtures/workers-shared-asset-config/test-cases/html-handling-test-cases.ts",
   "packages/workers-shared/asset-worker/src/analytics.ts",
@@ -76,6 +83,7 @@ const LOCAL_FILES = [
   "UPSTREAM",
   "packages/workers-shared/asset-worker/src/worker.ts",
   "fixtures/workers-shared-asset-config/html-handling.test.d.ts",
+  "fixtures/shared/src/run-wrangler-long-lived.ts",
 ];
 
 /** A relative specifier in `from "./types"`, `import "./polyfill"`, or `import("./module")`. */
@@ -132,7 +140,9 @@ try {
     const source = join(checkout, file);
     const target = join(TARGET, file);
     mkdirSync(dirname(target), { recursive: true });
-    if (file.endsWith(".ts")) {
+    if (file.endsWith("/")) {
+      cpSync(source, target, { recursive: true });
+    } else if (file.endsWith(".ts")) {
       let contents = addJsExtensions(readFileSync(source, "utf8"));
       if (file.endsWith(".test.ts")) {
         contents = contents.replaceAll('from "vitest"', 'from "vite-plus/test"');

@@ -39,6 +39,17 @@ Do not edit it by hand: CI runs the sync and fails when the folder differs. To u
 node scripts/sync-workers-sdk.ts [<commit>]
 ```
 
+Cloudflare's integration fixtures under `src/workers-sdk/fixtures` run against anonymous local
+Convex deployments, which the Convex CLI starts (the first run downloads the local backend):
+
+```sh
+pnpm run test:fixtures
+```
+
+A test that fails by a stated difference from Cloudflare is listed in
+`packages/convex-hosting/scripts/fixtures-expected-failures.json` with its reason; the run fails
+when a listed test passes or an unlisted test fails.
+
 ## Releasing
 
 1. In a PR, bump `version` in the package's `package.json` and add a `CHANGELOG.md` entry for

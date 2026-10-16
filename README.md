@@ -7,7 +7,8 @@ It works like
 [Cloudflare Workers with static assets](https://developers.cloudflare.com/workers/static-assets/):
 the same `_headers`, `_redirects`, and `.assetsignore` files, the same `html_handling` and
 `not_found_handling` options, and the same responses, computed by Cloudflare's own asset-serving
-code and checked against Cloudflare's own test cases for `html_handling` and path encoding.
+code, checked against Cloudflare's own test cases for `html_handling` and path encoding, and against
+its integration tests for a files-only site, run on a local deployment.
 
 ## Setup
 

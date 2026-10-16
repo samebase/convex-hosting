@@ -11,9 +11,9 @@ code remains.
   - `src/component`: code that runs inside the component on Convex.
   - `src/client`: `serveSite`, which apps call from their `convex/http.ts`.
   - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, its inner step.
-  - `src/workers-sdk`: Cloudflare's asset worker and its test cases, copied from
-    cloudflare/workers-sdk at their upstream paths by `scripts/sync-workers-sdk.ts`. Never edit it
-    by hand.
+  - `src/workers-sdk`: Cloudflare's asset worker, its test cases, and its integration fixtures,
+    copied from cloudflare/workers-sdk at their upstream paths by `scripts/sync-workers-sdk.ts`.
+    Never edit it by hand. `pnpm run test:fixtures` runs the fixtures against local deployments.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
   Start pages in a Convex HTTP action, and the `convex-auth` session helpers.
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with the single-page-application

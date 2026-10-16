@@ -2,12 +2,14 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   fmt: {
-    // src/workers-sdk is copied from cloudflare/workers-sdk; keep its formatting so a sync is a
-    // clean diff.
+    // The copied folders of src/workers-sdk keep their formatting, so a sync is a clean diff; the
+    // files of ours in that tree (fixtures/shared, the TestCase declaration) are formatted.
     ignorePatterns: [
       "**/_generated/**",
       "**/routeTree.gen.ts",
-      "packages/convex-hosting/src/workers-sdk/**",
+      "packages/convex-hosting/src/workers-sdk/packages/**",
+      "packages/convex-hosting/src/workers-sdk/fixtures/workers-shared-asset-config/test-cases/**",
+      "packages/convex-hosting/src/workers-sdk/fixtures/workers-with-assets-only/**",
     ],
     printWidth: 100,
     proseWrap: "always",
@@ -25,7 +27,9 @@ export default defineConfig({
       "**/dist",
       "**/_generated",
       "**/routeTree.gen.ts",
-      "packages/convex-hosting/src/workers-sdk/**",
+      "packages/convex-hosting/src/workers-sdk/packages/**",
+      "packages/convex-hosting/src/workers-sdk/fixtures/workers-shared-asset-config/test-cases/**",
+      "packages/convex-hosting/src/workers-sdk/fixtures/workers-with-assets-only/**",
     ],
     jsPlugins: [
       {
@@ -35,6 +39,9 @@ export default defineConfig({
     ],
     rules: {
       "typescript/no-floating-promises": "error",
+      // tsc never reports a deprecated API (TS6387 is an editor suggestion); the editor does, so
+      // the type-aware lint must.
+      "typescript/no-deprecated": "error",
       // The react plugin does not turn this on by itself.
       "react/rules-of-hooks": "error",
     },
@@ -60,7 +67,27 @@ export default defineConfig({
     // The edge-runtime environment clears `process`; Vitest fork teardown then crashes while
     // restoring `process.exit`. Threads avoid that teardown path.
     pool: "threads",
-    environment: "edge-runtime",
-    include: ["packages/*/src/**/*.test.ts", "examples/*/convex/**/*.test.ts"],
+    projects: [
+      {
+        test: {
+          name: "unit",
+          environment: "edge-runtime",
+          include: ["packages/*/src/**/*.test.ts", "examples/*/convex/**/*.test.ts"],
+          exclude: ["**/node_modules/**", "**/src/workers-sdk/fixtures/**"],
+        },
+      },
+      {
+        // Cloudflare's integration fixtures, copied unchanged, each against an anonymous local
+        // Convex deployment that the fixture's helper starts (see
+        // src/workers-sdk/fixtures/shared/src/run-wrangler-long-lived.ts).
+        test: {
+          name: "fixtures",
+          environment: "node",
+          include: ["packages/convex-hosting/src/workers-sdk/fixtures/*/tests/**/*.test.ts"],
+          hookTimeout: 300_000,
+          testTimeout: 30_000,
+        },
+      },
+    ],
   },
 });
