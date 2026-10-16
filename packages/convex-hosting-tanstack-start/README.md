@@ -50,15 +50,57 @@ build. It covers the default output only, `dist/server/server.js` and `.mjs`: an
 `convex/http.ts` only after a build, so a fresh clone runs `convex-hosting deploy --dev` before its
 first push, as the [README](https://github.com/samebase/convex-hosting#setup) says.
 
-For reactive queries, use the
-[official Convex TanStack integration](https://docs.convex.dev/client/tanstack/tanstack-start/).
-Components use `useSuspenseQuery(convexQuery(...))`; the server entry waits for their HTML, and
-TanStack handles query hydration.
-
 To give the pages data of the request, pass it as `context`: `server.fetch(request, { context })`.
 Start gives it to each route's `beforeLoad` and loader on the server as `serverContext`, typed as
 `requestContext` in Start's `Register`. `fetch` is TanStack's `RequestHandler<Register>`: with a
 registered `requestContext`, `context` is required and has that type.
+
+## Queries and loaders
+
+Data comes through the
+[official Convex TanStack integration](https://docs.convex.dev/client/tanstack/tanstack-start/):
+`@convex-dev/react-query`, `@tanstack/react-query`, and `@tanstack/react-router-ssr-query`, whose
+version follows `@tanstack/react-router`'s line (the example pins `1.167.3` next to router `1.170`).
+`src/router.tsx` is Convex's quickstart setup, as in the
+[example](https://github.com/samebase/convex-hosting/blob/main/examples/tanstack-ssr/src/router.tsx):
+a `QueryClient` whose defaults come from `ConvexQueryClient`, `connect`, the router context, and
+`setupRouterSsrQueryIntegration`.
+
+A route declares its query options once and uses them twice. The loader ensures them, so they are
+fetched in parallel before the render and on a link's intent, and TanStack keeps the current page on
+screen until they are there. The component reads the same options with `useSuspenseQuery`, which the
+server entry awaits, so the first HTML carries the data, and the browser then keeps the query live.
+One `ensureQueryData` per entry: a loop over the record does not typecheck, because each entry has
+its own result type.
+
+```ts
+// DayPage.queries.ts
+export const dayQueries = (date: string) => ({
+  stools: convexQuery(api.stools.list, { trackedAtPrefix: date }),
+  tags: convexQuery(api.tags.list, {}),
+});
+
+// routes/day.$date.tsx
+loader: async ({ context: { queryClient }, params }) => {
+  const q = dayQueries(params.date);
+  await Promise.all([queryClient.ensureQueryData(q.stools), queryClient.ensureQueryData(q.tags)]);
+},
+
+// DayPage.tsx
+const { data: stools } = useSuspenseQuery(dayQueries(date).stools);
+```
+
+The declaration lives next to the page component, not in its module: the loader is eager route code,
+and when it imports the options from the page module, `autoCodeSplitting` puts the page into the
+entry chunk (measured on one app: 648 kB to 909 kB). `useSuspenseQuery` alone also server-renders
+the data; the loader adds the parallel fetch and the preload.
+
+To give the pages data of the request, `src/server.ts` wraps this package's entry and passes it as
+`context`: `handler.fetch(request, { context })`. Start gives it to each route's `beforeLoad` and
+loader on the server as `serverContext`, typed as `requestContext` in Start's `Register`. `fetch` is
+TanStack's `RequestHandler<Register>`: with a registered `requestContext`, `context` is required and
+has that type. Vite's dev server calls `src/server.ts` too, so what it reads off the request holds
+in development.
 
 ## Convex Auth sessions
 
