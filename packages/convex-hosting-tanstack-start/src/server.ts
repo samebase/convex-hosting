@@ -3,10 +3,11 @@
 // TanStack and React, never app code.
 
 import type { Register } from "@tanstack/react-start";
-import { createStartHandler, StartServer, type RequestHandler } from "@tanstack/react-start/server";
-import { renderSsrHtmlResponse } from "@tanstack/react-router/ssr/server";
-import { createElement } from "react";
-import { renderToReadableStream } from "react-dom/server";
+import {
+  createStartHandler,
+  defaultStreamHandler,
+  type RequestHandler,
+} from "@tanstack/react-start/server";
 
 // Convex omits size, which TanStack uses when normalizing query-string URLs.
 if (new URLSearchParams().size === undefined) {
@@ -18,33 +19,14 @@ if (new URLSearchParams().size === undefined) {
   });
 }
 
+// TanStack's own stream handler, as on every other host: React's Web Stream renderer, the
+// document sent as it renders, each Suspense boundary and deferred loader value in a later chunk.
 // Apps call only `fetch(request, { context })`. Start gives `context` to each route's `beforeLoad`
 // and loader on the server as `serverContext`. `context` follows the app's `Register`: with a
 // registered `requestContext`, such as the `convex-auth` entry's, it is required and has that type.
 // The explicit annotation is what the declaration emits, so it names only public entries.
 const server: { fetch: RequestHandler<Register> } = {
-  fetch: createStartHandler((context) => {
-    const { router, responseHeaders, request } = context;
-    return renderSsrHtmlResponse({
-      router,
-      responseHeaders,
-      render: async () => {
-        // Await Suspense with React's Web Stream renderer. TanStack's stream
-        // handler also imports node:stream, which Convex cannot bundle.
-        const stream = await renderToReadableStream(createElement(StartServer, { router }), {
-          signal: request.signal,
-          // The document is sent only when it is complete, so React's progressive reveal of a
-          // large Suspense boundary (a hidden segment plus a script) would add bytes and a frame.
-          progressiveChunkSize: Number.POSITIVE_INFINITY,
-          ...(router.options.ssr?.nonce === undefined ? {} : { nonce: router.options.ssr.nonce }),
-        });
-        await stream.allReady;
-        const html = await new Response(stream).text();
-        // React emits a doctype; TanStack's HTML helper adds its own.
-        return html.replace(/^<!DOCTYPE html>/i, "");
-      },
-    });
-  }),
+  fetch: createStartHandler(defaultStreamHandler),
 };
 
 export default server;
