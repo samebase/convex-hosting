@@ -143,7 +143,10 @@ export default http;
 
 /**
  * Waits until `npx convex dev` has written the deployment into `.env.local`, which `deploy --dev`
- * reads, and the site answers HTTP. The backend listens before the file is written.
+ * reads, the site answers HTTP, and its first push has ended: it fails to resolve the version
+ * module that only the deploy writes, as the README says, or it succeeds on a reused project. The
+ * backend listens before the file is written, and a deploy that bundles while that push still runs
+ * sees files change under it.
  */
 async function waitForDeployment(
   project: string,
@@ -154,7 +157,10 @@ async function waitForDeployment(
   for (let attempt = 0; attempt < 600; attempt++) {
     if (exited()) throw new Error(`npx convex dev exited:\n${getOutput()}`);
     try {
-      if (readFileSync(join(project, ".env.local"), "utf8").includes("CONVEX_DEPLOYMENT=")) {
+      if (
+        readFileSync(join(project, ".env.local"), "utf8").includes("CONVEX_DEPLOYMENT=") &&
+        /Could not resolve|Convex functions ready/.test(getOutput())
+      ) {
         await fetch(url);
         return;
       }
@@ -208,6 +214,9 @@ export async function runWranglerDev(
       String(cloudPort),
       "--local-site-port",
       String(sitePort),
+      // The deploy's push writes convex/_generated; a second writer races its bundling.
+      "--codegen",
+      "disable",
     ],
     { cwd: project, env: CLI_ENV, stdio: ["ignore", "pipe", "pipe"] },
   );
