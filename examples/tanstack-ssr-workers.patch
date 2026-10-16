@@ -313,14 +313,13 @@ index c1fa9a2d4c1224a8cbda8132e633b7b066e137b4..3e6badb4024aed63c5e612137eb9fc19
      tanstackStart({ pages: [{ path: "/about", prerender: { enabled: true, crawlLinks: false } }] }),
 diff --git a/wrangler.jsonc b/wrangler.jsonc
 new file mode 100644
-index 0000000000000000000000000000000000000000..0514290649d7d95f8a16f528db32522d804ba834
+index 0000000000000000000000000000000000000000..48c90a9e2b5789638c5baf349fe0cd88dcbbb282
 --- /dev/null
 +++ b/wrangler.jsonc
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,8 @@
 +{
 +  "$schema": "node_modules/wrangler/config-schema.json",
 +  "compatibility_date": "2026-10-01",
-+  "compatibility_flags": ["nodejs_compat"],
 +  "main": "src/server.ts",
 +  "preview_urls": true,
 +  // `wrangler preview`, the Workers Builds preview command, requires this block.
