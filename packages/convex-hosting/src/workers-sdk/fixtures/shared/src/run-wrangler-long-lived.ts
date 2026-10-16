@@ -4,7 +4,7 @@
 // real `convex-hosting deploy --dev` for the fixture's assets with the options of its
 // `wrangler.jsonc`, and the address the deployment serves the site at.
 import { execFile, spawn } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -15,6 +15,18 @@ import { promisify } from "node:util";
 const PACKAGE = resolve(import.meta.dirname, "../../../../..");
 
 const HOST = "127.0.0.1";
+
+/**
+ * The environment of the Convex CLI calls: this process's, without any Convex selector or
+ * credential the shell may carry (`CONVEX_DEPLOYMENT`, a deploy key, a self-hosted URL), which the
+ * CLI would resolve before the anonymous mode; the fixture runs on its own local deployment.
+ */
+const CLI_ENV = {
+  ...Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith("CONVEX_")),
+  ),
+  CONVEX_AGENT_MODE: "anonymous",
+};
 
 /** The fields of a fixture's `wrangler.jsonc` that decide how its assets are served. */
 type WranglerConfig = {
@@ -129,17 +141,29 @@ export default http;
   }
 }
 
-async function waitForHttp(url: string, getOutput: () => string, exited: () => boolean) {
+/**
+ * Waits until `npx convex dev` has written the deployment into `.env.local`, which `deploy --dev`
+ * reads, and the site answers HTTP. The backend listens before the file is written.
+ */
+async function waitForDeployment(
+  project: string,
+  url: string,
+  getOutput: () => string,
+  exited: () => boolean,
+) {
   for (let attempt = 0; attempt < 600; attempt++) {
     if (exited()) throw new Error(`npx convex dev exited:\n${getOutput()}`);
     try {
-      await fetch(url);
-      return;
+      if (readFileSync(join(project, ".env.local"), "utf8").includes("CONVEX_DEPLOYMENT=")) {
+        await fetch(url);
+        return;
+      }
     } catch {
-      await new Promise((r) => setTimeout(r, 200));
+      // Not yet.
     }
+    await new Promise((r) => setTimeout(r, 200));
   }
-  throw new Error(`No HTTP answer at ${url}:\n${getOutput()}`);
+  throw new Error(`No deployment at ${url} after two minutes:\n${getOutput()}`);
 }
 
 /**
@@ -163,7 +187,9 @@ export async function runWranglerDev(
     throw new Error(`${basename(folder)} has a Worker script; only files-only fixtures run here.`);
   }
   const name = basename(folder);
-  const project = join(tmpdir(), "convex-hosting-fixtures", name);
+  // One project per run: a second run in parallel, from another worktree too, must not share
+  // files, links, or the backend's state. `stop` removes it.
+  const project = mkdtempSync(join(tmpdir(), `convex-hosting-fixture-${name}-`));
   writeProject(project, name);
   const convexBin = join(
     createRequire(join(project, "package.json")).resolve("convex/package.json"),
@@ -183,11 +209,7 @@ export async function runWranglerDev(
       "--local-site-port",
       String(sitePort),
     ],
-    {
-      cwd: project,
-      env: { ...process.env, CONVEX_AGENT_MODE: "anonymous" },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
+    { cwd: project, env: CLI_ENV, stdio: ["ignore", "pipe", "pipe"] },
   );
   dev.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
   dev.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
@@ -195,10 +217,12 @@ export async function runWranglerDev(
   const stop = async () => {
     dev.kill("SIGINT");
     await devExited;
+    rmSync(project, { recursive: true, force: true });
   };
 
   try {
-    await waitForHttp(
+    await waitForDeployment(
+      project,
       `http://${HOST}:${sitePort}/`,
       () => output,
       () => exited,
@@ -219,7 +243,7 @@ export async function runWranglerDev(
     }
     const { stdout, stderr } = await promisify(execFile)(process.execPath, deployArgs, {
       cwd: project,
-      env: { ...process.env, CONVEX_AGENT_MODE: "anonymous" },
+      env: CLI_ENV,
       maxBuffer: 16 * 1024 * 1024,
     });
     output += stdout + stderr;
