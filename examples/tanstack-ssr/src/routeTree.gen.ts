@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as SigninRouteImport } from './routes/signin'
+import { Route as StreamRouteImport } from './routes/stream'
 import { Route as AuthedTodosRouteImport } from './routes/_authed/todos'
 
 const IndexRoute = IndexRouteImport.update({
@@ -34,6 +35,11 @@ const SigninRoute = SigninRouteImport.update({
   path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StreamRoute = StreamRouteImport.update({
+  id: '/stream',
+  path: '/stream',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthedTodosRoute = AuthedTodosRouteImport.update({
   id: '/todos',
   path: '/todos',
@@ -44,12 +50,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/signin': typeof SigninRoute
+  '/stream': typeof StreamRoute
   '/todos': typeof AuthedTodosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/signin': typeof SigninRoute
+  '/stream': typeof StreamRoute
   '/todos': typeof AuthedTodosRoute
 }
 export interface FileRoutesById {
@@ -58,14 +66,22 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/about': typeof AboutRoute
   '/signin': typeof SigninRoute
+  '/stream': typeof StreamRoute
   '/_authed/todos': typeof AuthedTodosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/signin' | '/todos'
+  fullPaths: '/' | '/about' | '/signin' | '/stream' | '/todos'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/signin' | '/todos'
-  id: '__root__' | '/' | '/_authed' | '/about' | '/signin' | '/_authed/todos'
+  to: '/' | '/about' | '/signin' | '/stream' | '/todos'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authed'
+    | '/about'
+    | '/signin'
+    | '/stream'
+    | '/_authed/todos'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -73,6 +89,7 @@ export interface RootRouteChildren {
   AuthedRoute: typeof AuthedRouteWithChildren
   AboutRoute: typeof AboutRoute
   SigninRoute: typeof SigninRoute
+  StreamRoute: typeof StreamRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -105,6 +122,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SigninRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/stream': {
+      id: '/stream'
+      path: '/stream'
+      fullPath: '/stream'
+      preLoaderRoute: typeof StreamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authed/todos': {
       id: '/_authed/todos'
       path: '/todos'
@@ -131,6 +155,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthedRoute: AuthedRouteWithChildren,
   AboutRoute: AboutRoute,
   SigninRoute: SigninRoute,
+  StreamRoute: StreamRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
