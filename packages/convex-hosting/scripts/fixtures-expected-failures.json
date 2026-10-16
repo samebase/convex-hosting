@@ -1,3 +1,1 @@
-{
-  "[Workers + Assets] static-assets only site` > should return 405 for non-GET or HEAD requests if asset route exists": "A files-only site registers the GET route alone, and Convex's router answers 404 for a method without a route; Cloudflare's assets-only Worker answers 405. Stated in docs/design.md, Stated, not solved."
-}
+{}

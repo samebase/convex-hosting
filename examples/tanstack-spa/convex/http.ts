@@ -6,10 +6,11 @@ import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
-http.route({
-  pathPrefix: "/",
-  method: "GET",
-  handler: httpAction((ctx, request) => serveSite(ctx, components.hosting, request, versionId)),
-});
+// Every method, every path, as a Cloudflare Worker without a script: a file for a path that has
+// one, else the single-page fallback; another method than GET or HEAD on a file answers 405.
+const site = httpAction((ctx, request) => serveSite(ctx, components.hosting, request, versionId));
+for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
+  http.route({ pathPrefix: "/", method, handler: site });
+}
 
 export default http;

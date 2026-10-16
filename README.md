@@ -32,7 +32,9 @@ Requires `convex` 1.46 or later.
    export default app;
    ```
 
-3. `convex/http.ts` has one `GET` route for the site. Convex answers `HEAD` through it.
+3. `convex/http.ts` sends every method to `serveSite`, as every request reaches a Cloudflare Worker:
+   a file answers GET, another method on a file answers 405, and Convex answers `HEAD` through the
+   GET handler.
 
    ```ts
    import { httpRouter } from "convex/server";
@@ -43,11 +45,12 @@ Requires `convex` 1.46 or later.
 
    const http = httpRouter();
 
-   http.route({
-     pathPrefix: "/",
-     method: "GET",
-     handler: httpAction((ctx, request) => serveSite(ctx, components.hosting, request, versionId)),
-   });
+   const site = httpAction((ctx, request) =>
+     serveSite(ctx, components.hosting, request, versionId),
+   );
+   for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
+     http.route({ pathPrefix: "/", method, handler: site });
+   }
 
    export default http;
    ```
@@ -240,14 +243,15 @@ files for a year, add a `_headers` rule:
 ## Routing
 
 `serveSite` answers with the file that matches, else with the page that `render` returns (see
-[Server-rendered pages](#server-rendered-pages)), else 404. `render` is the code that runs on a
-miss, with the request in its closure. Everything it returns gets `Cache-Control: no-store`, and so
-does a 404, because the `*.convex.site` front caches paths with an extension. The front keeps
-`no-store` for a path without an extension and replaces it with a four-hour browser `max-age` for a
-path with one, so a browser that asks for a script before its upload ended keeps the 404; the deploy
-order prevents that case, because no page refers to a file that is not uploaded yet. When the
-version does not exist or is still uploading, it answers 404 naming the version. At the first
-request for a new version, it marks the version live.
+[Server-rendered pages](#server-rendered-pages)), else 404. Another method than GET or HEAD on a
+path that has a file answers 405, as on Cloudflare; on any other path it goes to `render`, else 404.
+`render` is the code that runs on a miss, with the request in its closure. Everything it returns
+gets `Cache-Control: no-store`, and so does a 404, because the `*.convex.site` front caches paths
+with an extension. The front keeps `no-store` for a path without an extension and replaces it with a
+four-hour browser `max-age` for a path with one, so a browser that asks for a script before its
+upload ended keeps the 404; the deploy order prevents that case, because no page refers to a file
+that is not uploaded yet. When the version does not exist or is still uploading, it answers 404
+naming the version. At the first request for a new version, it marks the version live.
 
 As on Cloudflare, the presence of code decides where `not_found_handling` (the single-page fallback
 or the 404 page) applies:

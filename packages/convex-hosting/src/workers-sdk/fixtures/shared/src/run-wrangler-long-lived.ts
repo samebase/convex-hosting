@@ -101,11 +101,10 @@ import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
-http.route({
-  pathPrefix: "/",
-  method: "GET",
-  handler: httpAction((ctx, request) => serveSite(ctx, components.hosting, request, versionId)),
-});
+const site = httpAction((ctx, request) => serveSite(ctx, components.hosting, request, versionId));
+for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
+  http.route({ pathPrefix: "/", method, handler: site });
+}
 
 export default http;
 `,

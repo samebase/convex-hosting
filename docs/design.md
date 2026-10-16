@@ -181,12 +181,13 @@ it.
 
 ## Serve
 
-The app's `convex/http.ts` has one `GET` route with `pathPrefix: "/"`, one `pathPrefix: "/"` route
-per other method that calls the app's server directly, as every request that is not a GET or HEAD
-goes to a Cloudflare Worker, and one exact `POST` route per `/auth` path: the Convex Auth component
-holds the `/auth` prefix, where it serves the key set, and Convex picks the longest matching prefix,
-so only an exact route reaches the app there. Convex answers `HEAD` through the `GET` handler and
-drops the body.
+The app's `convex/http.ts` has one `pathPrefix: "/"` route per method, GET and the five others
+Convex routes, all to `serveSite`, because every request reaches a Cloudflare Worker's asset router:
+a file answers GET, another method on a file answers 405, and a request that matches no file goes to
+the app's server. A server-rendered app with Convex Auth adds one exact `POST` route per `/auth`
+path: the Convex Auth component holds the `/auth` prefix, where it serves the key set, and Convex
+picks the longest matching prefix, so only an exact route reaches the app there. Convex answers
+`HEAD` through the `GET` handler and drops the body.
 
 ```ts
 import { serveSite } from "@samebase/convex-hosting";
@@ -331,9 +332,6 @@ place for those.
   nothing is deleted until the next deploy.
 - An upload that took a stored file from `knownFiles` loses it only if two switches happen during
   that one upload; it fails with a message that says so, and a retry works.
-- The site route is `GET`; a `POST` or `OPTIONS` to an asset path reaches the app, where
-  Cloudflare's assets-only mode would answer 405. The app is the Worker. The fixture test for the
-  405 is an expected failure.
 - No `run_worker_first`, no `base_path`, no selectable compatibility date: an app that needs its
   route to win over an asset registers an exact route or a longer prefix.
 - No upload retry: a transient storage failure fails the deploy, and the next deploy reuses every
