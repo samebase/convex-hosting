@@ -227,7 +227,13 @@ configuration. When an asset answers, Cloudflare's `handleRequest` computes the 
 `_redirects`, `html_handling`, and the custom 404 page with its body. Cloudflare's own cases for
 `html_handling` and path encoding (the test-cases files of `fixtures/workers-shared-asset-config` in
 workers-sdk, copied by the same sync script as the handler) run through `route` in
-`src/component/conformance.test.ts`, with each case's files as a version's entries. The query drops
+`src/component/conformance.test.ts`, with each case's files as a version's entries. Cloudflare's
+integration fixtures for static assets (`fixtures/workers-with-assets-only` in workers-sdk, copied
+unchanged with their `public/` folders) run against the whole path an app takes: our implementation
+of the helper they import to start `wrangler dev` starts an anonymous local Convex deployment,
+deploys the fixture's assets with `convex-hosting deploy --dev`, and returns the site's address.
+`scripts/fixtures-expected-failures.json` lists each test that fails by a stated difference from
+Cloudflare, and the run fails when the list and the outcome disagree. The query drops
 `CF-Cache-Status`, which describes a cache we do not run, sets `Cache-Control: no-store` on every
 404, because the deployment's Cloudflare front caches 404 answers on static paths, and returns the
 status, the headers, and the storage URL of the body when the response has one, whatever the status.
@@ -326,7 +332,8 @@ place for those.
 - An upload that took a stored file from `knownFiles` loses it only if two switches happen during
   that one upload; it fails with a message that says so, and a retry works.
 - The site route is `GET`; a `POST` or `OPTIONS` to an asset path reaches the app, where
-  Cloudflare's assets-only mode would answer 405. The app is the Worker.
+  Cloudflare's assets-only mode would answer 405. The app is the Worker. The fixture test for the
+  405 is an expected failure.
 - No `run_worker_first`, no `base_path`, no selectable compatibility date: an app that needs its
   route to win over an asset registers an exact route or a longer prefix.
 - No upload retry: a transient storage failure fails the deploy, and the next deploy reuses every

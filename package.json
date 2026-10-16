@@ -4,11 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r run build",
-    "check": "vp fmt --check && vp lint && pnpm run typecheck && vp test run",
+    "check": "vp fmt --check && vp lint && pnpm run typecheck && vp test run --project unit",
     "examples:diff": "git diff-tree -p --full-index HEAD:examples/tanstack-ssr HEAD:examples/tanstack-ssr-workers > examples/tanstack-ssr-workers.patch",
     "format": "vp fmt",
     "lint": "vp lint",
-    "test": "vp test",
+    "test": "vp test --project unit",
+    "test:fixtures": "node packages/convex-hosting/scripts/test-fixtures.ts",
     "typecheck": "pnpm -r run typecheck"
   },
   "devDependencies": {
