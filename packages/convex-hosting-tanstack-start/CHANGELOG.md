@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0
+
+- Pages stream, as on a Cloudflare Worker: the server entry is TanStack's own stream handler, the
+  document goes out as it renders, and each Suspense boundary or deferred loader value follows in
+  its own chunk. The entry no longer waits for the whole render, and the `progressiveChunkSize`
+  override of 0.6.0 is gone with it. `convexSsr()` resolves `node:stream` to a stub for the server
+  build: TanStack imports Node's stream classes for a branch that never runs where React's Web
+  Stream renderer exists, and Convex's bundler had nothing to resolve them to.
+
 ## 0.8.0
 
 - The published manifest no longer lists `vite` in `devDependencies`. 0.5.0 to 0.7.0 listed it as
