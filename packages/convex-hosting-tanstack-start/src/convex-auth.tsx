@@ -33,8 +33,7 @@ import { createContext, useContext, useEffect, useRef, type ReactNode } from "re
 
 /**
  * The request context of a page render: the session's access token, or `null` without one. The
- * `convex/` folder is its own TypeScript program and nothing in it imports this entry, so
- * `convex/http.ts` loads the registration below with `import type {} from ".../convex-auth"`.
+ * app's `src/server.ts` reads it off the cookies and passes it to the server entry.
  */
 interface RequestContext {
   token: string | null;
@@ -105,8 +104,8 @@ function ReleaseWhenSignedOut({ client }: { client: ConvexReactClient }) {
  *
  * Convex Auth reports loading during the server render and the hydration, so the token of the
  * server render decides until the provider settles: a string means that the server rendered as the
- * user, and `null` that it found no session. The Vite dev server renders without a request context,
- * so it has no token. Both renders read the same token, so the hydration matches.
+ * user, and `null` that it found no session; a render without a request context has none. Both
+ * renders read the same token, so the hydration matches.
  */
 function useSignedIn(): boolean | undefined {
   const token = useContext(SessionToken);

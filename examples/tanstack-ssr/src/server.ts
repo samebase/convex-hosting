@@ -6,10 +6,10 @@ import { api } from "../convex/_generated/api.js";
 const convexUrl: string = import.meta.env.VITE_CONVEX_URL;
 const convex = new ConvexHttpClient(convexUrl);
 
-// Runs when no file matches the path: on Convex, convex/http.ts calls it; in development, Vite's dev
-// server does; on Cloudflare, it is the Worker. TanStack Start renders the page, including its own
-// 404 page.
-export default {
+// Answers every request that no file answers: on Convex, convex/http.ts calls it; in development,
+// Vite's dev server does; on Cloudflare, it is the Worker. TanStack Start renders the page, including
+// its own 404 page.
+const server = {
   async fetch(request: Request) {
     const url = new URL(request.url);
     // `Secure` when the browser reached the site over HTTPS. A local backend, Vite's dev server, and
@@ -49,3 +49,5 @@ export default {
     return new Response(page.body, { status: page.status, headers });
   },
 };
+
+export default server;

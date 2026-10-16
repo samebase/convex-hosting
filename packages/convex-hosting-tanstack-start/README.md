@@ -23,14 +23,19 @@ Create `src/server.ts`, which Vite builds as the server entry:
 export { default } from "@samebase/convex-hosting-tanstack-start/server";
 ```
 
-In `convex/http.ts`, import the server build that Vite emits from `src/server.ts`, and let
-`serveSite` serve the uploaded files and render every other path with it:
+In `convex/http.ts`, import the server build that Vite emits from `src/server.ts`. `serveSite`
+serves the uploaded files for GET and renders every other path with it; every other method goes to
+it directly, as every request that is not a GET or HEAD goes to a Cloudflare Worker:
 
 ```ts
 // Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
+const toServer = httpAction((_ctx, request) => server.fetch(request));
+for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
+  http.route({ pathPrefix: "/", method, handler: toServer });
+}
 http.route({
   pathPrefix: "/",
   method: "GET",
@@ -97,13 +102,6 @@ The declaration lives next to the page component, not in its module: the loader 
 and when it imports the options from the page module, `autoCodeSplitting` puts the page into the
 entry chunk (measured on one app: 648 kB to 909 kB). `useSuspenseQuery` alone also server-renders
 the data; the loader adds the parallel fetch and the preload.
-
-To give the pages data of the request, `src/server.ts` wraps this package's entry and passes it as
-`context`: `handler.fetch(request, { context })`. Start gives it to each route's `beforeLoad` and
-loader on the server as `serverContext`, typed as `requestContext` in Start's `Register`. `fetch` is
-TanStack's `RequestHandler<Register>`: with a registered `requestContext`, `context` is required and
-has that type. Vite's dev server calls `src/server.ts` too, so what it reads off the request holds
-in development.
 
 ## Convex Auth sessions
 
