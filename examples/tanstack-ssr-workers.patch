@@ -291,7 +291,7 @@ index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f
    }
  }
 diff --git a/src/server.ts b/src/server.ts
-index 0fb4ae112e74758103f7fddbc7462fe0bff3daef..84f75370ee301a5bdca832f19c2ab6ce401da6cd 100644
+index 53ec229250df1e5c2dd177e048570200ddb852f7..71fce4a6529216c78be6d64b645bb145ffd48687 100644
 --- a/src/server.ts
 +++ b/src/server.ts
 @@ -1,5 +1,5 @@
@@ -301,15 +301,6 @@ index 0fb4ae112e74758103f7fddbc7462fe0bff3daef..84f75370ee301a5bdca832f19c2ab6ce
  import { ConvexHttpClient } from "convex/browser";
  import { api } from "../convex/_generated/api.js";
  
-@@ -44,6 +44,8 @@ export default {
-     const page = await handler.fetch(request, { context: { token } });
-     const headers = new Headers(page.headers);
-     cookies.applyTo(headers);
-+    // Session-bearing HTML must never be reused by a cache, the rule `serveSite` applies on Convex.
-+    headers.set("Cache-Control", "no-store");
-     return new Response(page.body, { status: page.status, headers });
-   },
- };
 diff --git a/vite.config.ts b/vite.config.ts
 index c1fa9a2d4c1224a8cbda8132e633b7b066e137b4..3e6badb4024aed63c5e612137eb9fc19df6cbb9c 100644
 --- a/vite.config.ts

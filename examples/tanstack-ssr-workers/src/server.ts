@@ -44,7 +44,7 @@ export default {
     const page = await handler.fetch(request, { context: { token } });
     const headers = new Headers(page.headers);
     cookies.applyTo(headers);
-    // Session-bearing HTML must never be reused by a cache, the rule `serveSite` applies on Convex.
+    // Session-bearing HTML must never be reused by a cache. On Convex, `serveSite` sets it too.
     headers.set("Cache-Control", "no-store");
     return new Response(page.body, { status: page.status, headers });
   },
