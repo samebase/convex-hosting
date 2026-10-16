@@ -7,7 +7,7 @@ import { api } from "../../../convex/_generated/api.js";
 export const Route = createFileRoute("/_authed/todos")({
   // On the server, the query runs with the token of the session cookie.
   loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(convexQuery(api.todos.list, {}));
+    await context.queryClient.query(convexQuery(api.todos.list, {}));
   },
   component: Todos,
 });

@@ -78,8 +78,9 @@ A route declares its query options once and uses them twice. The loader ensures 
 fetched in parallel before the render and on a link's intent, and TanStack keeps the current page on
 screen until they are there. The component reads the same options with `useSuspenseQuery`, which the
 server entry awaits, so the first HTML carries the data, and the browser then keeps the query live.
-One `ensureQueryData` per entry: a loop over the record does not typecheck, because each entry has
-its own result type.
+One `queryClient.query` per entry: a loop over the record does not typecheck, because each entry has
+its own result type. `convexQuery` sets `staleTime: Infinity`, so `query` returns the cached data
+when it has it and fetches otherwise; TanStack Query 5.103 deprecates `ensureQueryData` for it.
 
 ```ts
 // DayPage.queries.ts
@@ -91,7 +92,7 @@ export const dayQueries = (date: string) => ({
 // routes/day.$date.tsx
 loader: async ({ context: { queryClient }, params }) => {
   const q = dayQueries(params.date);
-  await Promise.all([queryClient.ensureQueryData(q.stools), queryClient.ensureQueryData(q.tags)]);
+  await Promise.all([queryClient.query(q.stools), queryClient.query(q.tags)]);
 },
 
 // DayPage.tsx

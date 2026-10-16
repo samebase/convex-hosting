@@ -25,7 +25,7 @@ export const Route = createRootRouteWithContext<{
     // A visitor without a session has no user. The build's prerender of /about has none either,
     // and must not query Convex.
     if (context.token) {
-      await context.queryClient.ensureQueryData(convexQuery(api.users.me, {}));
+      await context.queryClient.query(convexQuery(api.users.me, {}));
     }
   },
   head: () => ({
