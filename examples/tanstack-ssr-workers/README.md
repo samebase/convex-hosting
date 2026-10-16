@@ -23,10 +23,10 @@ site needs caps on text length and todos per user.
 - `/about`: a static file from the build. `vite.config.ts` has TanStack Start prerender this page
   only, into `dist/client/about/index.html`, and Cloudflare serves it like any other file: `/about`
   answers 307 to `/about/`, which answers the file with an ETag and
-  `Cache-Control: public, max-age=0, must-revalidate`. The prerender runs through the Worker with a
-  header that makes `src/server.ts` render without a session, so the build sends no query to Convex.
-  A navigation inside the app renders the route in the browser like any other, so a prerendered
-  route keeps no request-time data.
+  `Cache-Control: public, max-age=0, must-revalidate`. The prerender runs through the Worker without
+  cookies, as a signed-out request, and sends no query to Convex. A navigation inside the app
+  renders the route in the browser like any other, so a prerendered route keeps no request-time
+  data.
 - `/`: rendered per request, and needs no session. The first HTML response contains the latest
   twenty todos of all users with their authors from `todos.latest`, and the list stays live after
   React hydrates.

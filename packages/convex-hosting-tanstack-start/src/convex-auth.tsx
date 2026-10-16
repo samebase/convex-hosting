@@ -1,6 +1,6 @@
 // Convex Auth cookie sessions in a TanStack Start app: the session's access token comes into the
-// render as `context: { token }` (from `convex/http.ts` on Convex, from the Worker on Cloudflare),
-// the root route reads it, the provider starts from it, and the gate and the header follow it.
+// render as `context: { token }` from the app's `src/server.ts`, on every host, the root route reads
+// it, the provider starts from it, and the gate and the header follow it.
 //
 // Nothing here is about hosting. This is the TanStack Start integration that Convex Auth does not
 // ship (it ships `@convex-dev/auth/nextjs`), and every line of it runs unchanged on a Cloudflare

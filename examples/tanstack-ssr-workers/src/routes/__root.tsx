@@ -22,9 +22,9 @@ export const Route = createRootRouteWithContext<{
 }>()({
   beforeLoad: sessionBeforeLoad,
   loader: async ({ context }) => {
-    // The token is undefined without a request context, as in the build's prerender of /about,
-    // which must not query Convex.
-    if (context.token !== undefined) {
+    // A visitor without a session has no user. The build's prerender of /about has none either,
+    // and must not query Convex.
+    if (context.token) {
       await context.queryClient.ensureQueryData(convexQuery(api.users.me, {}));
     }
   },

@@ -4,8 +4,8 @@ Live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site), de
 
 TanStack Start pages rendered inside a Convex HTTP action, with
 [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies.
-`convex/http.ts` serves the browser files with `serveSite` and renders every other path in its
-`render` callback with the server build, through
+`convex/http.ts` serves the browser files with `serveSite` and hands every other path to the server
+build of `src/server.ts`, which renders it through
 [`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start). The
 example has its own schema, so it needs its own Convex project.
 
@@ -36,14 +36,14 @@ site needs caps on text length and todos per user.
 ## Sessions
 
 The refresh token lives in an httpOnly cookie; browser code holds only the access token, which
-expires after 60 seconds. For each page, `convex/http.ts` reads the cookies, refreshes the access
+expires after 60 seconds. For each page, `src/server.ts` reads the cookies, refreshes the access
 token when it expires within 10 seconds (the refresh rotates both cookies), renders the page with
-`server.fetch(request, { context: { token } })`, and returns the page with the rotated cookies. The
+`handler.fetch(request, { context: { token } })`, and returns the page with the rotated cookies. The
 rest comes from the adapter's `convex-auth` entry. The root route's `beforeLoad`,
 `sessionBeforeLoad`, gives the token to the Convex HTTP client of the server render, so the page's
 queries run as the user. In the browser, `SessionProvider` wraps Convex Auth's
 `ConvexAuthNextjsProvider` (it contains no Next.js code), which starts from the token of the server
-render and calls `POST /auth/signin` and `/auth/refresh` in `convex/http.ts`. The sign-out button
+render and calls `POST /auth/signin` and `/auth/refresh` in `src/server.ts`. The sign-out button
 calls `/auth/signout` through the adapter's `useSignOutSession`, which clears the session and
 reloads only when the route succeeded, and otherwise shows that sign-out failed. `expectAuth` makes
 the browser's Convex client wait for a token before its first subscription, so a page rendered as
@@ -54,20 +54,21 @@ none. `expectAuth` holds queries only before the first authentication, so sign-o
 
 The example signs in anonymously: each sign-in creates a user. Password or OAuth sign-in changes the
 provider in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in
-`convex/http.ts`, and the button on `/signin`. The other routes stay the same.
+`src/server.ts`, and the button on `/signin`. The other routes stay the same.
 
 ## Where code goes
 
-TanStack Start is the renderer here, and Convex is the backend. `convex/http.ts` is the server
-entry, what Nitro or Node is on another host: it serves the files, reads the cookies, gives the
-render its request context, and returns the page.
+TanStack Start is the renderer here, and Convex is the backend. `src/server.ts` is the server entry,
+what the Worker is on Cloudflare: it answers the `/auth` routes, reads the cookies, gives the render
+its request context, and returns the page. `convex/http.ts` serves the files and calls it for
+everything else; Vite's dev server calls it directly.
 
 - Pages, loaders, `head`, and prerender live in `src/routes`.
 - Data and endpoints live in `convex/`. A Convex query or mutation is what a TanStack server
   function would be, with `ctx` and the user's identity, and the browser subscribes to it live. The
-  `/auth` routes are Convex HTTP actions for the same reason.
-- Request work, such as the cookies and the token, happens in `convex/http.ts` before
-  `server.fetch`, not in TanStack middleware.
+  `/auth` routes live in `src/server.ts`, because the session cookies belong to the site's origin.
+- Request work, such as the cookies and the token, happens in `src/server.ts` before
+  `handler.fetch`, not in TanStack middleware.
 - The example has no `createServerFn`, no `routes/api`, and no `createStart` middleware. They would
   run inside the HTTP action and then call Convex over HTTP to do anything.
 - A loader of the server render reaches Convex through the HTTP client with the user's token: the
@@ -120,11 +121,9 @@ hosting component's files go with it. The workflow needs two things once per pro
 
 ## Commands
 
-- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. The proxy in
-  `vite.config.ts` sends `/auth/` to the deployment's `VITE_CONVEX_SITE_URL`, so sign-in and
-  sign-out work and the session cookies belong to the dev origin. Vite renders the pages without the
-  session: `/todos` answers 200 with no todos, and the browser fills it in as the user after
-  hydration, or moves to `/signin` without a session.
+- `pnpm run dev`: Vite's dev server, with `npx convex dev` in another terminal. Vite calls
+  `src/server.ts`, so the `/auth` routes answer on the dev origin and the pages render with the
+  session, as on the deployment.
 - `pnpm run build`: build the browser files into `dist/client` and the server into `dist/server`,
   and prerender `/about`.
 - `pnpm run deploy:dev`: build, upload, and push to the development deployment.

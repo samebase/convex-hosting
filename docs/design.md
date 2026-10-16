@@ -2,8 +2,8 @@
 
 The goal: an app on convex-hosting stays a standard TanStack Start app that can move to Cloudflare
 Workers with almost no changes. The Convex-specific parts are exactly `convex/http.ts`, the
-`src/server.ts` re-export, the `convexSsr()` plugin, `app.use(hosting)`, and the deploy command: the
-files in which the example differs from [the same app on Workers](#the-same-app-on-workers).
+`convexSsr()` plugin, `app.use(hosting)`, and the deploy command: the files in which the example
+differs from [the same app on Workers](#the-same-app-on-workers).
 
 A Convex deployment serves the app's site: the files of a build and, when the app renders pages,
 those pages. It behaves like Cloudflare Workers with static assets, so a developer who knows that
@@ -152,8 +152,8 @@ development deployment, where that version does not exist, until the next `deplo
 deploys belong in CI or a separate checkout.
 
 The server import names the framework's own output, `../dist/server/server.js` for TanStack Start,
-with nothing in between. The adapter declares that module with the type of its own server entry, a
-default export with `fetch(request, ...)`, in its types-only `server-build` entry, which `http.ts`
+with nothing in between. The adapter declares that module as a default export with `fetch(request)`,
+the shape of the app's `src/server.ts`, in its types-only `server-build` entry, which `http.ts`
 loads with `import type {}`, so `http.ts` typechecks before the first build. The declaration covers
 the framework's default output only (`dist/server/server.js`, or `.mjs` without `"type": "module"`);
 an app that changes the output folder or the entry name declares its own path with one wildcard
@@ -181,15 +181,16 @@ it.
 
 ## Serve
 
-The app's `convex/http.ts` has one route, `GET` with `pathPrefix: "/"`. Convex answers `HEAD`
-through the `GET` handler and drops the body. Other methods are the app's own routes, as on
-Cloudflare a `POST` goes to the Worker.
+The app's `convex/http.ts` has one `GET` route with `pathPrefix: "/"`, and one exact `POST` route
+per `/auth` path, which calls the app's server directly. Convex answers `HEAD` through the `GET`
+handler and drops the body. On Cloudflare every method reaches the Worker; here each other method is
+a route of its own.
 
 ```ts
 import { serveSite } from "@samebase/convex-hosting";
 import { versionId } from "../.convex-hosting/version.js";
 
-return serveSite(ctx, components.hosting, request, versionId, render);
+return serveSite(ctx, components.hosting, request, versionId, () => server.fetch(request));
 ```
 
 `serveSite` answers with the file when one matches. Otherwise it answers with the page that the
@@ -385,6 +386,9 @@ are not proposed again.
   route that did something else on a miss.** That something else is `render`: it is the Worker
   script, and its absence is the files-only Worker, so a second entry only gave `hasUserWorker` a
   second source. `serveSite` is the one entry.
+- **The session lines in `convex/http.ts` (adapter 0.2.0 to 0.5.0).** Vite's dev server never ran
+  them, so development rendered every page without the session, and a loader whose query needs the
+  user failed there (issue 40). They moved into `src/server.ts`, which every host calls.
 - **Post-deploy verification through a version meta tag.** Wrangler has none; the push succeeds or
   fails, and the tag forced a Vite plugin and a server wrapper that existed only for it.
 - **A push-time lock check through Convex's schema validation (a literal id in the schema).** The
@@ -415,34 +419,35 @@ static assets, with Convex still the backend. The diff between the two folders, 
 again from the committed folders with `git diff-tree -p --full-index` and fails when it differs from
 the committed file; `pnpm run examples:diff` refreshes it. It covers `convex/http.ts`,
 `app.use(hosting)` in `convex/convex.config.ts` and the generated API that follows it,
-`src/server.ts`, `vite.config.ts`, `package.json`, the README, and the Worker's `wrangler.jsonc`. On
-the Worker, `src/server.ts` holds what `convex/http.ts` holds on Convex, the `/auth` routes and the
-session lines, around TanStack Start's default server entry. Its one addition is a header with which
-the build's prerender skips the session: on Workers the prerender runs through the Worker, on Convex
-through Start's own preview server, which passes no request context.
+`src/server.ts`, `vite.config.ts`, `package.json`, the README, and the Worker's `wrangler.jsonc`.
+`src/server.ts` is the same file on both hosts, the `/auth` routes and the session lines around the
+server entry, but for two lines: the entry it wraps (the adapter's on Convex, TanStack Start's
+default on the Worker) and `Cache-Control: no-store` on rendered pages, which `serveSite` sets on
+Convex. Vite's dev server calls that file too, so development renders with the session on both
+hosts, and the build's prerender runs through it without cookies, as a signed-out request.
 
 ## What an app writes
 
 One row per piece of a TanStack Start app with Convex Auth cookie sessions on this host, with its
 owner since `@samebase/convex-hosting` 0.7.0 and `@samebase/convex-hosting-tanstack-start` 0.4.0.
 
-| Piece                                                     | Owner                                                                                                                        | Why                                                                                                                                                                        |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| File serving, and `no-store` on rendered pages and misses | Hosting package: `serveSite`                                                                                                 | The Cloudflare front caches answers on static-looking paths of every site                                                                                                  |
-| The server entry import and `fetch(request, { context })` | App: `import server from "../dist/server/server.js"`, called in `serveSite`'s `render`                                       | Convex bundles what `http.ts` imports, and the import names the build's own output; `fetch` is TanStack's `RequestHandler<Register>`, so `context` has the registered type |
-| The type of `dist/server/server.js`                       | Adapter: types-only `server-build` entry, loaded by `import type {}`; the app leaves `allowJs` out of `convex/tsconfig.json` | The adapter knows its build's entry; with `allowJs` tsc reads the file instead                                                                                             |
-| `src/server.ts`                                           | App: one line that re-exports the adapter's `server`                                                                         | Start builds its server entry from a file in the app's `src/`                                                                                                              |
-| `convexSsr()`                                             | Adapter, added to the app's `vite.config.ts`                                                                                 | The Vite config is the app's; the settings are the adapter's                                                                                                               |
-| The `requestContext` type                                 | Adapter `convex-auth`, on the `Register` of `@tanstack/react-start`; `convex/http.ts` loads the entry with `import type {}`  | The token is the Convex Auth session's, Start reads that `Register`, and the `convex/` folder is its own program, so it loads the registration itself                      |
-| `expectAuth`                                              | App, in `getRouter`                                                                                                          | The app creates the Convex client                                                                                                                                          |
-| The root `beforeLoad`                                     | Adapter `convex-auth`: `sessionBeforeLoad`                                                                                   | The same lines in every app with this session                                                                                                                              |
-| The provider, plus the release of `expectAuth`            | Adapter `convex-auth`: `SessionProvider`                                                                                     | Convex's provider never releases `expectAuth` for a signed-out visitor                                                                                                     |
-| The gate                                                  | Adapter `convex-auth`: `redirectWithoutSession` and `RedirectWithoutSession`; the app gives the redirect options             | Only the server render has the cookie; the browser follows the provider                                                                                                    |
-| The session state in components                           | Adapter `convex-auth`: `SignedIn` and `SignedOut`                                                                            | Convex's provider reports loading during the server render and the hydration                                                                                               |
-| The cookie session lines in `http.ts`                     | Convex Auth's own API, written in the app                                                                                    | A helper for HTTP actions belongs upstream                                                                                                                                 |
-| The `/auth/*` routes                                      | Convex Auth's own API (`setupConvexAuthServer`), registered by the app                                                       | The handlers are Convex Auth's; the paths are the app's                                                                                                                    |
-| The Convex Auth setup files                               | App, with Convex Auth's own API                                                                                              | The providers and the users table are the app's                                                                                                                            |
-| Deploy and preview commands                               | Hosting package: `convex-hosting deploy`, in the app's scripts and CI                                                        | The upload must run between the build and the push                                                                                                                         |
+| Piece                                                     | Owner                                                                                                                        | Why                                                                                                                                              |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| File serving, and `no-store` on rendered pages and misses | Hosting package: `serveSite`                                                                                                 | The Cloudflare front caches answers on static-looking paths of every site                                                                        |
+| The server entry import and `fetch(request)`              | App: `import server from "../dist/server/server.js"`, called in `serveSite`'s `render` and by the `/auth` routes             | Convex bundles what `http.ts` imports, and the import names the build's own output                                                               |
+| The type of `dist/server/server.js`                       | Adapter: types-only `server-build` entry, loaded by `import type {}`; the app leaves `allowJs` out of `convex/tsconfig.json` | The declaration is the shape of the app's `src/server.ts`, `{ fetch(request) }`; with `allowJs` tsc reads the file instead                       |
+| `src/server.ts`                                           | App: the session lines and the `/auth` routes around the adapter's `server`; one re-export line without sessions             | Start builds its server entry from a file in the app's `src/`, and Vite's dev server calls that file, so what runs there runs in development too |
+| `convexSsr()`                                             | Adapter, added to the app's `vite.config.ts`                                                                                 | The Vite config is the app's; the settings are the adapter's                                                                                     |
+| The `requestContext` type                                 | Adapter `convex-auth`, on the `Register` of `@tanstack/react-start`                                                          | The token is the Convex Auth session's, and Start reads that `Register`                                                                          |
+| `expectAuth`                                              | App, in `getRouter`                                                                                                          | The app creates the Convex client                                                                                                                |
+| The root `beforeLoad`                                     | Adapter `convex-auth`: `sessionBeforeLoad`                                                                                   | The same lines in every app with this session                                                                                                    |
+| The provider, plus the release of `expectAuth`            | Adapter `convex-auth`: `SessionProvider`                                                                                     | Convex's provider never releases `expectAuth` for a signed-out visitor                                                                           |
+| The gate                                                  | Adapter `convex-auth`: `redirectWithoutSession` and `RedirectWithoutSession`; the app gives the redirect options             | Only the server render has the cookie; the browser follows the provider                                                                          |
+| The session state in components                           | Adapter `convex-auth`: `SignedIn` and `SignedOut`                                                                            | Convex's provider reports loading during the server render and the hydration                                                                     |
+| The cookie session lines in `src/server.ts`               | Convex Auth's own API, written in the app                                                                                    | A helper for HTTP actions belongs upstream                                                                                                       |
+| The `/auth/*` routes                                      | Convex Auth's own API (`setupConvexAuthServer`), answered by `src/server.ts`; `convex/http.ts` forwards the three `POST`s    | The handlers are Convex Auth's; the paths are the app's, and the cookies belong to the site's origin                                             |
+| The Convex Auth setup files                               | App, with Convex Auth's own API                                                                                              | The providers and the users table are the app's                                                                                                  |
+| Deploy and preview commands                               | Hosting package: `convex-hosting deploy`, in the app's scripts and CI                                                        | The upload must run between the build and the push                                                                                               |
 
 ## What the packages export
 
@@ -461,7 +466,7 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
 | CLI `upload`                                                              | `deploy` itself, inside `npx convex deploy --cmd`    | The step after the build has to be a program that a shell can call                                                                                                    |
 | adapter `vite`: `convexSsr()`                                             | `vite.config.ts` of server-rendered apps             | The `ssr` environment settings that make Start's server build run in Convex's runtime                                                                                 |
 | adapter `server`                                                          | `src/server.ts` of server-rendered apps              | Start's handler with React's Web Stream renderer, typed as TanStack's `RequestHandler<Register>`, so `fetch(request, { context })` takes the app's registered context |
-| adapter `server-build` (types)                                            | `convex/http.ts` of server-rendered apps             | The type of the built server module, derived from `server`                                                                                                            |
+| adapter `server-build` (types)                                            | `convex/http.ts` of server-rendered apps             | The type of the built server module: `{ fetch(request) }`, the shape of the app's `src/server.ts`                                                                     |
 | adapter `convex-auth`: `sessionBeforeLoad`                                | The root route                                       | The same `beforeLoad` in every app with cookie sessions                                                                                                               |
 | adapter `convex-auth`: `SessionProvider`                                  | The root component                                   | Convex Auth's provider with the server token, plus the release of `expectAuth` for a signed-out visitor                                                               |
 | adapter `convex-auth`: `redirectWithoutSession`, `RedirectWithoutSession` | The `_authed` layout                                 | The server render has the cookie; the browser follows the provider; two moments, two pieces                                                                           |

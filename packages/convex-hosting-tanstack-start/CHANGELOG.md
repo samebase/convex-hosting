@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0
+
+- The session lines move from `convex/http.ts` into the app's `src/server.ts`, around this package's
+  `server` entry, so one file serves the Convex HTTP action, Vite's dev server, and a Cloudflare
+  Worker. `convex/http.ts` forwards the `/auth` POST routes and the page render to it with
+  `server.fetch(request)`, passes no context, and no longer loads the `convex-auth` entry. Vite's
+  dev server then renders every page with the session, as production does.
+- The types-only `server-build` entry declares `dist/server/server.js` and `.mjs` as a module whose
+  default export is `{ fetch(request: Request): Promise<Response> }`, the shape of the app's
+  `src/server.ts`, instead of the type of this package's server entry.
+
 ## 0.6.0
 
 - The server entry renders with `progressiveChunkSize: Number.POSITIVE_INFINITY`. It sends the
