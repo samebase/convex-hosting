@@ -265,12 +265,28 @@ describe("deploy keys and selectors", () => {
     const refused = fake(app(site), { env: { CONVEX_DEPLOY_KEY: "prod:x|y" } });
     expect(await main([...DEPLOY, "--preview-name", "pr-7"], refused.cli)).toBe(1);
     expect(refused.events).toEqual([]);
-    expect(refused.logs[refused.logs.length - 1]).toContain("the key set is a prod key");
+    expect(refused.logs[refused.logs.length - 1]).toContain("the key set is a production key");
     const accepted = fake(app(site), {
       env: { CONVEX_DEPLOY_KEY: "preview:t:p|y" },
       push: innerUpload,
     });
     expect(await main([...DEPLOY, "--preview-name", "pr-7"], accepted.cli)).toBe(0);
+  });
+});
+
+describe("deploy keys that are not keys", () => {
+  test("never echoes a key: a legacy key has no prefix", async () => {
+    const { cli, logs } = fake(app(site), { env: { CONVEX_DEPLOY_KEY: "happy-cat-123|s3cret" } });
+    expect(await main([...DEPLOY, "--preview-name", "pr-7"], cli)).toBe(1);
+    expect(logs[logs.length - 1]).toBe(
+      "--preview-name needs a preview deploy key; the key set is not a preview key.",
+    );
+    expect(logs.join("\n")).not.toContain("s3cret");
+  });
+
+  test("the Convex CLI's ignore sentinel counts as no key", async () => {
+    const { cli } = fake(app(site), { env: { CONVEX_DEPLOY_KEY: "<ignore_deploy_key>" } });
+    expect(await main(DEV, cli)).toBe(0);
   });
 });
 
