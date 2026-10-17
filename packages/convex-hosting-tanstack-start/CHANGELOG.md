@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.4
+
+- The `queueMicrotask` definition moved to `@samebase/convex-hosting` 0.13.0, which the adapter now
+  requires, so every handler gets it, not only TanStack Start. The `node:stream` stub in
+  `convexSsr()` stays here: it is build tooling for TanStack's server bundle.
+
 ## 0.9.3
 
 0.9.2 was staged from the first commit of this fix and rejected before publication.

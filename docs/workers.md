@@ -13,6 +13,13 @@ row names a document.
 | `env` bindings to KV, R2, D1, queues, and `request.cf`                                                                                                                                                                                                         | The deployment's own database, storage, scheduler, and crons, reached through the Convex client the server render already holds                                                                                                                                                                                                                                    |
 | An asset at a path answers before any route                                                                                                                                                                                                                    | An exact route in `convex/http.ts` wins over an asset at the same path, by Convex's router                                                                                                                                                                                                                                                                         |
 
+## Runtime
+
+Convex's runtime is not workerd. An audit of every global that TanStack Start's server bundle
+references (86 names) found one that Convex lacks and the bundle uses unguarded, `queueMicrotask`,
+which `@samebase/convex-hosting` defines. `node:stream` is stubbed by the adapter's Vite plugin, for
+a branch that never runs on Convex. The other differences are the rows of the table above.
+
 ## The same app on Cloudflare Workers
 
 [`examples/tanstack-ssr-workers`](../examples/tanstack-ssr-workers) is the TanStack Start example

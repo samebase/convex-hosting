@@ -28,12 +28,17 @@ site with it as the Worker: a file answers GET, another method on a file answers
 other request goes to the server, as it goes to a Cloudflare Worker:
 
 ```ts
+import { routeAll } from "@samebase/convex-hosting";
 // Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
 routeAll(http, components.hosting, versionId, server);
 ```
+
+Import `@samebase/convex-hosting`, a peer dependency, before the server build: it defines
+`queueMicrotask` when it loads, because Convex's runtime has none, and TanStack calls it on the
+server once on every rendered page and for a query that starts after the first dehydrate.
 
 Vite names the entry `server.js` when the app's `package.json` has `"type": "module"`, and
 `server.mjs` without it; import the name that the build emits. The `server-build` entry declares
@@ -227,9 +232,6 @@ is the signal to make the context a type the app registers itself.
 - The server entry is TanStack's own stream handler, so pages stream as they do on a Worker: the
   document goes out as it renders, and each Suspense boundary or deferred loader value follows in
   its own chunk. A client that TanStack takes for a bot, by its user agent, gets the whole document.
-- The server entry supplies the missing `queueMicrotask` on Convex. TanStack calls it on the server
-  once on every rendered page, and for a query that starts after the first dehydrate. A native
-  implementation is left intact.
 
 These settings apply to builds. Development and Node-based tests keep their normal dependency
 resolution.
