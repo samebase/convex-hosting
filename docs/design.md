@@ -181,19 +181,19 @@ it.
 
 ## Serve
 
-The app's `convex/http.ts` has one `pathPrefix: "/"` route per method, GET and the five others
-Convex routes, all to `serveSite`, because every request reaches a Cloudflare Worker's asset router:
-a file answers GET, another method on a file answers 405, and a request that matches no file goes to
+The app's `convex/http.ts` routes `serveSite`'s action with `registerSite`: one `pathPrefix: "/"`
+route per method Convex routes, because every request reaches a Cloudflare Worker's asset router: a
+file answers GET, another method on a file answers 405, and a request that matches no file goes to
 the app's server. A server-rendered app with Convex Auth adds one exact `POST` route per `/auth`
 path: the Convex Auth component holds the `/auth` prefix, where it serves the key set, and Convex
 picks the longest matching prefix, so only an exact route reaches the app there. Convex answers
 `HEAD` through the `GET` handler and drops the body.
 
 ```ts
-import { serveSite } from "@samebase/convex-hosting";
+import { registerSite, serveSite } from "@samebase/convex-hosting";
 import { versionId } from "../.convex-hosting/version.js";
 
-const site = httpAction(serveSite(components.hosting, versionId, server));
+registerSite(http, serveSite(components.hosting, versionId, server));
 ```
 
 `serveSite` answers with the file when one matches. Otherwise it answers with the page that the
@@ -469,6 +469,7 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
 | Export                                                                    | Used by                                              | Why                                                                                                                                                                          |
 | ------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | hosting `serveSite`                                                       | `convex/http.ts` of every app                        | The one entry: files, then `worker`, which is the Worker script; its absence is the files-only Worker                                                                        |
+| hosting `registerSite`                                                    | `convex/http.ts` of every app                        | The one `pathPrefix: "/"` route per method Convex routes; the list is a hosting fact, and an app with GET only answers no 405 and sends a `POST` to the router's 404         |
 | hosting `convex.config`                                                   | `convex/convex.config.ts` of every app               | Convex's component definition, for `app.use`                                                                                                                                 |
 | hosting `_generated/component.js` (types)                                 | The generated `api.d.ts` of every app                | Convex's codegen imports it for the component's API type                                                                                                                     |
 | CLI `deploy --build --dist [--dev \| --preview-name]`                     | App scripts and CI                                   | The upload must run between the build and the push, with the deployment chosen by the same flags as Convex's CLI                                                             |

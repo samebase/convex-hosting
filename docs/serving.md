@@ -22,8 +22,9 @@ files for a year, add a `_headers` rule:
 
 ## Routing
 
-`serveSite(component, versionId, worker?)` returns the handler of the site routes. It answers with
-the file that matches, else with what `worker` answers (see
+`serveSite(component, versionId, worker?)` is the HTTP action that serves the site, and
+`registerSite(http, site)` routes it for every method at every path. The action answers with the
+file that matches, else with what `worker` answers (see
 [Server-rendered pages](#server-rendered-pages)), else 404. Another method than GET or HEAD on a
 path that has a file answers 405, as on Cloudflare; on any other path it goes to `worker`, else 404.
 `worker` is the Worker script, an object with `fetch(request)`: the code that runs on a miss.

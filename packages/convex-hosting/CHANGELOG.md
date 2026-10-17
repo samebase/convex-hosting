@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.0
+
+- `serveSite(component, versionId, worker?)` is the HTTP action itself, built with Convex's
+  `httpActionGeneric`, and `registerSite(http, site)` routes it for every method Convex routes, at
+  every path. `convex/http.ts` reads
+  `registerSite(http, serveSite(components.hosting, versionId, server))`: no method loop and no
+  `httpAction`. An app with exact routes past a component's HTTP prefix, such as cookie-session
+  routes under Convex Auth's `/auth`, keeps the action in a constant and registers them with
+  `http.route`. Breaking: `serveSite` no longer returns a bare handler for `httpAction`.
+
 ## 0.9.0
 
 - `serveSite(component, versionId, worker?)` returns the handler of the site routes, so

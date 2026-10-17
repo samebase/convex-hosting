@@ -1,13 +1,21 @@
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import {
+  httpActionGeneric,
+  ROUTABLE_HTTP_METHODS,
+  type GenericActionCtx,
+  type GenericDataModel,
+  type HttpRouter,
+  type PublicHttpAction,
+} from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
 
 /**
- * The handler of the app's site routes, for every method: it answers a request with the file of
- * version `versionId`, else with what `worker` answers, else 404. `worker` is the Worker script,
- * the object with `fetch(request)` that the app's server entry exports: the code that runs on a
- * miss. As on Cloudflare, the presence of code decides how `not_found_handling` applies: with
- * `worker`, it applies to navigations only and `worker` answers the other misses; without it, the
- * site is files only, so it applies to every request.
+ * The HTTP action that serves the site, for `registerSite`: it answers a request with the file of
+ * version `versionId` (another method than GET or HEAD on a file answers 405), else with what
+ * `worker` answers, else 404. `worker` is the Worker script, the object with `fetch(request)`
+ * that the app's server entry exports: the code that runs on a miss. As on Cloudflare, the presence
+ * of code decides how `not_found_handling` applies: with `worker`, it applies to navigations only
+ * and `worker` answers the other misses; without it, the site is files only, so it applies to every
+ * request.
  *
  * A page and a 404 answer `Cache-Control: no-store`. The deployment's Cloudflare front keeps that
  * for a path without an extension and replaces it with a four-hour browser `max-age` for a path
@@ -18,11 +26,8 @@ export function serveSite(
   component: ComponentApi,
   versionId: string,
   worker?: { fetch(request: Request): Promise<Response> },
-): (
-  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
-  request: Request,
-) => Promise<Response> {
-  return async (ctx, request) => {
+): PublicHttpAction {
+  return httpActionGeneric(async (ctx, request) => {
     const asset = await answer(ctx, component, request, versionId, worker !== undefined);
     if (asset !== null) return asset;
     // `route` answers every files-only request itself, so this 404 only fails closed.
@@ -31,7 +36,19 @@ export function serveSite(
     const headers = new Headers(page.headers);
     headers.set("Cache-Control", "no-store");
     return new Response(page.body, { status: page.status, headers });
-  };
+  });
+}
+
+/**
+ * Routes `site` for every method Convex routes, at every path, as every request reaches a Cloudflare
+ * Worker with static assets. Convex answers HEAD through GET. An exact route, such as a session
+ * route under a component's HTTP prefix, is the app's own `http.route({ path, method, handler })`
+ * with the same action.
+ */
+export function registerSite(http: HttpRouter, site: PublicHttpAction): void {
+  for (const method of ROUTABLE_HTTP_METHODS) {
+    http.route({ pathPrefix: "/", method, handler: site });
+  }
 }
 
 /**

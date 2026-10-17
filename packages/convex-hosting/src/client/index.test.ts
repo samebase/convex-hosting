@@ -1,10 +1,10 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { anyApi } from "convex/server";
+import { anyApi, httpRouter, ROUTABLE_HTTP_METHODS } from "convex/server";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { internal } from "../component/_generated/api.js";
 import schema from "../component/schema.js";
-import { serveSite } from "./index.js";
+import { registerSite, serveSite } from "./index.js";
 
 const modules = import.meta.glob(["../component/**/*.ts", "!../component/**/*.test.ts"]);
 
@@ -33,15 +33,17 @@ async function setup(config = "{}") {
   });
   await t.mutation(internal.lib.finishVersion, { versionId: "v1" });
   await createVersion("v2");
-  // `serveSite` runs in an HTTP action, an action context where `fetch` is allowed; convex-test
-  // refuses `fetch` in `t.run`, which is a mutation. The response comes back as its parts, with the
-  // number of mutations that `serveSite` called.
+  // The site's action runs in an HTTP action, an action context where `fetch` is allowed;
+  // convex-test refuses `fetch` in `t.run`, which is a mutation. The response comes back as its
+  // parts, with the number of mutations that the action called.
   const serve = (path: string, versionId = "v1", render?: () => Promise<Response>) =>
     t.action(async (ctx) => {
       const runMutation = vi.spyOn(ctx, "runMutation");
       const url = `https://example.convex.site${path}`;
       const worker = render === undefined ? undefined : { fetch: render };
-      const response = await serveSite(component, versionId, worker)(ctx, new Request(url));
+      const site = serveSite(component, versionId, worker);
+      // @ts-expect-error httpActionGeneric keeps the function as _handler; PublicHttpAction does not declare it.
+      const response: Response = await site._handler(ctx, new Request(url));
       return {
         mutations: runMutation.mock.calls.length,
         status: response.status,
@@ -68,6 +70,17 @@ async function setup(config = "{}") {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+describe("registerSite", () => {
+  test("routes the action for every method Convex routes, at every path", () => {
+    const http = httpRouter();
+    const site = serveSite(component, "v1");
+    registerSite(http, site);
+    for (const method of ROUTABLE_HTTP_METHODS) {
+      expect(http.lookup("/any/path", method)).toEqual([site, method, "/*"]);
+    }
+  });
 });
 
 describe("serveSite", () => {
