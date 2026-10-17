@@ -175,7 +175,10 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
   // A deploy key wins over every selector in the Convex CLI, so a production key in the environment
   // would send --dev or --preview-name to production, with a frontend built for development.
   const env = readConvexEnv(cli);
-  const key = env.CONVEX_DEPLOY_KEY || env.CONVEX_DEPLOYMENT_TOKEN;
+  // The Convex CLI reads this value as no key at all.
+  const key = [env.CONVEX_DEPLOY_KEY, env.CONVEX_DEPLOYMENT_TOKEN].find(
+    (value) => value && value !== "<ignore_deploy_key>",
+  );
   if (key && options.destination.kind === "dev") {
     throw new Error(
       "--dev deploys to this checkout's development deployment, and a deploy key in " +
@@ -183,9 +186,13 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
     );
   }
   if (key && options.destination.kind === "preview" && !key.startsWith("preview:")) {
-    throw new Error(
-      `--preview-name needs a preview deploy key; the key set is a ${key.split(":")[0]} key.`,
-    );
+    // Never echo the key: a legacy key has no prefix, so any part of it is the secret.
+    const kind = key.startsWith("prod:")
+      ? "a production key"
+      : key.startsWith("dev:")
+        ? "a development key"
+        : "not a preview key";
+    throw new Error(`--preview-name needs a preview deploy key; the key set is ${kind}.`);
   }
   const target: Target = {
     component: options.component,
