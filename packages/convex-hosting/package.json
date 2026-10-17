@@ -1,7 +1,7 @@
 {
   "name": "@samebase/convex-hosting",
   "version": "0.9.0",
-  "description": "A Convex component that hosts a web app: static files, with optional server rendering.",
+  "description": "Serves a web app from its own Convex deployment: the files of a build, and the pages the app renders.",
   "keywords": [
     "component",
     "convex",

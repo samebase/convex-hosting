@@ -102,14 +102,15 @@ copies them into `dist/server/.dev.vars`; `wrangler deploy` does not upload that
 ## Deploy
 
 Cloudflare Workers Builds deploys the example from this repository: production from `main`, and a
-Preview for every other branch. The [README](../../README.md#the-same-app-on-cloudflare-workers)
-lists the settings. Workers Builds runs `pnpm run build`, which runs
-`convex deploy --cmd "vp build"` when `WORKERS_CI` is `1`. The Convex CLI reads `WORKERS_CI_BRANCH`
-itself: with the project's preview deploy key it deploys to a preview deployment named after the
-branch, and it refuses a production deploy key on any branch but `main`. `convex deploy` gives the
-build `VITE_CONVEX_URL` and pushes after it. Then Workers Builds runs `pnpm run deploy`
-(`wrangler deploy`) on `main` and `pnpm run deploy:preview` (`wrangler preview`) on other branches.
-Both read the configuration that the build wrote to `dist/server/wrangler.json`.
+Preview for every other branch.
+[docs/workers.md](../../docs/workers.md#the-same-app-on-cloudflare-workers) lists the settings.
+Workers Builds runs `pnpm run build`, which runs `convex deploy --cmd "vp build"` when `WORKERS_CI`
+is `1`. The Convex CLI reads `WORKERS_CI_BRANCH` itself: with the project's preview deploy key it
+deploys to a preview deployment named after the branch, and it refuses a production deploy key on
+any branch but `main`. `convex deploy` gives the build `VITE_CONVEX_URL` and pushes after it. Then
+Workers Builds runs `pnpm run deploy` (`wrangler deploy`) on `main` and `pnpm run deploy:preview`
+(`wrangler preview`) on other branches. Both read the configuration that the build wrote to
+`dist/server/wrangler.json`.
 
 The preview deployments need the signing keys as the project's defaults for preview deployments,
 which Convex copies into each new preview before the first push:

@@ -1,7 +1,8 @@
 # Contributing
 
-You need the Node version in `.node-version` and pnpm 11. For install, deploy, and development, see
-the [README](./README.md); each example's README lists its commands.
+You need the Node version in `.node-version` and pnpm 11. For install and deploy, see the
+[README](./README.md), and for the development loop [docs/development.md](./docs/development.md);
+each example's README lists its commands.
 
 ## Build and check
 
