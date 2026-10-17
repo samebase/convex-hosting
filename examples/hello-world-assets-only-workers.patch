@@ -1,10 +1,23 @@
+diff --git a/.gitignore b/.gitignore
+deleted file mode 100644
+index 8c5fbb9ced5ec0eef36e620d0f6e44880444e1ef..0000000000000000000000000000000000000000
+--- a/.gitignore
++++ /dev/null
+@@ -1,2 +0,0 @@
+-
+-.env.local
 diff --git a/README.md b/README.md
-index f244916300e57057ece6c0e83688a63ea2f6e324..3c6fa07826ea6b0a4085599dd6f47684b9181f20 100644
+index 1701707fab94e44497fa56e743861c931dcca0be..93127e010e7330d1e1e2a36c5f35b00e65d021b1 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,49 +1,21 @@
+@@ -1,52 +1,24 @@
 -# Static site example
 +# Static site example on Cloudflare Workers
+ 
+-Live at [courteous-dalmatian-252.convex.site](https://courteous-dalmatian-252.convex.site), deployed
+-from `main`.
++Live at
++[convex-hosting-hello-world-assets-only.pfp.workers.dev](https://convex-hosting-hello-world-assets-only.pfp.workers.dev).
  
  Cloudflare's own static-site template, what `npm create cloudflare` writes for "Static site"
 -(`hello-world-assets-only`): one `public/index.html`, no build, no script. `convex/http.ts` serves
