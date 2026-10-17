@@ -3,12 +3,23 @@
 Host a web app on Convex, next to its backend: the files of a build and, when the app renders pages,
 those pages. The site is at `https://<deployment>.convex.site`.
 
-It works like
-[Cloudflare Workers with static assets](https://developers.cloudflare.com/workers/static-assets/):
-the same `_headers`, `_redirects`, and `.assetsignore` files, the same `html_handling` and
-`not_found_handling` options, and the same responses, computed by Cloudflare's own asset-serving
-code, checked against Cloudflare's own test cases for `html_handling` and path encoding, and against
-its integration tests for a files-only site, run on a local deployment.
+The serving code is Cloudflare's. The asset Worker behind
+[Cloudflare Workers with static assets](https://developers.cloudflare.com/workers/static-assets/),
+`packages/workers-shared` of [cloudflare/workers-sdk](https://github.com/cloudflare/workers-sdk), is
+copied into this package at a pinned commit and runs inside a Convex HTTP action. So `_headers`,
+`_redirects`, `.assetsignore`, `html_handling`, and `not_found_handling` mean what they mean on
+Cloudflare, and a request gets the response a Worker sends. Cloudflare's own tests say so: its 196
+cases for `html_handling` and path encoding run against the component, and its integration test for
+a files-only site runs, unchanged, against a local Convex deployment in CI.
+
+An app that renders pages is a Worker here too: an object with `fetch(request)` that answers what no
+file answers. TanStack Start runs through the
+[adapter](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start),
+with streamed pages, server functions, server routes, request middleware, and cookie sessions. The
+[TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
+is deployed here and, from the same source, as a real Worker; CI keeps the two byte-identical but
+for the files that name the host. What a Worker has and Convex does not is listed under
+[What differs from a Worker](#what-differs-from-a-worker).
 
 ## Setup
 
@@ -270,7 +281,8 @@ Cloudflare front gives a path with an extension a four-hour browser `max-age`. H
 come back.
 
 One difference from Cloudflare follows from Convex's router: an exact route in `convex/http.ts` wins
-over an asset at the same path.
+over an asset at the same path. The other differences are in
+[What differs from a Worker](#what-differs-from-a-worker).
 
 ## Open tabs after a deploy
 
@@ -312,10 +324,30 @@ entry exports, and calls it when no file matches. `convex/http.ts` imports the s
 directly, such as `../dist/server/server.js` for TanStack Start, so `npx convex dev` bundles it only
 after a build: on a fresh clone, the first `deploy --dev` builds before the first push (see
 [Setup](#setup)).
+
 [`@samebase/convex-hosting-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
-renders TanStack Start pages in it. See the
+runs TanStack Start's own server handler in that `fetch`. Pages stream: the document goes out as it
+renders, and each Suspense boundary or deferred loader value follows in its own chunk. Server
+functions, server routes, request middleware, and Convex Auth cookie sessions run as they do on a
+Worker. The
 [TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr),
-live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site).
+live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site), has a page for each:
+`/stream`, `/server`, `/todos`.
+
+## What differs from a Worker
+
+The serving code is the same; the runtime around it is Convex's. Measured on the examples unless the
+row names a document.
+
+| On a Worker                                                                                                                                                                                                                                                    | On Convex                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The page renders in the data center nearest the visitor                                                                                                                                                                                                        | The deployment renders in its one region. The example's streamed page sends its first byte at 0.5 s from Europe where the Worker sends it at 0.1 s; a prerendered file answers from the front either way                                                                                                                                                           |
+| Node's built-in modules, through `nodejs_compat`, on by default since 2026-08-04                                                                                                                                                                               | `process.env`, `AsyncLocalStorage`, and `AsyncResource`, per [Convex's runtime docs](https://docs.convex.dev/functions/runtimes); a dependency that imports `node:fs` or `node:crypto` does not bundle. A module that is imported but never run, such as TanStack's `node:stream`, gets a stub from the adapter; a module that must run needs a Convex Node action |
+| `Cache-Control` from a page is honored at Cloudflare's edge                                                                                                                                                                                                    | The `*.convex.site` front bypasses its cache for rendered pages and only shapes browser caching, so a page cannot be cached at the edge                                                                                                                                                                                                                            |
+| A server route can upgrade the connection to a WebSocket                                                                                                                                                                                                       | An HTTP action takes a request and returns a response, and nothing upgrades a connection. Live data goes over the Convex client's own connection, through subscribed queries                                                                                                                                                                                       |
+| 128 MB of memory, no response cap, request bodies up to the plan's limit (100 MB on Free), CPU time of 10 ms on Free and 5 minutes on Paid with network waits uncounted, per [Cloudflare's limits](https://developers.cloudflare.com/workers/platform/limits/) | 64 MiB of memory, a 100 MiB response, no stated request limit, 30 minutes per request, per [Convex's limits](https://docs.convex.dev/production/state/limits)                                                                                                                                                                                                      |
+| `env` bindings to KV, R2, D1, queues, and `request.cf`                                                                                                                                                                                                         | The deployment's own database, storage, scheduler, and crons, reached through the Convex client the server render already holds                                                                                                                                                                                                                                    |
+| An asset at a path answers before any route                                                                                                                                                                                                                    | An exact route in `convex/http.ts` wins over an asset at the same path, by Convex's router                                                                                                                                                                                                                                                                         |
 
 ## The same app on Cloudflare Workers
 
@@ -347,10 +379,8 @@ with:
 - Build command: `pnpm run build`. Deploy command: `pnpm run deploy`. Builds for non-production
   branches on, with the preview command `pnpm run deploy:preview`.
 - Build variable `CONVEX_DEPLOY_KEY`: a production deploy key of the example's own Convex project in
-  the production build variables, and the project's preview deploy key in Previews Base.
-- Build variables `NODE_VERSION` `24.21.0` and `PNPM_VERSION` `12.10.1`, the versions this
-  repository pins, in both. The Builds image defaults to Node 22.16.0, below the 22.18 that Vite+
-  needs, and to pnpm 10.11.1.
+  the production build variables, and the project's preview deploy key in Previews Base. Builds
+  reads the Node and pnpm versions from the repository's `.node-version` and `packageManager`.
 
 The example's README describes the Convex side: the signing keys of production and of previews.
 
