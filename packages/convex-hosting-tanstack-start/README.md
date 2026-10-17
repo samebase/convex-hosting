@@ -96,6 +96,10 @@ the data; the loader adds the parallel fetch and the preload.
 
 ## Convex Auth sessions
 
+This entry is interim: the session lines are Convex Auth's own API, and their home is a TanStack
+Start integration in Convex Auth itself, which is being discussed with Convex. Until then they live
+here, and they need Convex Auth 2.
+
 With [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies,
 `src/server.ts` answers the `/auth` routes, reads the session of the request's cookies, and passes
 its access token as the context, as the
@@ -203,10 +207,13 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   Convex Auth's `signOut()` resolves even when the route failed, so a reload after it alone signs
   the user back in from the cookie.
 
-`@convex-dev/auth` is an optional peer dependency of the `convex-auth` entry only. An app that uses
-only the plugin and the server entry, with another auth provider or with Convex Auth 0.0.x, can
-ignore the unmet-peer warning that pnpm prints; npm refuses the install instead, and needs
-`--legacy-peer-deps`.
+`@convex-dev/auth` is an optional peer dependency with no version range: only the `convex-auth`
+entry uses it, and that entry needs Convex Auth 2. An app with another auth provider, or on Convex
+Auth 0.0.x, installs the adapter as is and does not import the entry.
+
+The entry declares Start's `Register.server` with a request context that holds only the token, so an
+app that uses the entry cannot add its own fields to `serverContext` today; an app that needs that
+is the signal to make the context a type the app registers itself.
 
 ## Why these settings exist
 
