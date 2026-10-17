@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.2
+
+- The server entry defines `queueMicrotask` when the runtime has none, as it does
+  `URLSearchParams.size`. Convex's runtime has neither. TanStack's router calls `queueMicrotask` on
+  the server: the ssr-query cache listener for a query that starts during the render rather than in
+  a loader, and `attachRouterServerSsrUtils` when streamed hydration data finishes. Such a query's
+  hydration data carried `ReferenceError: queueMicrotask is not defined`.
+
 ## 0.9.1
 
 - `@convex-dev/auth` is an optional peer dependency with no version range, so an app on Convex Auth

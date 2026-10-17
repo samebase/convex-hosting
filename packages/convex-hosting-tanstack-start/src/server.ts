@@ -19,6 +19,15 @@ if (new URLSearchParams().size === undefined) {
   });
 }
 
+// Convex has no queueMicrotask. TanStack calls it on the server: the ssr-query cache listener for a
+// query that starts during the render rather than in a loader, and `attachRouterServerSsrUtils`
+// when streamed hydration data, such as ssr-query's, finishes. Both look it up on each call.
+if (typeof globalThis.queueMicrotask !== "function") {
+  globalThis.queueMicrotask = (callback) => {
+    void Promise.resolve().then(callback);
+  };
+}
+
 // TanStack's own stream handler, as on every other host: React's Web Stream renderer, the
 // document sent as it renders, each Suspense boundary and deferred loader value in a later chunk.
 // Apps call only `fetch(request, { context })`. Start gives `context` to each route's `beforeLoad`
