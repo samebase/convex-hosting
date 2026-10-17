@@ -47,21 +47,18 @@ app.use(hosting);
 export default app;
 ```
 
-`convex/http.ts` sends every method to `serveSite`, as every request reaches a Cloudflare Worker:
+`convex/http.ts` registers the site, every method at every path, as every request reaches a
+Cloudflare Worker:
 
 ```ts
 import { httpRouter } from "convex/server";
-import { serveSite } from "@samebase/convex-hosting";
+import { routeAll } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
-import { httpAction } from "./_generated/server.js";
 import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
-const site = httpAction(serveSite(components.hosting, versionId));
-for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
-  http.route({ pathPrefix: "/", method, handler: site });
-}
+routeAll(http, components.hosting, versionId);
 
 export default http;
 ```
@@ -88,7 +85,7 @@ npx convex dev               # then work as usual
 ```
 
 For pages rendered on the server, pass the app's server entry, the object with `fetch(request)`, as
-the third argument of `serveSite`. The
+the fourth argument of `routeAll`. The
 [adapter](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
 shows it for TanStack Start.
 
