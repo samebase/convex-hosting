@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { convexQuery } from "@convex-dev/react-query";
+import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "../../convex/_generated/api.js";
 
 export const Route = createFileRoute("/")({
@@ -12,6 +12,7 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const { data: todos } = useSuspenseQuery(convexQuery(api.todos.latest, {}));
+  const remove = useConvexMutation(api.todos.remove);
   return (
     <main>
       <h1>TanStack Start on Convex</h1>
@@ -21,12 +22,16 @@ function Home() {
         <Link to="/about">About</Link> was rendered at build time and is served as a file.{" "}
         <Link to="/todos">Your todos</Link> are rendered on the server as you, after you{" "}
         <Link to="/signin">sign in</Link>. The header is on every page and shows your session.
+        Anyone can remove a todo from the list below.
       </p>
       <h2>The latest todos of everyone</h2>
       <ul>
         {todos.map((todo) => (
           <li key={todo.id}>
-            {todo.author}: {todo.done ? <s>{todo.text}</s> : todo.text}
+            {todo.author}: {todo.done ? <s>{todo.text}</s> : todo.text}{" "}
+            <button type="button" onClick={() => remove({ id: todo.id })}>
+              Remove
+            </button>
           </li>
         ))}
       </ul>
