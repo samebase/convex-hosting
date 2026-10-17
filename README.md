@@ -92,6 +92,21 @@ the third argument of `serveSite`. The
 [adapter](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
 shows it for TanStack Start.
 
+## How a deploy switches the site
+
+On Cloudflare, `wrangler deploy` uploads the files and the Worker code as one version, so the switch
+is atomic. Here two systems hold the two halves: the component's storage holds the files, and
+`npx convex deploy` pushes the code. `deploy` binds them the same way. It uploads the files as a new
+version, writes that version's id to `.convex-hosting/version.js`, and then pushes the code, which
+imports the file and asks the component for exactly that version. The push is the switch: no pointer
+moves in a second step, so there is no moment when new code serves old files, and no page refers to
+a file that is not uploaded yet. The first request the new code serves marks its version live and
+deletes the versions that were live before it. A version whose push never came is deleted at a later
+switch, once it is a day old; nothing is deleted by the clock alone. The one rule: run one deploy at
+a time per deployment. The
+[design](https://github.com/samebase/convex-hosting/blob/main/docs/design.md#orderings-and-timing)
+works through every interleaving.
+
 ## Examples
 
 - [tanstack-spa](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa): a
