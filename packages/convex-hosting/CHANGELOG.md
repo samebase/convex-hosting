@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0
+
+- `deploy` no longer requires `--build`: a site with no build, such as a folder of files, deploys
+  with `convex-hosting deploy --dist <dir>`, and the upload is the whole `--cmd` of
+  `npx convex deploy`.
+
 ## 0.10.0
 
 - `routeAll(http, component, versionId, worker?)` replaces `serveSite`. It builds the site's HTTP

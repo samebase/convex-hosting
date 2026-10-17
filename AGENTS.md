@@ -22,6 +22,10 @@ code remains.
 - `examples/tanstack-ssr-workers`: the same app as a Cloudflare Worker. Its diff from
   `examples/tanstack-ssr` is committed as `examples/tanstack-ssr-workers.patch`; after a commit that
   changes either example, run `pnpm run examples:diff` and commit the patch, or CI fails.
+- `examples/hello-world-assets-only`: Cloudflare's static-site template (create-cloudflare
+  `hello-world-assets-only`), one `index.html`, no build. `examples/hello-world-assets-only-workers`
+  is the template as a Worker, with `examples/hello-world-assets-only-workers.patch` kept like the
+  SSR pair's.
 
 ## Commands
 

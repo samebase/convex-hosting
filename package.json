@@ -5,7 +5,7 @@
   "scripts": {
     "build": "pnpm -r run build",
     "check": "vp fmt --check && vp lint && pnpm run typecheck && vp test run --project unit",
-    "examples:diff": "git diff-tree -p --full-index HEAD:examples/tanstack-ssr HEAD:examples/tanstack-ssr-workers > examples/tanstack-ssr-workers.patch",
+    "examples:diff": "git diff-tree -p --full-index HEAD:examples/tanstack-ssr HEAD:examples/tanstack-ssr-workers -- . ':!convex/_generated' ':!README.md' > examples/tanstack-ssr-workers.patch && git diff-tree -p --full-index HEAD:examples/hello-world-assets-only HEAD:examples/hello-world-assets-only-workers -- . ':!convex/_generated' ':!README.md' > examples/hello-world-assets-only-workers.patch",
     "format": "vp fmt",
     "lint": "vp lint",
     "test": "vp test --project unit",

@@ -25,6 +25,8 @@ jobs:
             deploy_key: CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SSR
           - example: tanstack-spa
             deploy_key: CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SPA
+          - example: hello-world-assets-only
+            deploy_key: CONVEX_PREVIEW_DEPLOY_KEY_HELLO_WORLD_ASSETS_ONLY
     # One run per example and pull request; a newer push waits, so the last deploy is the newest
     # commit.
     concurrency:

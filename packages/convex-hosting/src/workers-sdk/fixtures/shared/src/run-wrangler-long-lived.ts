@@ -232,8 +232,6 @@ export async function runWranglerDev(
       join(PACKAGE, "dist/cli/index.js"),
       "deploy",
       "--dev",
-      "--build",
-      "true",
       "--dist",
       resolve(folder, config.assets.directory),
     ];

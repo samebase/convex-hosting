@@ -429,7 +429,7 @@ static assets, with Convex still the backend. The diff between the two folders, 
 `examples/tanstack-ssr-workers.patch`, is the definition of what is Convex-specific. CI writes it
 again from the committed folders with `git diff-tree -p --full-index` and fails when it differs from
 the committed file; `pnpm run examples:diff` refreshes it. It covers `convex/http.ts`,
-`app.use(hosting)` in `convex/convex.config.ts` and the generated API that follows it,
+`app.use(hosting)` in `convex/convex.config.ts` (the generated API that follows it is left out),
 `src/server.ts`, `vite.config.ts`, `package.json`, the README, and the Worker's `wrangler.jsonc`.
 `src/server.ts` is the same file on both hosts, the `/auth` routes and the session lines around the
 server entry, but for two lines: the entry it wraps (the adapter's on Convex, TanStack Start's
@@ -507,6 +507,9 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
 - `examples/tanstack-ssr`: pages rendered in the `worker` of `routeAll`.
 - `examples/tanstack-ssr-workers`: the same app as a Cloudflare Worker, the reference for what is
   Convex-specific.
+- `examples/hello-world-assets-only` and `examples/hello-world-assets-only-workers`: Cloudflare's
+  static-site template (create-cloudflare `hello-world-assets-only`) on both hosts, `public/`
+  byte-identical, no build.
 - One `README.md` at the repository root, copied into the package at `prepack`.
 - An app has `.convex-hosting/` (ignored, written by the CLI) and nothing else of ours outside
   `convex/convex.config.ts` and `convex/http.ts`.

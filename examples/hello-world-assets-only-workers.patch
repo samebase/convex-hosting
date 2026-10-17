@@ -1,0 +1,98 @@
+diff --git a/convex/convex.config.ts b/convex/convex.config.ts
+deleted file mode 100644
+index 41a6c4afe86dc311eed5da6e75804b73bdc4462f..0000000000000000000000000000000000000000
+--- a/convex/convex.config.ts
++++ /dev/null
+@@ -1,6 +0,0 @@
+-import { defineApp } from "convex/server";
+-import hosting from "@samebase/convex-hosting/convex.config";
+-
+-const app = defineApp();
+-app.use(hosting);
+-export default app;
+diff --git a/convex/http.ts b/convex/http.ts
+deleted file mode 100644
+index 68549db0c7867c3c98d3caae46fb994864126d94..0000000000000000000000000000000000000000
+--- a/convex/http.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import { httpRouter } from "convex/server";
+-import { routeAll } from "@samebase/convex-hosting";
+-import { components } from "./_generated/api.js";
+-import { versionId } from "../.convex-hosting/version.js";
+-
+-const http = httpRouter();
+-
+-// Every method, every path, as a Cloudflare Worker without a script: a file for a path that has
+-// one, else 404; another method than GET or HEAD on a file answers 405.
+-routeAll(http, components.hosting, versionId);
+-
+-export default http;
+diff --git a/convex/tsconfig.json b/convex/tsconfig.json
+deleted file mode 100644
+index abf12ef94b7de7d1d7efd249d8b6a16ef261d470..0000000000000000000000000000000000000000
+--- a/convex/tsconfig.json
++++ /dev/null
+@@ -1,17 +0,0 @@
+-{
+-  "compilerOptions": {
+-    "allowJs": true,
+-    "strict": true,
+-    "moduleResolution": "Bundler",
+-    "jsx": "react-jsx",
+-    "skipLibCheck": true,
+-    "allowSyntheticDefaultImports": true,
+-    "target": "ESNext",
+-    "lib": ["ES2021", "dom"],
+-    "module": "ESNext",
+-    "isolatedModules": true,
+-    "noEmit": true
+-  },
+-  "include": ["./**/*"],
+-  "exclude": ["./_generated"]
+-}
+diff --git a/package.json b/package.json
+index 33a58dd232ddef0120680274eec0d0d71bdc6a5f..f9c60cfac155a43a3a300809abf024f5727b679f 100644
+--- a/package.json
++++ b/package.json
+@@ -1,17 +1,13 @@
+ {
+-  "name": "example-hello-world-assets-only",
++  "name": "example-hello-world-assets-only-workers",
+   "private": true,
+   "type": "module",
+   "scripts": {
+-    "deploy:dev": "convex-hosting deploy --dev --dist public",
+-    "deploy": "convex-hosting deploy --dist public",
+-    "typecheck": "tsc -p convex"
+-  },
+-  "dependencies": {
+-    "@samebase/convex-hosting": "workspace:*",
+-    "convex": "catalog:"
++    "deploy": "wrangler deploy",
++    "deploy:preview": "wrangler preview",
++    "dev": "wrangler dev"
+   },
+   "devDependencies": {
+-    "typescript": "catalog:"
++    "wrangler": "4.148.0"
+   }
+ }
+diff --git a/wrangler.jsonc b/wrangler.jsonc
+new file mode 100644
+index 0000000000000000000000000000000000000000..b5f8ffb707e4bee452fbc24b6b38d2b7e083c5ce
+--- /dev/null
++++ b/wrangler.jsonc
+@@ -0,0 +1,12 @@
++{
++  "$schema": "node_modules/wrangler/config-schema.json",
++  "name": "convex-hosting-hello-world-assets-only",
++  "compatibility_date": "2026-10-01",
++  "assets": {
++    // The path to the directory containing the `index.html` file to be served at `/`
++    "directory": "./public",
++  },
++  "preview_urls": true,
++  // `wrangler preview`, the Workers Builds preview command, requires this block.
++  "previews": {},
++}

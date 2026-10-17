@@ -126,7 +126,7 @@ function fake(
 /** Runs the upload that `deploy` put in `--cmd`, the way the shell would. */
 function innerUpload(cli: Cli, args: string[]) {
   const command = args[args.indexOf("--cmd") + 1];
-  const quoted = [...command.slice(command.lastIndexOf("&&")).matchAll(/'([^']*)'/g)];
+  const quoted = [...command.slice(Math.max(0, command.lastIndexOf("&&"))).matchAll(/'([^']*)'/g)];
   return main(
     quoted.slice(2).map(([, arg]) => arg),
     cli,
@@ -244,6 +244,24 @@ describe("deploy --dev", () => {
     expect(await main([...DEV, "--preview-name", "pr-7"], cli)).toBe(1);
     expect(events).toEqual([]);
     expect(logs[logs.length - 1]).toBe("--dev and --preview-name exclude each other.");
+  });
+});
+
+describe("deploy without --build", () => {
+  test("--dev uploads the folder as it is, then pushes", async () => {
+    const { cli, events, builds } = fake(app(site));
+    expect(await main(["deploy", "--dev", "--dist", "dist"], cli)).toBe(0);
+    expect(builds).toEqual([]);
+    expect(events[0]).toBe("probe");
+    expect(events.slice(-2)).toEqual(["push: run", "site url"]);
+  });
+
+  test("production runs only the upload inside npx convex deploy --cmd", async () => {
+    const { cli, pushes, events } = fake(app(site), { push: innerUpload });
+    expect(await main(["deploy", "--dist", "dist"], cli)).toBe(0);
+    expect(pushes[0][2]).toMatch(/^'.+' '.+' 'upload' '--dist' 'dist' '--version-id' '/);
+    expect(events[0]).toBe("push: deploy");
+    expect(events.slice(-2)).toEqual(["lib:finishVersion", "site url"]);
   });
 });
 

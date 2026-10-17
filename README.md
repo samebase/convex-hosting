@@ -70,9 +70,9 @@ npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling 
 ```
 
 It builds, uploads `dist`, pushes the functions, and prints
-`Deployed version <id> to https://<deployment>.convex.site.` Deploy production with this command,
-never with a plain `npx convex deploy`: a plain push uploads no files, and the site answers 404
-until the next `convex-hosting deploy`.
+`Deployed version <id> to https://<deployment>.convex.site.` A site with no build omits `--build`.
+Deploy production with this command, never with a plain `npx convex deploy`: a plain push uploads no
+files, and the site answers 404 until the next `convex-hosting deploy`.
 
 On a fresh clone, `npx convex dev` fails until the first deploy: `convex/http.ts` imports
 `.convex-hosting/version.js`, which only a deploy writes, and the deploy's build needs the
@@ -106,6 +106,13 @@ works through every interleaving.
 
 ## Examples
 
+- [hello-world-assets-only](https://github.com/samebase/convex-hosting/tree/main/examples/hello-world-assets-only):
+  Cloudflare's static-site template, one `index.html` and no build, deployed with
+  `convex-hosting deploy --dist public`, live at
+  [courteous-dalmatian-252.convex.site](https://courteous-dalmatian-252.convex.site). Its
+  [Worker twin](https://github.com/samebase/convex-hosting/tree/main/examples/hello-world-assets-only-workers)
+  is the template unchanged, live at
+  [convex-hosting-hello-world-assets-only.pfp.workers.dev](https://convex-hosting-hello-world-assets-only.pfp.workers.dev).
 - [tanstack-spa](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa): a
   single-page app, live at [quick-fish-630.convex.site](https://quick-fish-630.convex.site).
 - [tanstack-ssr](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr): pages

@@ -20,6 +20,8 @@ jobs:
             deploy_key: CONVEX_DEPLOY_KEY_TANSTACK_SSR
           - example: tanstack-spa
             deploy_key: CONVEX_DEPLOY_KEY_TANSTACK_SPA
+          - example: hello-world-assets-only
+            deploy_key: CONVEX_DEPLOY_KEY_HELLO_WORLD_ASSETS_ONLY
     concurrency:
       group: deploy-${{ matrix.example }}
       cancel-in-progress: false

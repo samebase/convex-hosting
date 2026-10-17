@@ -26,11 +26,13 @@ import {
 import { readDist, type DistEntry, type HandlingOptions } from "./files.js";
 
 const USAGE = `Usage:
-  convex-hosting deploy --build "<command>" --dist <dir> [options]
-      Builds, stores the site files, and pushes the functions. The push switches the site.
+  convex-hosting deploy --dist <dir> [options]
+      Runs the build, if any, stores the site files, and pushes the functions. The push switches
+      the site.
       Prints the site URL, and appends url=<site URL> to $GITHUB_OUTPUT when it is set.
 
 Options:
+  --build "<command>"           runs before the files are stored; a site with no build omits it
   --dev                         the development deployment of this checkout, instead of production
   --preview-name <name>         the preview deployment with this name, instead of production
   --html-handling <value>       auto-trailing-slash (default), force-trailing-slash,
@@ -81,7 +83,7 @@ type Options = HandlingOptions & {
 
 type Command =
   | { name: "help" }
-  | { name: "deploy"; build: string; options: Options }
+  | { name: "deploy"; build: string | undefined; options: Options }
   | { name: "upload"; versionId: string; options: Options };
 
 function parseCommand(args: string[]): Command {
@@ -136,7 +138,6 @@ function parseCommand(args: string[]): Command {
     }
     return { name, versionId: values["version-id"], options };
   }
-  if (values.build === undefined) throw new Error(`--build is required.\n\n${USAGE}`);
   if (values["version-id"] !== undefined) throw new Error(USAGE);
   return { name, build: values.build, options };
 }
@@ -169,7 +170,7 @@ function quote(arg: string): string {
  * that the new code serves marks its version live. Then it reports the site URL, for a person and,
  * through `$GITHUB_OUTPUT`, for the next step of a GitHub Actions job.
  */
-async function deploy(cli: Cli, options: Options, build: string) {
+async function deploy(cli: Cli, options: Options, build: string | undefined) {
   const target: Target = {
     component: options.component,
     flags: deploymentSelector(cli, options.destination),
@@ -186,9 +187,9 @@ async function deploy(cli: Cli, options: Options, build: string) {
 }
 
 /**
- * The development deployment, in one process. The build runs as a child of this process in the
- * project directory: the framework reads the deployment's URL from `.env.local` itself (Vite reads
- * `VITE_CONVEX_URL`). Then the upload runs here, and `npx convex run --push` pushes, with an inline
+ * The development deployment, in one process. The build, if any, runs as a child of this process
+ * in the project directory: the framework reads the deployment's URL from `.env.local` itself (Vite
+ * reads `VITE_CONVEX_URL`). Then the upload runs here, and `npx convex run --push` pushes, with an inline
  * query at the app's root, which exists before the push installs the component. It works whether
  * or not `npx convex dev` runs; `npx convex dev --once` refuses while it runs a local deployment's
  * backend.
@@ -198,10 +199,12 @@ async function deployDev(
   options: Options,
   target: Target,
   versionId: string,
-  build: string,
+  build: string | undefined,
 ) {
-  const buildExitCode = await cli.shell(build);
-  if (buildExitCode !== 0) throw new Error(`The build failed with exit code ${buildExitCode}.`);
+  if (build !== undefined) {
+    const buildExitCode = await cli.shell(build);
+    if (buildExitCode !== 0) throw new Error(`The build failed with exit code ${buildExitCode}.`);
+  }
   const missing = await upload(cli, options, target, versionId);
   if (missing !== undefined) cli.log(notInstalledYet(options.component));
   const exitCode = await cli.convexInherited(["run", "--push", "--inline-query", "null"]);
@@ -209,13 +212,13 @@ async function deployDev(
   if (missing !== undefined) await uploadAfterPush(cli, options, target, versionId);
 }
 
-/** Production or a preview: the build and the upload run inside `npx convex deploy --cmd`. */
+/** Production or a preview: the build, if any, and the upload run inside `npx convex deploy --cmd`. */
 async function deployWithConvexDeploy(
   cli: Cli,
   options: Options,
   target: Target,
   versionId: string,
-  build: string,
+  build: string | undefined,
 ) {
   const marker = join(cli.cwd, FIRST_INSTALL_MARKER);
   rmSync(marker, { force: true });
@@ -246,7 +249,7 @@ async function deployWithConvexDeploy(
   const exitCode = await cli.convexInherited([
     "deploy",
     "--cmd",
-    `${build} && ${innerUpload}`,
+    build === undefined ? innerUpload : `${build} && ${innerUpload}`,
     ...deployFlags,
   ]);
   const firstInstall = existsSync(marker);

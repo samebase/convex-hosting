@@ -38,6 +38,7 @@ server-rendered app gets the type of its server build from the framework adapter
 
 | Option                         | Values                                                                                 |
 | ------------------------------ | -------------------------------------------------------------------------------------- |
+| `--build "<command>"`          | The build to run before the upload; a site with no build omits it                      |
 | `--dev`                        | The development deployment of this checkout, instead of production                     |
 | `--preview-name <name>`        | The preview deployment with this name, instead of production                           |
 | `--html-handling <value>`      | `auto-trailing-slash` (default), `force-trailing-slash`, `drop-trailing-slash`, `none` |
