@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:convex": "convex-hosting dev --dist public",
+    "init": "convex-hosting init --dist public",
     "deploy:dev": "convex-hosting deploy --dev --dist public",
     "deploy": "convex-hosting deploy --dist public",
     "typecheck": "tsc -p convex"

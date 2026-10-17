@@ -10,7 +10,7 @@ code remains.
 - `packages/convex-hosting`: the published component and CLI.
   - `src/component`: code that runs inside the component on Convex.
   - `src/client`: `routeAll`, which apps call from their `convex/http.ts`.
-  - `src/cli`: the `convex-hosting` command: `deploy`, `dev` (`npx convex dev` around a first
+  - `src/cli`: the `convex-hosting` command: `deploy`, `init` (configure without a push, then
     `deploy --dev`), and `upload`, the inner step of `deploy`.
   - `src/workers-sdk`: Cloudflare's asset worker, its test cases, and its integration fixtures,
     copied from cloudflare/workers-sdk at their upstream paths by `scripts/sync-workers-sdk.ts`.

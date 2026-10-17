@@ -31,12 +31,12 @@ From `examples/hello-world-assets-only`:
 
 ```sh
 pnpm install
-pnpm run dev:convex               # creates your dev deployment, deploys public/, runs npx convex dev
+pnpm run init                     # creates your dev deployment, uploads public/, pushes
+npx convex dev                    # then work as usual
 ```
 
-`dev:convex` is `convex-hosting dev`: the first push of `npx convex dev` fails on the missing
-version file, once, then the deploy writes it and pushes. The three steps by hand:
-`npx convex dev --skip-push`, `pnpm run deploy:dev`, `npx convex dev`.
+`init` is `convex-hosting init`: `npx convex dev --skip-push` and `pnpm run deploy:dev` as one
+command.
 
 The example commits `convex/_generated`, as Convex recommends, so a fresh clone typechecks:
 `npx convex codegen` bundles `convex/http.ts`, which imports `.convex-hosting/version.js`, so on a

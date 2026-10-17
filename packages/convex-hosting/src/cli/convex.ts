@@ -23,14 +23,6 @@ export interface Cli {
   /** Runs the app's `convex` CLI with this process's standard streams; resolves with its exit code. */
   convexInherited: (args: string[]) => Promise<number>;
   /**
-   * Starts the app's `convex` CLI with this process's standard streams and leaves it running:
-   * `exited` resolves with its exit code, `stop` interrupts it. While it runs, an interrupt of this
-   * process is passed to it and this process waits for it, so the exit code is the child's.
-   */
-  convexChild: (args: string[]) => { exited: Promise<number>; stop: () => void };
-  /** Reads `.env.local`, the file the Convex CLI writes when it configures a deployment. */
-  envLocal: () => Record<string, string | undefined>;
-  /**
    * Runs a shell command in `cwd` with this process's environment and standard streams; resolves
    * with its exit code.
    */
@@ -62,40 +54,17 @@ export const nodeCli: Cli = {
       );
     }),
   convexInherited: (args) =>
-    attended(spawn(process.execPath, [convexBin(process.cwd()), ...args], { stdio: "inherit" }))
-      .exited,
-  convexChild: (args) =>
-    attended(spawn(process.execPath, [convexBin(process.cwd()), ...args], { stdio: "inherit" })),
-  envLocal: () => {
-    const path = join(process.cwd(), ".env.local");
-    return existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};
-  },
-  shell: (command) => attended(spawn(command, { shell: true, stdio: "inherit" })).exited,
+    exitCode(spawn(process.execPath, [convexBin(process.cwd()), ...args], { stdio: "inherit" })),
+  shell: (command) => exitCode(spawn(command, { shell: true, stdio: "inherit" })),
   fetch: (input, init) => fetch(input, init),
   log: (message) => console.error(message),
 };
 
-/** Set once this process was told to stop; no further process starts after that. */
-let interrupted = false;
-
-/**
- * A child with this process's standard streams, attended until it ends: an interrupt or a
- * termination of this process is passed to it and this process outlives it, so the exit code is
- * the child's. The terminal interrupts the whole foreground group, a supervisor only this process;
- * either way the child gets the signal. After a signal no process starts: the step that would have
- * followed fails instead.
- */
-function attended(child: ChildProcess): { exited: Promise<number>; stop: () => void } {
-  if (interrupted) throw new Error("Interrupted.");
-  const forward = (signal: NodeJS.Signals) => {
-    interrupted = true;
-    child.kill(signal);
-  };
-  process.on("SIGINT", forward).on("SIGTERM", forward);
-  const exited = new Promise<number>((resolve, reject) => {
+/** The exit code of `child`, or its spawn error. */
+function exitCode(child: ChildProcess): Promise<number> {
+  return new Promise((resolve, reject) => {
     child.on("error", reject).on("close", (code) => resolve(code ?? 1));
-  }).finally(() => void process.off("SIGINT", forward).off("SIGTERM", forward));
-  return { exited, stop: () => void child.kill("SIGINT") };
+  });
 }
 
 /**

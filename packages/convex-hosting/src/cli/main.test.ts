@@ -11,7 +11,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { parseEnv } from "node:util";
 import { describe, expect, test } from "vite-plus/test";
 import { deploymentSelector, type Cli } from "./convex.js";
 import { main, VERSION_FILE } from "./main.js";
@@ -57,26 +56,16 @@ function fake(
     known?: Record<string, string>;
     build?: () => Promise<number>;
     push?: (cli: Cli, args: string[]) => Promise<number>;
-    /**
-     * What `npx convex dev` does when started: its exit code, which ends it at once, or
-     * `undefined` to run until stopped. The first start writes `.env.local` as configure does,
-     * unless `configure` is false.
-     */
-    child?: (start: number) => number | undefined;
-    configure?: boolean;
+    /** What `npx convex dev --once --skip-push` writes to `.env.local`; `null` writes nothing. */
+    deployment?: string | null;
   } = {},
 ) {
   const runs: string[][] = [];
   const pushes: string[][] = [];
   const builds: string[] = [];
   const events: string[] = [];
-  const children: string[][] = [];
-  /** Ends the child started at that index with a code, as an interrupt would. */
-  const endChild: ((code: number) => void)[] = [];
   const stored = new Map<string, string>();
   const logs: string[] = [];
-  /** The URLs that the readiness check asked. */
-  const fetched: string[] = [];
   const ok = (value: unknown) => ({
     exitCode: 0,
     stdout: value === null ? "" : JSON.stringify(value, null, 2),
@@ -116,69 +105,30 @@ function fake(
     convexInherited: async (args) => {
       pushes.push(args);
       events.push(`push: ${args[0]}`);
-      return (await options.push?.(cli, args)) ?? 0;
-    },
-    convexChild: (args) => {
-      children.push(args);
-      events.push(`child: ${args.join(" ")}`);
-      if (children.length === 1 && options.configure !== false) {
+      if (args[0] === "dev" && args.includes("--skip-push") && options.deployment !== null) {
         writeFileSync(
           join(cwd, ".env.local"),
-          "CONVEX_DEPLOYMENT=dev:happy-cat-123\nCONVEX_URL=https://happy-cat-123.convex.cloud\n",
+          `CONVEX_DEPLOYMENT=${options.deployment ?? "dev:happy-cat-123"}\n`,
         );
       }
-      const code = options.child?.(children.length);
-      let end: (code: number) => void = () => {};
-      const exited = new Promise<number>((resolve) => {
-        end = resolve;
-        if (code !== undefined) resolve(code);
-      });
-      endChild.push(end);
-      return {
-        exited,
-        stop: () => {
-          events.push("stop");
-          end(130);
-        },
-      };
+      return (await options.push?.(cli, args)) ?? 0;
     },
     shell: async (command) => {
       builds.push(command);
       events.push("build");
       return (await options.build?.()) ?? 0;
     },
-    fetch: async (url, init) => {
-      if (init?.body === undefined) {
-        fetched.push(String(url));
-        return new Response(null);
-      }
+    fetch: async (_url, init) => {
       const storageId = `storage-${stored.size}`;
-      stored.set(storageId, await new Response(init.body).text());
+      stored.set(storageId, await new Response(init?.body).text());
       return Response.json({ storageId });
-    },
-    envLocal: () => {
-      const path = join(cwd, ".env.local");
-      return existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};
     },
     log: (message) => logs.push(message),
   };
   const calls = () => runs.map(callName);
   const callArgs = (name: string) =>
     runs.filter((args) => args[3] === name).map((args) => JSON.parse(args[4]));
-  return {
-    cli,
-    runs,
-    pushes,
-    builds,
-    events,
-    stored,
-    logs,
-    calls,
-    callArgs,
-    children,
-    endChild,
-    fetched,
-  };
+  return { cli, runs, pushes, builds, events, stored, logs, calls, callArgs };
 }
 
 /** Runs the upload that `deploy` put in `--cmd`, the way the shell would. */
@@ -305,80 +255,49 @@ describe("deploy --dev", () => {
   });
 });
 
-describe("dev", () => {
-  test("starts npx convex dev without codegen, deploys once the deployment answers, then restarts it with codegen", async () => {
+describe("init", () => {
+  const INIT = ["init", "--build", "vite build", "--dist", "dist"];
+
+  test("configures without a push, deploys to the development deployment, then says to run npx convex dev", async () => {
     const cwd = app(site);
-    // The second child is what the user stops.
-    const { cli, events, children, logs } = fake(cwd, {
-      child: (start) => (start === 2 ? 0 : undefined),
-    });
-    expect(await main(["dev", "--build", "vite build", "--dist", "dist"], cli)).toBe(0);
-    expect(children).toEqual([["dev", "--codegen", "disable"], ["dev"]]);
-    expect(events.slice(0, 3)).toEqual(["child: dev --codegen disable", "build", "probe"]);
-    expect(events.slice(-4)).toEqual(["push: run", "site url", "stop", "child: dev"]);
+    const { cli, events, pushes, logs } = fake(cwd);
+    expect(await main(INIT, cli)).toBe(0);
+    expect(pushes[0]).toEqual(["dev", "--once", "--skip-push"]);
+    expect(events.slice(0, 3)).toEqual(["push: dev", "build", "probe"]);
+    expect(events.slice(-2)).toEqual(["push: run", "site url"]);
     expect(existsSync(join(cwd, VERSION_FILE))).toBe(true);
-    expect(logs.some((line) => line.includes("that is expected"))).toBe(true);
+    expect(logs[logs.length - 1]).toBe("Now run npx convex dev.");
   });
 
-  test("returns the exit code of npx convex dev when it ends before the deployment answers", async () => {
-    const { cli, events } = fake(app(site), { child: () => 1, configure: false });
-    expect(await main(["dev", "--dist", "dist"], cli)).toBe(1);
-    // The stop of an ended child is a no-op.
-    expect(events).toEqual(["child: dev --codegen disable", "stop"]);
-  });
-
-  test("stops npx convex dev when the deploy fails, and restarts nothing", async () => {
-    const { cli, events, children, logs } = fake(app(site), { build: async () => 2 });
-    expect(await main(["dev", "--build", "vite build", "--dist", "dist"], cli)).toBe(1);
-    expect(children).toHaveLength(1);
-    expect(events.slice(-2)).toEqual(["build", "stop"]);
-    expect(logs[logs.length - 1]).toBe("The build failed with exit code 2.");
-  });
-
-  test("exits with the code of npx convex dev when it ended during the deploy, and restarts nothing", async () => {
-    const { cli, children, endChild } = fake(app(site), {
-      push: async () => {
-        endChild[0](130);
-        return 0;
-      },
+  test("returns the configure's exit code when it fails, and deploys nothing", async () => {
+    const { cli, events } = fake(app(site), {
+      deployment: null,
+      push: async (_cli, args) => (args.includes("--skip-push") ? 1 : 0),
     });
-    expect(await main(["dev", "--dist", "dist"], cli)).toBe(130);
-    expect(children).toHaveLength(1);
+    expect(await main(INIT, cli)).toBe(1);
+    expect(events).toEqual(["push: dev"]);
   });
 
-  test("a deploy failure after npx convex dev ended reports the child's code, not the failure", async () => {
-    const { cli, children, endChild } = fake(app(site), {
-      push: async () => {
-        endChild[0](130);
-        return 1;
-      },
-    });
-    expect(await main(["dev", "--dist", "dist"], cli)).toBe(130);
-    expect(children).toHaveLength(1);
+  test("on a local or anonymous deployment, configures, then says what to run, and deploys nothing", async () => {
+    for (const deployment of ["anonymous:anonymous-agent", "local:happy-cat-123"]) {
+      const { cli, events, logs } = fake(app(site), { deployment });
+      expect(await main(INIT, cli)).toBe(1);
+      expect(events).toEqual(["push: dev"]);
+      expect(logs[logs.length - 1]).toContain("Run npx convex dev and keep it running");
+      expect(logs[logs.length - 1]).toContain(
+        'npx convex-hosting deploy --dev --build "vite build" --dist dist',
+      );
+    }
   });
 
-  test("asks the URL that .env.local names, not an older one in .env", async () => {
-    const cwd = app({ ...site, ".env": "CONVEX_URL=https://old-dog-1.convex.cloud\n" });
-    const { cli, fetched } = fake(cwd, { child: (start) => (start === 2 ? 0 : undefined) });
-    expect(await main(["dev", "--dist", "dist"], cli)).toBe(0);
-    expect(fetched).toEqual(["https://happy-cat-123.convex.cloud"]);
-  });
-
-  test("a self-hosted deployment answers without CONVEX_DEPLOYMENT", async () => {
-    const { cli, children, runs } = fake(app(site), {
-      env: { CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:3210", CONVEX_SELF_HOSTED_ADMIN_KEY: "k" },
-      configure: false,
-      child: (start) => (start === 2 ? 0 : undefined),
-    });
-    expect(await main(["dev", "--dist", "dist"], cli)).toBe(0);
-    expect(children).toHaveLength(2);
-    expect(selectors(runs)).toEqual([]);
-  });
-
-  test("refuses --dev and --preview-name", async () => {
+  test("refuses a deploy key, and --dev or --preview-name", async () => {
+    const keyed = fake(app(site), { env: { CONVEX_DEPLOY_KEY: "prod:x|y" } });
+    expect(await main(INIT, keyed.cli)).toBe(1);
+    expect(keyed.events).toEqual([]);
+    expect(keyed.logs[keyed.logs.length - 1]).toContain("Unset CONVEX_DEPLOY_KEY");
     for (const extra of [["--dev"], ["--preview-name", "pr-7"]]) {
       const { cli, events, logs } = fake(app(site));
-      expect(await main(["dev", "--dist", "dist", ...extra], cli)).toBe(1);
+      expect(await main([...INIT, ...extra], cli)).toBe(1);
       expect(events).toEqual([]);
       expect(logs[logs.length - 1]).toMatch(/^Usage:/);
     }

@@ -2,13 +2,12 @@
 
 ## 0.12.0
 
-- `convex-hosting dev`: the first run of a checkout as one command. It starts `npx convex dev`,
-  which creates the development deployment and `.env.local` on a new project, waits until the
-  deployment answers, runs the build, the upload, and the push of `deploy --dev`, then replaces the
-  child with `npx convex dev` with codegen and stays attached. Same options as `deploy`, without
-  `--dev` and `--preview-name`. The first child runs without codegen, so its codegen and the
-  deploy's bundling never write `convex/_generated` at once; its first push fails on the missing
-  version file, once, and the command says so.
+- `convex-hosting init`: the first run of a checkout. It runs `npx convex dev --once --skip-push`,
+  which configures the development deployment and writes `.env.local` without a push, then the
+  build, upload, and push of `deploy --dev`. Same options as `deploy`, without `--dev` and
+  `--preview-name`; it refuses to run with a deploy key set. On a local or anonymous deployment it
+  configures, then prints the two commands to run instead, because that deploy needs the backend
+  that only a running `npx convex dev` provides.
 
 ## 0.11.0
 

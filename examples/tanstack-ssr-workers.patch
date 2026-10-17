@@ -44,10 +44,10 @@ index 2bd08d55546dfacc4e31f84614c81a5625beee4e..00000000000000000000000000000000
 -
 -export default http;
 diff --git a/package.json b/package.json
-index 17ea6fe66cd94fe0c2895900a5702336047f3860..7bbec71850aefea2dd2b0d87cfd9ca6f248bdb32 100644
+index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f248bdb32 100644
 --- a/package.json
 +++ b/package.json
-@@ -1,19 +1,17 @@
+@@ -1,18 +1,17 @@
  {
 -  "name": "example-tanstack-ssr",
 +  "name": "example-tanstack-ssr-workers",
@@ -57,7 +57,6 @@ index 17ea6fe66cd94fe0c2895900a5702336047f3860..7bbec71850aefea2dd2b0d87cfd9ca6f
 -    "build": "vp build",
 +    "build": "if [ \"$WORKERS_CI\" = 1 ]; then convex deploy --cmd \"vp build\"; else vp build; fi",
      "dev": "vp dev",
--    "dev:convex": "convex-hosting dev --build \"pnpm run build\" --dist dist/client",
 -    "deploy:dev": "convex-hosting deploy --dev --build \"pnpm run build\" --dist dist/client",
 -    "deploy": "convex-hosting deploy --build \"pnpm run build\" --dist dist/client",
 +    "deploy": "wrangler deploy",
@@ -71,7 +70,7 @@ index 17ea6fe66cd94fe0c2895900a5702336047f3860..7bbec71850aefea2dd2b0d87cfd9ca6f
      "@samebase/convex-hosting-tanstack-start": "workspace:*",
      "@tanstack/react-query": "catalog:",
      "@tanstack/react-router": "catalog:",
-@@ -24,10 +22,12 @@
+@@ -23,10 +22,12 @@
      "react-dom": "catalog:"
    },
    "devDependencies": {

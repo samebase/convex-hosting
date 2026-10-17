@@ -31,10 +31,10 @@ const USAGE = `Usage:
       Runs the build, if any, stores the site files, and pushes the functions. The push switches
       the site.
       Prints the site URL, and appends url=<site URL> to $GITHUB_OUTPUT when it is set.
-  convex-hosting dev --dist <dir> [options]
-      Starts npx convex dev, which creates the development deployment on a new project, deploys the
-      site to it as deploy --dev does, and keeps npx convex dev running. The one command for a
-      fresh clone. --dev and --preview-name are deploy's.
+  convex-hosting init --dist <dir> [options]
+      The first run of a checkout: configures the development deployment without a push, then
+      deploys the site to it as deploy --dev does. Then run npx convex dev. --dev and
+      --preview-name are deploy's.
 
 Options:
   --build "<command>"           runs before the files are stored; a site with no build omits it
@@ -89,7 +89,7 @@ type Options = HandlingOptions & {
 type Command =
   | { name: "help" }
   | { name: "deploy"; build: string | undefined; options: Options }
-  | { name: "dev"; build: string | undefined; options: Options }
+  | { name: "init"; build: string | undefined; options: Options }
   | { name: "upload"; versionId: string; options: Options };
 
 function parseCommand(args: string[]): Command {
@@ -111,7 +111,7 @@ function parseCommand(args: string[]): Command {
   });
   if (args.length === 0 || values.help) return { name: "help" };
   const [name, ...rest] = positionals;
-  if ((name !== "deploy" && name !== "dev" && name !== "upload") || rest.length > 0) {
+  if ((name !== "deploy" && name !== "init" && name !== "upload") || rest.length > 0) {
     throw new Error(USAGE);
   }
   if (values.dist === undefined) throw new Error(`--dist is required.\n\n${USAGE}`);
@@ -147,7 +147,7 @@ function parseCommand(args: string[]): Command {
     return { name, versionId: values["version-id"], options };
   }
   if (values["version-id"] !== undefined) throw new Error(USAGE);
-  if (name === "dev") {
+  if (name === "init") {
     if (options.destination.kind !== "production") throw new Error(USAGE);
     return { name, build: values.build, options };
   }
@@ -162,8 +162,8 @@ export async function main(args: string[], cli: Cli): Promise<number> {
       cli.log(USAGE);
     } else if (command.name === "deploy") {
       await deploy(cli, command.options, command.build);
-    } else if (command.name === "dev") {
-      return await dev(cli, command.options, command.build);
+    } else if (command.name === "init") {
+      return await init(cli, command.options, command.build);
     } else {
       await uploadInsideDeploy(cli, command.options, command.versionId);
     }
@@ -180,74 +180,49 @@ function quote(arg: string): string {
 }
 
 /**
- * The first run of a checkout as one command. `npx convex dev` creates the development deployment
- * on a new project and writes `.env.local`; its first push fails on the missing version file, as
- * `npx convex dev` on a fresh clone does, and the deploy below is what makes the next push work.
- * The deploy runs once the deployment answers, because a local backend lives in that child. Then
- * the child is replaced by one with codegen, which the first ran without so that the deploy's
- * bundling and the child's codegen never write `convex/_generated` at the same time.
+ * The first run of a checkout. `npx convex dev --once --skip-push` configures the development
+ * deployment, asking for the team and project on a new one, and writes `.env.local` without the
+ * push that would fail on the version file no deploy has written yet; then one `deploy --dev`
+ * writes it and pushes, and `npx convex dev` works from then on. A local or anonymous deployment
+ * has its backend inside `npx convex dev`, so there the deploy needs that command running: `init`
+ * configures, then says so and stops. A deploy key would make the Convex CLI ignore `.env.local`,
+ * so `init` refuses one.
  */
-async function dev(cli: Cli, options: Options, build: string | undefined): Promise<number> {
-  cli.log(
-    "Starting npx convex dev. Its first push fails until the deploy below writes " +
-      ".convex-hosting/version.js; that is expected.",
-  );
-  const first = cli.convexChild(["dev", "--codegen", "disable"]);
-  let ended: number | undefined;
-  void first.exited.then((code) => (ended = code));
-  // The child's exit code when it ended on its own, before this command stopped it: the user
-  // interrupted the first run, so nothing restarts.
-  let interrupted: number | undefined;
-  try {
-    const exited = await deploymentAnswers(cli, first.exited);
-    if (exited !== undefined) return exited;
-    await deploy(cli, { ...options, destination: { kind: "dev" } }, build);
-  } catch (error) {
-    // The child ended during the deploy: the user stopped the first run, and the failure of the
-    // step that was under way is its consequence, not the news.
-    if (ended !== undefined) return ended;
-    throw error;
-  } finally {
-    interrupted = ended;
-    first.stop();
-    await first.exited;
+async function init(cli: Cli, options: Options, build: string | undefined): Promise<number> {
+  const env = readConvexEnv(cli);
+  if (env.CONVEX_DEPLOY_KEY || env.CONVEX_DEPLOYMENT_TOKEN) {
+    throw new Error(
+      "init sets up a development checkout. Unset CONVEX_DEPLOY_KEY and CONVEX_DEPLOYMENT_TOKEN.",
+    );
   }
-  if (interrupted !== undefined) return interrupted;
-  cli.log("Restarting npx convex dev with codegen.");
-  return await cli.convexChild(["dev"]).exited;
+  const configured = await cli.convexInherited(["dev", "--once", "--skip-push"]);
+  if (configured !== 0) return configured;
+  const deployment = readConvexEnv(cli).CONVEX_DEPLOYMENT ?? "";
+  if (deployment.startsWith("local:") || deployment.startsWith("anonymous:")) {
+    cli.log(
+      `${deployment} is a local deployment: its backend runs inside npx convex dev. Run npx convex dev ` +
+        `and keep it running, then in another terminal:\n  npx convex-hosting deploy --dev ${deployArgs(options, build)}`,
+    );
+    return 1;
+  }
+  await deploy(cli, { ...options, destination: { kind: "dev" } }, build);
+  cli.log("Now run npx convex dev.");
+  return 0;
 }
 
-/**
- * Resolves with `undefined` once the deployment answers a request, or with the child's exit code
- * when `npx convex dev` ends first. The deployment is the self-hosted one when
- * `CONVEX_SELF_HOSTED_URL` is set (the Convex CLI then keeps `CONVEX_DEPLOYMENT` out of
- * `.env.local`), else the one `.env.local` names, at the URL the Convex CLI wrote next to it in
- * that file (an older `.env` can hold another). A cloud deployment answers at once; a local
- * backend answers when the child has started it. A request that hangs is given five seconds.
- */
-async function deploymentAnswers(cli: Cli, exited: Promise<number>): Promise<number | undefined> {
-  let ended: number | undefined;
-  void exited.then((code) => (ended = code));
-  for (;;) {
-    if (ended !== undefined) return ended;
-    const local = cli.envLocal();
-    const url =
-      readConvexEnv(cli).CONVEX_SELF_HOSTED_URL ??
-      (local.CONVEX_DEPLOYMENT === undefined
-        ? undefined
-        : Object.entries(local).find(
-            ([name, value]) => name.endsWith("CONVEX_URL") && value !== undefined,
-          )?.[1]);
-    if (url !== undefined) {
-      try {
-        await cli.fetch(url, { signal: AbortSignal.timeout(5000) });
-        return undefined;
-      } catch {
-        // Not listening yet.
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
+/** The options of a deploy, as the command line that gives them. */
+function deployArgs(options: Options, build: string | undefined): string {
+  return [
+    ...(build === undefined ? [] : ["--build", JSON.stringify(build)]),
+    "--dist",
+    options.dist,
+    "--html-handling",
+    options.html_handling,
+    "--not-found-handling",
+    options.not_found_handling,
+    "--component",
+    options.component,
+  ].join(" ");
 }
 
 /**

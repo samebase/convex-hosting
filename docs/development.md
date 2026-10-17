@@ -4,15 +4,14 @@ The inner loop is your framework's dev server, such as Vite's, which serves the 
 with hot reload against the development deployment's URL from `.env.local`, plus `npx convex dev`,
 which pushes your function changes. Neither needs a deploy.
 
-`convex-hosting dev` runs `npx convex dev` for you, with the first deploy in between: it starts
-`npx convex dev` without codegen, waits until `.env.local` names the deployment and the deployment
-answers (a local backend lives in that process), runs the build, the upload, and the push of
-`deploy --dev`, then replaces the child with `npx convex dev` with codegen and stays attached to it.
-It takes the options of `deploy`, without `--dev` and `--preview-name`. The first push of the first
-child fails on the missing version file, once, and says so.
+`convex-hosting init` is the first run of a checkout: `npx convex dev --once --skip-push`, which
+configures the development deployment and writes `.env.local` without the push that would fail on
+the missing version file, then the deploy below. It takes the options of `deploy`, without `--dev`
+and `--preview-name`, and refuses to run with a deploy key set. On a local or anonymous deployment
+it configures, then stops and prints the two commands, because that deploy needs the backend that
+only a running `npx convex dev` provides.
 
-When the development deployment should serve the current build while `npx convex dev` runs
-elsewhere, run the one-shot command:
+When the development deployment should serve the current build, run the one-shot command:
 
 ```sh
 npx convex-hosting deploy --dev --build "vite build" --dist dist --not-found-handling single-page-application
