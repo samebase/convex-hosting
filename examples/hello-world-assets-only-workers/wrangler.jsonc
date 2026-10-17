@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "convex-hosting-hello-world-assets-only",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    // The path to the directory containing the `index.html` file to be served at `/`
+    "directory": "./public",
+  },
+  "preview_urls": true,
+  // `wrangler preview`, the Workers Builds preview command, requires this block.
+  "previews": {},
+}

@@ -1,0 +1,13 @@
+{
+  "name": "example-hello-world-assets-only-workers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "deploy:preview": "wrangler preview",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "4.148.0"
+  }
+}
