@@ -1,0 +1,150 @@
+<!doctype html>
+<!-- Fonts: SF Pro and SF Mono from macOS. Render: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --window-size=1536,864 --screenshot=thumbnail.png thumbnail.html -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hosting thumbnail, light v3</title>
+    <style>
+      @font-face {
+        font-family: "SF Mono Local";
+        font-weight: 400;
+        src: url("file:///System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SF-Mono-Regular.otf");
+      }
+      @font-face {
+        font-family: "SF Mono Local";
+        font-weight: 500;
+        src: url("file:///System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SF-Mono-Medium.otf");
+      }
+      :root {
+        --bg: #fbfaf6;
+        --grid: #efede5;
+        --ink: #1a1a18;
+        --muted: #6e6b63;
+        --soft: #e4e1d8;
+        --accent: #0f7c70;
+        --sans: system-ui, -apple-system, "Helvetica Neue", sans-serif;
+        --mono: "SF Mono Local", Menlo, monospace;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        width: 1536px;
+        height: 864px;
+        overflow: hidden;
+        background: var(--bg);
+        position: relative;
+      }
+      svg {
+        position: absolute;
+        inset: 0;
+      }
+      .text {
+        position: absolute;
+        left: 96px;
+        top: 0;
+        height: 864px;
+        width: 640px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .name {
+        font-family: var(--mono);
+        font-weight: 500;
+        font-size: 128px;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+      }
+      .tagline {
+        margin-top: 28px;
+        font-family: var(--sans);
+        font-size: 30px;
+        line-height: 1.3;
+        color: var(--muted);
+      }
+      .files text {
+        font-family: var(--mono);
+        font-size: 28px;
+        fill: var(--ink);
+      }
+      .address {
+        font-family: var(--mono);
+        font-size: 28px;
+        fill: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="1536" height="864" viewBox="0 0 1536 864" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+          <path d="M48 0H0V48" fill="none" stroke="var(--grid)" stroke-width="2" />
+        </pattern>
+      </defs>
+      <rect width="1536" height="864" fill="url(#grid)" />
+
+      <g class="files">
+        <text x="696" y="348" dominant-baseline="central">index.html</text>
+        <text x="696" y="404" dominant-baseline="central">app-3f2a9c.js</text>
+        <text x="696" y="460" dominant-baseline="central">_headers</text>
+        <text x="696" y="516" dominant-baseline="central">_redirects</text>
+      </g>
+      <path
+        d="M944 348H956V516H944M956 432H1024"
+        fill="none"
+        stroke="var(--accent)"
+        stroke-width="3"
+      />
+
+      <rect
+        x="1024"
+        y="192"
+        width="416"
+        height="480"
+        rx="14"
+        fill="var(--bg)"
+        stroke="var(--ink)"
+        stroke-width="3"
+      />
+      <path d="M1024 256H1440" stroke="var(--ink)" stroke-width="3" />
+      <circle cx="1052" cy="224" r="7" fill="none" stroke="var(--ink)" stroke-width="3" />
+      <text class="address" x="1074" y="224" dominant-baseline="central">my-app.convex.site</text>
+
+      <rect x="1056" y="288" width="352" height="112" rx="4" fill="var(--accent)" />
+      <rect x="1056" y="432" width="240" height="16" rx="8" fill="var(--soft)" />
+      <rect x="1056" y="464" width="168" height="16" rx="8" fill="var(--soft)" />
+      <rect
+        x="1056"
+        y="512"
+        width="164"
+        height="128"
+        rx="4"
+        fill="none"
+        stroke="var(--ink)"
+        stroke-width="3"
+      />
+      <rect
+        x="1244"
+        y="512"
+        width="164"
+        height="128"
+        rx="4"
+        fill="none"
+        stroke="var(--ink)"
+        stroke-width="3"
+      />
+    </svg>
+    <div class="text">
+      <div class="name">hosting</div>
+      <div class="tagline">
+        <span>Frontend and backend, one deployment.</span><br /><span
+          >Built like a Cloudflare Worker.</span
+        >
+      </div>
+    </div>
+  </body>
+</html>
