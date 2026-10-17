@@ -1,8 +1,8 @@
 # Proposal: the build owns the version file
 
-Status: proposal, 2026-10-17, written by an AI assistant for the maintainer's decision. Nothing here
-is implemented. Two Codex design reviews are recorded at the end; the second version of this note is
-the one that survived the first.
+Status: not approved, 2026-10-17. Written by an AI assistant; two Codex design reviews rejected both
+versions, for reasons recorded at the end. What survived both rounds is in that section, with the
+questions the maintainer has to answer before a third version is worth writing.
 
 ## The problem
 
@@ -152,4 +152,35 @@ publication order, two files paired wrongly, upload-as-switch for coupled single
 before prerendering) and four important ones (configuration owner, first-install marker,
 shared-checkout hazard, prior art overstated). This version answers each above.
 
-Second version (this note): pending.
+Second version (this note): not approved. Blocking: writing the id first does not make the renderer
+and the id a matched pair, because the bundler reads the two files without a snapshot (renderer B
+with id A is possible, and a wrong pair becomes servable once the upload completes); "the newest
+publication of a build" is a pointer that existing code follows without a push, which changes
+serving configuration on a failed push and breaks the deletion reasoning; an id minted at build
+start proves uniqueness, not that `--dist` belongs to a completed, successful build. Important: a
+site with no build can still depend on new backend functions, so the exception is on the wrong
+boundary; a build embeds `VITE_CONVEX_URL`, so one artifact cannot be reused across deployments; the
+first-run sequence does not cover a project without committed generated files or a prerendered page
+that needs a deployed function; removing the marker needs an exact attempt identity and an upgrade
+protocol; non-Vite builds have no producer; retention of shared builds is unspecified.
+
+What survived both reviews:
+
+- The build should produce one complete, immutable artifact: renderer, asset inventory, and build
+  identity, finished after every build stage including prerendering.
+- The pushed code must name one exact deployment of that artifact, configuration included, as today;
+  a request must identify that exact version, so the current stale-request and deletion reasoning
+  stays.
+- The binding entry that `convex/http.ts` imports must be replaced atomically at deploy and must
+  point at an immutable renderer, never at an output the next build overwrites. A rebuild then
+  leaves the deployed pair intact, which removes the watcher mismatch; a clean checkout still needs
+  a defined preparation step, and an entry that names a version not yet uploaded may answer 404
+  naming it.
+- Per-file deduplication stays; sharing whole manifests is optional and not needed for the
+  guarantees.
+
+The consequence for the first-run problem: the push being the switch requires the pushed code to
+name its files, Convex gives code no channel for that but an imported file, so a file must exist
+before the first push. The first run can be made cheaper and its failures named; it cannot be made
+to disappear without giving up the push as the switch for some sites, which the reviews show is the
+wrong trade for any site that calls backend functions.
