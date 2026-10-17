@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.9.2
+## 0.9.3
+
+0.9.2 was staged from the first commit of this fix and rejected before publication.
 
 - The server entry defines `queueMicrotask` when the runtime has none. Convex's runtime has no
   `queueMicrotask`, and TanStack calls it on the server. `attachRouterServerSsrUtils` calls it once
