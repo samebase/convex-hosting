@@ -1,5 +1,5 @@
 diff --git a/README.md b/README.md
-index d2965666acdd127a6386be69ec1bb3217b904b8d..fd2c84909a7246376ce09b46d3c27c9b12ddc268 100644
+index c166e383cdb254458879127753d6b8d979846e96..fd2c84909a7246376ce09b46d3c27c9b12ddc268 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,13 +1,18 @@
@@ -13,7 +13,7 @@ index d2965666acdd127a6386be69ec1bb3217b904b8d..fd2c84909a7246376ce09b46d3c27c9b
  
 -TanStack Start pages rendered inside a Convex HTTP action, with
 -[Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies.
--`convex/http.ts` serves the browser files with `serveSite` and hands every other path to the server
+-`convex/http.ts` serves the browser files with `routeAll` and hands every other path to the server
 -build of `src/server.ts`, which renders it through
 -[`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start). The
 -example has its own schema, so it needs its own Convex project.
@@ -33,7 +33,7 @@ index d2965666acdd127a6386be69ec1bb3217b904b8d..fd2c84909a7246376ce09b46d3c27c9b
  site needs caps on text length and todos per user.
  
  - `/about`: a static file from the build. `vite.config.ts` has TanStack Start prerender this page
--  only, into `dist/client/about/index.html`, and `serveSite` serves it like any other file. As on
+-  only, into `dist/client/about/index.html`, and `routeAll` serves it like any other file. As on
 -  Cloudflare, `/about` answers 307 to `/about/`, which answers the file with an ETag and
 -  `Cache-Control: public, max-age=0, must-revalidate`, where a rendered page answers `no-store`. A
 -  navigation inside the app renders the route in the browser like any other, so a prerendered route
@@ -227,12 +227,12 @@ index 60a75e8eab323c608072534ae02fd139765d2c14..637b40dfc520ceab54ff05b3fee7061f
  export default app;
 diff --git a/convex/http.ts b/convex/http.ts
 deleted file mode 100644
-index 6573e553e5974da486a38a478e06cb90a061eea2..0000000000000000000000000000000000000000
+index 2bd08d55546dfacc4e31f84614c81a5625beee4e..0000000000000000000000000000000000000000
 --- a/convex/http.ts
 +++ /dev/null
-@@ -1,22 +0,0 @@
+@@ -1,21 +0,0 @@
 -import { httpRouter } from "convex/server";
--import { registerSite, serveSite } from "@samebase/convex-hosting";
+-import { routeAll } from "@samebase/convex-hosting";
 -import { components } from "./_generated/api.js";
 -import { versionId } from "../.convex-hosting/version.js";
 -// Type only, nothing is bundled: the server build imported below.
@@ -244,12 +244,11 @@ index 6573e553e5974da486a38a478e06cb90a061eea2..00000000000000000000000000000000
 -// Every method, every path: a file for a path that has one (another method than GET or HEAD on it
 -// answers 405), the app's server (src/server.ts) for every other path, as a Cloudflare Worker with
 -// static assets does.
--const site = serveSite(components.hosting, versionId, server);
--registerSite(http, site);
+-const handler = routeAll(http, components.hosting, versionId, server);
 -// Exact routes for the three auth paths: the Convex Auth component holds the /auth prefix, where it
 -// serves the key set, and the longest prefix wins, so the catch-all above never sees them.
 -for (const path of ["/auth/signin", "/auth/refresh", "/auth/signout"]) {
--  http.route({ path, method: "POST", handler: site });
+-  http.route({ path, method: "POST", handler });
 -}
 -
 -export default http;
