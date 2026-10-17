@@ -193,19 +193,31 @@ async function dev(cli: Cli, options: Options, build: string | undefined): Promi
       ".convex-hosting/version.js; that is expected.",
   );
   const first = cli.convexChild(["dev", "--codegen", "disable"]);
-  const exited = await deploymentAnswers(cli, first.exited);
-  if (exited !== undefined) return exited;
-  await deploy(cli, { ...options, destination: { kind: "dev" } }, build);
-  first.stop();
-  await first.exited;
+  let ended: number | undefined;
+  void first.exited.then((code) => (ended = code));
+  // The child's exit code when it ended on its own, before this command stopped it: the user
+  // interrupted the first run, so nothing restarts.
+  let interrupted: number | undefined;
+  try {
+    const exited = await deploymentAnswers(cli, first.exited);
+    if (exited !== undefined) return exited;
+    await deploy(cli, { ...options, destination: { kind: "dev" } }, build);
+  } finally {
+    interrupted = ended;
+    first.stop();
+    await first.exited;
+  }
+  if (interrupted !== undefined) return interrupted;
   cli.log("Restarting npx convex dev with codegen.");
   return await cli.convexChild(["dev"]).exited;
 }
 
 /**
- * Resolves with `undefined` once `.env.local` names a deployment and its URL answers a request, or
- * with the child's exit code when `npx convex dev` ends first. A cloud deployment answers at once;
- * a local backend answers when the child has started it.
+ * Resolves with `undefined` once the deployment answers a request, or with the child's exit code
+ * when `npx convex dev` ends first. The deployment is the self-hosted one when
+ * `CONVEX_SELF_HOSTED_URL` is set (the Convex CLI then keeps `CONVEX_DEPLOYMENT` out of
+ * `.env.local`), else the one `.env.local` names, at the URL written next to it. A cloud deployment
+ * answers at once; a local backend answers when the child has started it.
  */
 async function deploymentAnswers(cli: Cli, exited: Promise<number>): Promise<number | undefined> {
   let ended: number | undefined;
@@ -213,10 +225,14 @@ async function deploymentAnswers(cli: Cli, exited: Promise<number>): Promise<num
   for (;;) {
     if (ended !== undefined) return ended;
     const env = readConvexEnv(cli);
-    const url = Object.entries(env).find(
-      ([name, value]) => name.endsWith("CONVEX_URL") && value !== undefined,
-    )?.[1];
-    if (env.CONVEX_DEPLOYMENT !== undefined && url !== undefined) {
+    const url =
+      env.CONVEX_SELF_HOSTED_URL ??
+      (env.CONVEX_DEPLOYMENT === undefined
+        ? undefined
+        : Object.entries(env).find(
+            ([name, value]) => name.endsWith("CONVEX_URL") && value !== undefined,
+          )?.[1]);
+    if (url !== undefined) {
       try {
         await cli.fetch(url);
         return undefined;

@@ -70,6 +70,8 @@ function fake(
   const builds: string[] = [];
   const events: string[] = [];
   const children: string[][] = [];
+  /** Ends the child started at that index with a code, as an interrupt would. */
+  const endChild: ((code: number) => void)[] = [];
   const stored = new Map<string, string>();
   const logs: string[] = [];
   const ok = (value: unknown) => ({
@@ -128,6 +130,7 @@ function fake(
         end = resolve;
         if (code !== undefined) resolve(code);
       });
+      endChild.push(end);
       return {
         exited,
         stop: () => {
@@ -151,7 +154,7 @@ function fake(
   const calls = () => runs.map(callName);
   const callArgs = (name: string) =>
     runs.filter((args) => args[3] === name).map((args) => JSON.parse(args[4]));
-  return { cli, runs, pushes, builds, events, stored, logs, calls, callArgs, children };
+  return { cli, runs, pushes, builds, events, stored, logs, calls, callArgs, children, endChild };
 }
 
 /** Runs the upload that `deploy` put in `--cmd`, the way the shell would. */
@@ -296,7 +299,38 @@ describe("dev", () => {
   test("returns the exit code of npx convex dev when it ends before the deployment answers", async () => {
     const { cli, events } = fake(app(site), { child: () => 1, configure: false });
     expect(await main(["dev", "--dist", "dist"], cli)).toBe(1);
-    expect(events).toEqual(["child: dev --codegen disable"]);
+    // The stop of an ended child is a no-op.
+    expect(events).toEqual(["child: dev --codegen disable", "stop"]);
+  });
+
+  test("stops npx convex dev when the deploy fails, and restarts nothing", async () => {
+    const { cli, events, children, logs } = fake(app(site), { build: async () => 2 });
+    expect(await main(["dev", "--build", "vite build", "--dist", "dist"], cli)).toBe(1);
+    expect(children).toHaveLength(1);
+    expect(events.slice(-2)).toEqual(["build", "stop"]);
+    expect(logs[logs.length - 1]).toBe("The build failed with exit code 2.");
+  });
+
+  test("exits with the code of npx convex dev when it ended during the deploy, and restarts nothing", async () => {
+    const { cli, children, endChild } = fake(app(site), {
+      push: async () => {
+        endChild[0](130);
+        return 0;
+      },
+    });
+    expect(await main(["dev", "--dist", "dist"], cli)).toBe(130);
+    expect(children).toHaveLength(1);
+  });
+
+  test("a self-hosted deployment answers without CONVEX_DEPLOYMENT", async () => {
+    const { cli, children, runs } = fake(app(site), {
+      env: { CONVEX_SELF_HOSTED_URL: "http://127.0.0.1:3210", CONVEX_SELF_HOSTED_ADMIN_KEY: "k" },
+      configure: false,
+      child: (start) => (start === 2 ? 0 : undefined),
+    });
+    expect(await main(["dev", "--dist", "dist"], cli)).toBe(0);
+    expect(children).toHaveLength(2);
+    expect(selectors(runs)).toEqual([]);
   });
 
   test("refuses --dev and --preview-name", async () => {
