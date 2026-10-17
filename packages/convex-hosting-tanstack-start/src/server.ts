@@ -9,16 +9,6 @@ import {
   type RequestHandler,
 } from "@tanstack/react-start/server";
 
-// Convex omits size, which TanStack uses when normalizing query-string URLs.
-if (new URLSearchParams().size === undefined) {
-  Object.defineProperty(URLSearchParams.prototype, "size", {
-    configurable: true,
-    get(this: URLSearchParams) {
-      return Array.from(this).length;
-    },
-  });
-}
-
 // Convex has no queueMicrotask, and TanStack calls it on the server. `attachRouterServerSsrUtils`
 // calls it once on every rendered page: the ReferenceError is swallowed and the page answers 200,
 // but seroval's dispose step does not run. The ssr-query cache listener calls it for a query that
