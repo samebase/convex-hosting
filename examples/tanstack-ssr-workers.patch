@@ -181,32 +181,6 @@ index c166e383cdb254458879127753d6b8d979846e96..fd2c84909a7246376ce09b46d3c27c9b
 +- `pnpm run deploy`, `pnpm run deploy:preview`: the deploy commands of Workers Builds.
  
  For everything else, see the [README](../../README.md).
-diff --git a/convex/_generated/api.d.ts b/convex/_generated/api.d.ts
-index d08ea43fafb852ec7bc789f629d965ab9ec21161..7019fbf3cd5e3475481a1c2e04d296f9256eaac0 100644
---- a/convex/_generated/api.d.ts
-+++ b/convex/_generated/api.d.ts
-@@ -9,7 +9,6 @@
-  */
- 
- import type * as auth from "../auth.js";
--import type * as http from "../http.js";
- import type * as todos from "../todos.js";
- import type * as users from "../users.js";
- 
-@@ -21,7 +20,6 @@ import type {
- 
- declare const fullApi: ApiFromModules<{
-   auth: typeof auth;
--  http: typeof http;
-   todos: typeof todos;
-   users: typeof users;
- }>;
-@@ -55,5 +53,4 @@ export declare const internal: FilterApi<
- export declare const components: {
-   auth: import("@convex-dev/auth/core/_generated/component.js").ComponentApi<"auth">;
-   authAnonymous: import("@convex-dev/auth/providers/anonymous/_generated/component.js").ComponentApi<"authAnonymous">;
--  hosting: import("@samebase/convex-hosting/_generated/component.js").ComponentApi<"hosting">;
- };
 diff --git a/convex/convex.config.ts b/convex/convex.config.ts
 index 60a75e8eab323c608072534ae02fd139765d2c14..637b40dfc520ceab54ff05b3fee7061ff473dbbf 100644
 --- a/convex/convex.config.ts
