@@ -75,6 +75,9 @@
     },
     "@convex-dev/react-query": {
       "optional": true
+    },
+    "@samebase/convex-hosting": {
+      "optional": true
     }
   },
   "engines": {

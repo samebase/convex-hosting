@@ -36,9 +36,9 @@ import server from "../dist/server/server.js";
 routeAll(http, components.hosting, versionId, server);
 ```
 
-Import `@samebase/convex-hosting`, a peer dependency, before the server build: it defines
-`queueMicrotask` when it loads, because Convex's runtime has none, and TanStack calls it on the
-server once on every rendered page and for a query that starts after the first dehydrate.
+Import `@samebase/convex-hosting` before the server build: it defines `queueMicrotask` when it
+loads, because Convex's runtime has none, and TanStack calls it on the server once on every rendered
+page and for a query that starts after the first dehydrate.
 
 Vite names the entry `server.js` when the app's `package.json` has `"type": "module"`, and
 `server.mjs` without it; import the name that the build emits. The `server-build` entry declares
@@ -214,7 +214,9 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
 
 `@convex-dev/auth` is an optional peer dependency with no version range: only the `convex-auth`
 entry uses it, and that entry needs Convex Auth 2. An app with another auth provider, or on Convex
-Auth 0.0.x, installs the adapter as is and does not import the entry.
+Auth 0.0.x, installs the adapter as is and does not import the entry. The server entry needs
+`@samebase/convex-hosting` 0.13.0 or later, which defines `queueMicrotask`; the peer is optional
+because the `convex-auth` entry alone, as on a Worker, does not need the core.
 
 The entry declares Start's `Register.server` with a request context that holds only the token, so an
 app that uses the entry cannot add its own fields to `serverContext` today; an app that needs that
