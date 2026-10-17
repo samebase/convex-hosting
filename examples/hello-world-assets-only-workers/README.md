@@ -1,5 +1,8 @@
 # Static site example on Cloudflare Workers
 
+Live at
+[convex-hosting-hello-world-assets-only.pfp.workers.dev](https://convex-hosting-hello-world-assets-only.pfp.workers.dev).
+
 Cloudflare's own static-site template, what `npm create cloudflare` writes for "Static site"
 (`hello-world-assets-only`), deployed as a Worker with static assets: one `public/index.html`, no
 build, no script. `public/` is byte-identical to

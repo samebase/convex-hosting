@@ -111,7 +111,8 @@ works through every interleaving.
   `convex-hosting deploy --dist public`, live at
   [courteous-dalmatian-252.convex.site](https://courteous-dalmatian-252.convex.site). Its
   [Worker twin](https://github.com/samebase/convex-hosting/tree/main/examples/hello-world-assets-only-workers)
-  is the template unchanged.
+  is the template unchanged, live at
+  [convex-hosting-hello-world-assets-only.pfp.workers.dev](https://convex-hosting-hello-world-assets-only.pfp.workers.dev).
 - [tanstack-spa](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa): a
   single-page app, live at [quick-fish-630.convex.site](https://quick-fish-630.convex.site).
 - [tanstack-ssr](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr): pages
