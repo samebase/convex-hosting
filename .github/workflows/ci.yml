@@ -139,11 +139,21 @@ jobs:
       - name: Reject critical development-tool vulnerabilities
         run: pnpm audit --dev --audit-level=critical
 
+  # The packages declare Node 22 or later, so the check runs on the oldest Node they promise as
+  # well as on the repository's own.
   check:
-    name: check
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: supply-chain
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: check
+            node-version-file: .node-version
+          - name: check (node 22)
+            node-version: "22"
 
     steps:
       - name: Checkout code
@@ -159,7 +169,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version-file: .node-version
+          node-version-file: ${{ matrix.node-version-file }}
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
