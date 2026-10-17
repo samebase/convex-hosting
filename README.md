@@ -8,15 +8,15 @@ The serving code is Cloudflare's. The asset Worker behind
 copied from [cloudflare/workers-sdk](https://github.com/cloudflare/workers-sdk) at a pinned commit
 and runs inside a Convex HTTP action. So `_headers`, `_redirects`, `.assetsignore`, `html_handling`,
 and `not_found_handling` mean what they mean on Cloudflare, and a request gets the response a Worker
-sends. Cloudflare's own tests check that in CI: its
+sends. This repository's CI runs Cloudflare's own tests against it: its
 [196 cases](https://github.com/samebase/convex-hosting/blob/main/packages/convex-hosting/src/component/conformance.test.ts)
-for `html_handling` and path encoding run against the component, and its
+for `html_handling` and path encoding, and its
 [integration test](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting/src/workers-sdk/fixtures/workers-with-assets-only)
-for a files-only site runs, unchanged, against a local Convex deployment.
+for a files-only site, unchanged, on a local Convex deployment.
 
-An app that renders pages is a Worker here too: an object with `fetch(request)` that answers what no
-file answers. TanStack Start runs through
-[the adapter](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start),
+An app that renders pages takes the place of the Worker script: an object with `fetch(request)` that
+answers what no file answers. TanStack Start has
+[an adapter](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start),
 with streamed pages, server functions, server routes, request middleware, and cookie sessions. The
 [TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
 is deployed here and, from the same source, as a real Worker; CI keeps the two byte-identical but
@@ -74,8 +74,8 @@ npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling 
 
 It builds, uploads `dist`, pushes the functions, and prints
 `Deployed version <id> to https://<deployment>.convex.site.` Deploy production with this command,
-never with a plain `npx convex deploy`: a plain push names the version of this checkout's last
-deploy, and the site answers 404 until the next `convex-hosting deploy`.
+never with a plain `npx convex deploy`: a plain push uploads no files, and the site answers 404
+until the next `convex-hosting deploy`.
 
 On a fresh clone, `npx convex dev` fails until the first deploy: `convex/http.ts` imports
 `.convex-hosting/version.js`, which only a deploy writes, and the deploy's build needs the
