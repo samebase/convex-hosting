@@ -52,16 +52,17 @@ index abf12ef94b7de7d1d7efd249d8b6a16ef261d470..00000000000000000000000000000000
 -  "exclude": ["./_generated"]
 -}
 diff --git a/package.json b/package.json
-index 33a58dd232ddef0120680274eec0d0d71bdc6a5f..f9c60cfac155a43a3a300809abf024f5727b679f 100644
+index 022d63ed2a35459d089ca69e03759d54e6971223..f9c60cfac155a43a3a300809abf024f5727b679f 100644
 --- a/package.json
 +++ b/package.json
-@@ -1,17 +1,13 @@
+@@ -1,18 +1,13 @@
  {
 -  "name": "example-hello-world-assets-only",
 +  "name": "example-hello-world-assets-only-workers",
    "private": true,
    "type": "module",
    "scripts": {
+-    "dev:convex": "convex-hosting dev --dist public",
 -    "deploy:dev": "convex-hosting deploy --dev --dist public",
 -    "deploy": "convex-hosting deploy --dist public",
 -    "typecheck": "tsc -p convex"
