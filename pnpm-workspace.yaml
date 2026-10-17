@@ -6,21 +6,21 @@ catalog:
   "@convex-dev/auth": 2.0.0-alpha.2
   "@convex-dev/react-query": 0.1.0
   "@edge-runtime/vm": 5.0.0
-  "@tanstack/react-query": 5.103.1
-  "@tanstack/react-router": 1.170.41
-  "@tanstack/react-start": 1.168.60
-  "@types/node": 24.19.1
+  "@tanstack/react-query": 5.104.1
+  "@tanstack/react-router": 1.170.42
+  "@tanstack/react-start": 1.168.61
+  "@types/node": 24.19.2
   "@types/react": 19.3.0
   "@types/react-dom": 19.3.0
   "@vitejs/plugin-react": 6.1.2
   convex: 1.46.0
   ignore: 7.0.12
   mime: 4.1.0
-  convex-test: 0.0.60
+  convex-test: 0.0.61
   react: 19.3.0
   react-dom: 19.3.0
   typescript: 7.0.2
-  undici: 7.29.1
+  undici: 7.30.0
   vite: npm:@voidzero-dev/vite-plus-core@1.1.0
   vite-plus: 1.1.0
   vitest: 5.0.3
