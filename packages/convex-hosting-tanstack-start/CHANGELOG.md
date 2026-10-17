@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1
+
+- `@convex-dev/auth` is an optional peer dependency with no version range, so an app on Convex Auth
+  0.0.x installs the adapter without `--legacy-peer-deps`; only the `convex-auth` entry needs Convex
+  Auth 2. The README says the entry is interim, and that its `Register.server` context cannot be
+  extended by the app today.
+- npm metadata: homepage, bugs, keywords, and Node 22 or later.
+
 ## 0.9.0
 
 - Pages stream, as on a Cloudflare Worker: the server entry is TanStack's own stream handler, the

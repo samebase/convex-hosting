@@ -1,7 +1,17 @@
 {
   "name": "@samebase/convex-hosting-tanstack-start",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Render TanStack Start pages in a Convex HTTP action.",
+  "keywords": [
+    "convex",
+    "hosting",
+    "ssr",
+    "tanstack-start"
+  ],
+  "homepage": "https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start#readme",
+  "bugs": {
+    "url": "https://github.com/samebase/convex-hosting/issues"
+  },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -48,7 +58,7 @@
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "@convex-dev/auth": "^2.0.0-alpha.2",
+    "@convex-dev/auth": "*",
     "@convex-dev/react-query": "^0.1.0",
     "@tanstack/react-router": "^1.170.38",
     "@tanstack/react-start": "^1.168.60",
@@ -64,5 +74,8 @@
     "@convex-dev/react-query": {
       "optional": true
     }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

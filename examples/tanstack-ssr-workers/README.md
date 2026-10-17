@@ -59,8 +59,8 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
 client before the page knows the session, so `SessionProvider` releases it when the provider reports
 none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
 
-The cookies are `Secure` in a production build, as in Convex Auth's Next.js integration, and not in
-`pnpm run dev`, which serves plain HTTP.
+The cookies are `Secure` when the request came over HTTPS, and not in `pnpm run dev`, which serves
+plain HTTP.
 
 The example signs in anonymously: each sign-in creates a user. Password or OAuth sign-in changes the
 provider in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in
@@ -78,8 +78,8 @@ page.
   `/auth` routes live in the Worker, because the session cookies belong to the site's origin.
 - Request work, such as the cookies and the token, happens in `src/server.ts` before
   `handler.fetch`, not in TanStack middleware.
-- The example has no `createServerFn`, no `routes/api`, and no `createStart` middleware. They would
-  run inside the Worker and then call Convex over HTTP to do anything.
+- `/server` shows a server function, a server route, and request middleware. They run inside the
+  Worker and call Convex over HTTP for data, so a Convex query or mutation stays the place for data.
 - A loader of the server render reaches Convex through the HTTP client with the user's token: the
   cookie is not an `Authorization` header, so the Worker itself has no identity.
 

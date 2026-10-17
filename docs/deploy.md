@@ -4,14 +4,16 @@
 pushed code names the version it was built with, so the push switches the site. Then the command
 prints the site URL, which it asks the deployment for (`CONVEX_SITE_URL`), and ends. The first
 request that the new code serves marks its version live, which deletes the versions that were live
-before it. A version that never becomes live, from a deploy that failed, is deleted when it is a day
-old, with the stored files that no version uses. Nothing is deleted while a site gets no request.
+before it. A version that never becomes live, from a deploy that failed, is deleted at the first
+switch after it is a day old, and the stored files that no version uses go at the switch after that.
+Nothing is deleted while a site gets no request.
 
 `deploy` goes to production. `--preview-name <name>` sends it to that preview (with a login or a
 project's preview deploy key; always pass the name with that key), and `--dev` to the development
 deployment (see [Development](./development.md)). A deploy key in `CONVEX_DEPLOY_KEY` or
-`CONVEX_DEPLOYMENT_TOKEN` (from the environment or `.env.local`) selects its own deployment instead,
-and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment.
+`CONVEX_DEPLOYMENT_TOKEN` (from the environment or `.env.local`) selects its own deployment for a
+plain `deploy`, and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment; `--dev` refuses a
+key, and `--preview-name` accepts only a preview key, so a production key cannot redirect either.
 
 The first deploy to a deployment pushes the component, then uploads the files. Until that upload
 ends, the site answers 404.

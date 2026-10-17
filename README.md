@@ -29,7 +29,7 @@ cache, and WebSockets. The list, with numbers, is in
 
 ## Use
 
-Requires `convex` 1.46 or later.
+Requires Node 22 or later and `convex` 1.46 or later.
 
 ```sh
 npm install @samebase/convex-hosting
@@ -71,8 +71,9 @@ npx convex-hosting deploy --build "vite build" --dist dist --not-found-handling 
 
 It builds, uploads `dist`, pushes the functions, and prints
 `Deployed version <id> to https://<deployment>.convex.site.` A site with no build omits `--build`.
-Deploy production with this command, never with a plain `npx convex deploy`: a plain push uploads no
-files, and the site answers 404 until the next `convex-hosting deploy`.
+Deploy production with this command, never with a plain `npx convex deploy`: a plain push names the
+version of this checkout's last deploy, often another deployment's, and the site answers 404 until
+the next `convex-hosting deploy`.
 
 On a fresh clone, the first push of `npx convex dev` fails: `convex/http.ts` imports
 `.convex-hosting/version.js`, which only a deploy writes. `npx convex dev` keeps running after that
@@ -144,8 +145,8 @@ works through every interleaving.
 
 ## Status
 
-Version 0.9, before 1.0: a minor release can change the API, and the changelog says what changed.
-The author's apps run on it, among them [Scout](https://github.com/samebase/scout) and
+Before 1.0: a minor release can change the API, and the changelog says what changed. The author's
+apps run on it, among them [Scout](https://github.com/samebase/scout) and
 [chessmerge.com](https://chessmerge.com).
 
 ## License

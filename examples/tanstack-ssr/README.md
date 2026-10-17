@@ -77,8 +77,9 @@ everything else; Vite's dev server calls it directly.
   `/auth` routes live in `src/server.ts`, because the session cookies belong to the site's origin.
 - Request work, such as the cookies and the token, happens in `src/server.ts` before
   `handler.fetch`, not in TanStack middleware.
-- The example has no `createServerFn`, no `routes/api`, and no `createStart` middleware. They would
-  run inside the HTTP action and then call Convex over HTTP to do anything.
+- `/server` shows a server function, a server route, and request middleware. They run inside the
+  HTTP action and call Convex over HTTP for data, so a Convex query or mutation stays the place for
+  data.
 - A loader of the server render reaches Convex through the HTTP client with the user's token: the
   cookie is not an `Authorization` header, so the HTTP action itself has no identity.
 

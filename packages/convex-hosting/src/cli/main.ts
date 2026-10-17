@@ -17,6 +17,7 @@ import { AssetConfigSchema } from "../workers-sdk/packages/workers-shared/utils/
 import {
   deploymentSelector,
   probeComponent,
+  readConvexEnv,
   runComponent,
   siteUrl,
   type Cli,
@@ -171,6 +172,28 @@ function quote(arg: string): string {
  * through `$GITHUB_OUTPUT`, for the next step of a GitHub Actions job.
  */
 async function deploy(cli: Cli, options: Options, build: string | undefined) {
+  // A deploy key wins over every selector in the Convex CLI, so a production key in the environment
+  // would send --dev or --preview-name to production, with a frontend built for development.
+  const env = readConvexEnv(cli);
+  // As the Convex CLI reads them: the first variable set decides, and its value may be the
+  // sentinel that means no key.
+  const set = env.CONVEX_DEPLOY_KEY || env.CONVEX_DEPLOYMENT_TOKEN;
+  const key = set === "<ignore_deploy_key>" ? undefined : set;
+  if (key && options.destination.kind === "dev") {
+    throw new Error(
+      "--dev deploys to this checkout's development deployment, and a deploy key in " +
+        "CONVEX_DEPLOY_KEY or CONVEX_DEPLOYMENT_TOKEN would send it to the key's deployment. Unset the key.",
+    );
+  }
+  if (key && options.destination.kind === "preview" && !key.startsWith("preview:")) {
+    // Never echo the key: a legacy key has no prefix, so any part of it is the secret.
+    const kind = key.startsWith("prod:")
+      ? "a production key"
+      : key.startsWith("dev:")
+        ? "a development key"
+        : "not a preview key";
+    throw new Error(`--preview-name needs a preview deploy key; the key set is ${kind}.`);
+  }
   const target: Target = {
     component: options.component,
     flags: deploymentSelector(cli, options.destination),
@@ -181,7 +204,14 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
   } else {
     await deployWithConvexDeploy(cli, options, target, versionId, build);
   }
-  const url = await siteUrl(cli, target.flags);
+  let url: string;
+  try {
+    url = await siteUrl(cli, target.flags);
+  } catch (error) {
+    // The push landed; only the report failed. Say so, because the site changed.
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Deployed version ${versionId}, but reading the site URL failed: ${message}`);
+  }
   cli.log(`Deployed version ${versionId} to ${url}.`);
   if (cli.env.GITHUB_OUTPUT) appendFileSync(cli.env.GITHUB_OUTPUT, `url=${url}\n`);
 }
@@ -315,7 +345,13 @@ async function upload(
 
   cli.log(`Uploading version ${versionId}: ${entries.length} files.`);
   const [configUrl] = await generateUploadUrls(1);
-  const configId = await store(cli, configUrl, JSON.stringify(config), "application/json");
+  const configId = await store(
+    cli,
+    configUrl,
+    JSON.stringify(config),
+    "application/json",
+    "the config",
+  );
   await runComponent(cli, target, internal.lib.createVersion, { versionId, configId }, z.null());
 
   // Entries with the same bytes share one stored file.
@@ -367,7 +403,7 @@ async function upload(
       while (next < page.length) {
         const index = next++;
         const [{ sha256, contentType, file }] = page[index];
-        const storageId = await store(cli, urls[index], readFileSync(file), contentType);
+        const storageId = await store(cli, urls[index], readFileSync(file), contentType, file);
         uploaded.push({ sha256, storageId });
       }
     };
@@ -394,20 +430,29 @@ function writeStateFile(cli: Cli, path: string, body: string) {
   writeFileSync(join(cli.cwd, path), body);
 }
 
-/** Stores one file through an upload URL and returns its storage id. */
+/** Stores one file through an upload URL and returns its storage id; `what` names it in errors. */
 async function store(
   cli: Cli,
   url: string,
   body: string | Uint8Array<ArrayBuffer>,
   contentType: string | undefined,
+  what: string,
 ): Promise<Id<"_storage">> {
-  const response = await cli.fetch(url, {
-    method: "POST",
-    headers: contentType === undefined ? {} : { "Content-Type": contentType },
-    body,
-  });
+  let response: Response;
+  try {
+    response = await cli.fetch(url, {
+      method: "POST",
+      headers: contentType === undefined ? {} : { "Content-Type": contentType },
+      body,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Storing ${what} failed: ${message}. Run the deploy again; the files already stored are reused.`,
+    );
+  }
   if (!response.ok) {
-    throw new Error(`Storing a file failed with ${response.status}: ${await response.text()}`);
+    throw new Error(`Storing ${what} failed with ${response.status}: ${await response.text()}`);
   }
   return z.object({ storageId: storageIdSchema }).parse(await response.json()).storageId;
 }
