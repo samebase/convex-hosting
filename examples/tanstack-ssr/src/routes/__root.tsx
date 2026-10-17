@@ -9,6 +9,8 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { convexQuery, type ConvexQueryClient } from "@convex-dev/react-query";
 import {
   SessionProvider,
+  SignedIn,
+  SignedOut,
   sessionBeforeLoad,
   useSignOutSession,
 } from "@samebase/convex-hosting-tanstack-start/convex-auth";
@@ -69,13 +71,28 @@ function Root() {
 }
 
 function SessionHeader() {
-  // `useQuery` does not fetch on the server, so the header of a prerendered page stays empty until
-  // the browser has the answer.
+  // The server render knows the session from its token, so a rendered page carries the right
+  // header; a prerendered page has no token and shows its header once the browser knows.
+  return (
+    <>
+      <SignedOut>
+        <Link to="/signin">Sign in</Link>
+      </SignedOut>
+      <SignedIn>
+        <SignedInHeader />
+      </SignedIn>
+    </>
+  );
+}
+
+function SignedInHeader() {
+  // The root loader has queried the user for a page rendered as the user, so the name is in the
+  // cache; `useQuery` does not fetch on the server, so a prerendered page shows it when the browser
+  // has it.
   const { data: me } = useQuery(convexQuery(api.users.me, {}));
   const signOut = useSignOutSession("/auth/signout");
   const [signOutFailed, setSignOutFailed] = useState(false);
-  if (me === undefined) return null;
-  if (me === null) return <Link to="/signin">Sign in</Link>;
+  if (!me) return null;
   return (
     <>
       {`Signed in as ${me.name}`}

@@ -40,7 +40,9 @@ const server = {
       cookies,
       cookieOptions,
     });
-    const token = await session.getToken();
+    // The build's prerender renders without a visitor, so its page, which every visitor gets, must
+    // not say signed out: vite.config.ts marks its requests, and they get no token at all.
+    const token = request.headers.has("x-prerender") ? undefined : await session.getToken();
     const page = await handler.fetch(request, { context: { token } });
     const headers = new Headers(page.headers);
     cookies.applyTo(headers);

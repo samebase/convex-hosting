@@ -32,11 +32,13 @@ import { useConvexAuth, type ConvexReactClient } from "convex/react";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 
 /**
- * The request context of a page render: the session's access token, or `null` without one. The
- * app's `src/server.ts` reads it off the cookies and passes it to the server entry.
+ * The request context of a page render: the session's access token, `null` without one, or
+ * `undefined` for a render that knows nothing about a session: the build's prerender, whose page
+ * every visitor gets. The app's `src/server.ts` reads it off the cookies and passes it to the
+ * server entry.
  */
 interface RequestContext {
-  token: string | null;
+  token: string | null | undefined;
 }
 
 // Start's own `Register`, where it reads `requestContext`. TypeScript 5.9 does not merge a
@@ -104,8 +106,8 @@ function ReleaseWhenSignedOut({ client }: { client: ConvexReactClient }) {
  *
  * Convex Auth reports loading during the server render and the hydration, so the token of the
  * server render decides until the provider settles: a string means that the server rendered as the
- * user, and `null` that it found no session; a render without a request context has none. Both
- * renders read the same token, so the hydration matches.
+ * user, and `null` that it found no session; `undefined`, the build's prerender or a render without
+ * a request context, knows nothing. Both renders read the same token, so the hydration matches.
  */
 function useSignedIn(): boolean | undefined {
   const token = useContext(SessionToken);
@@ -144,14 +146,15 @@ export function useSignOutSession(url: string): () => Promise<boolean> {
 }
 
 /**
- * A gate's `beforeLoad`: a server render without a session throws `redirect(options)`. Only the
- * server render has the cookie; a browser navigation has no `serverContext`.
+ * A gate's `beforeLoad`: a server render without a session throws `redirect(options)`, whether it
+ * found none or knows nothing about one. Only the server render has the cookie; a browser
+ * navigation has no `serverContext`.
  */
 export function redirectWithoutSession<TOptions>(
   serverContext: RequestContext | undefined,
   options: ValidateRedirectOptions<RegisteredRouter, TOptions>,
 ) {
-  if (serverContext?.token === null) {
+  if (serverContext !== undefined && !serverContext.token) {
     throw redirect<
       RegisteredRouter,
       InferTo<TOptions>,
