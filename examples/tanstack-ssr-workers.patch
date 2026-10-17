@@ -1,5 +1,5 @@
 diff --git a/README.md b/README.md
-index d2965666acdd127a6386be69ec1bb3217b904b8d..20791bff71331e1b3e3cc278aaf4e2e2f4c2c15b 100644
+index d2965666acdd127a6386be69ec1bb3217b904b8d..fd2c84909a7246376ce09b46d3c27c9b12ddc268 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,13 +1,18 @@
@@ -62,7 +62,7 @@ index d2965666acdd127a6386be69ec1bb3217b904b8d..20791bff71331e1b3e3cc278aaf4e2e2
  - The header on every page: the root route's loader queries `users.me`, so the first HTML response
    of a rendered page shows `Signed in as <name>` with a sign-out button, or a link to `/signin`. The
    build has no session, so on `/about` the header fills in after React hydrates.
-@@ -60,81 +58,72 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
+@@ -60,81 +58,73 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
  client before the page knows the session, so `SessionProvider` releases it when the provider reports
  none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
  
@@ -141,14 +141,15 @@ index d2965666acdd127a6386be69ec1bb3217b904b8d..20791bff71331e1b3e3cc278aaf4e2e2
 -Convex deletes a preview deployment some days after its creation (five on the free plan), and the
 -hosting component's files go with it. The workflow needs two things once per project:
 +Cloudflare Workers Builds deploys the example from this repository: production from `main`, and a
-+Preview for every other branch. The [README](../../README.md#the-same-app-on-cloudflare-workers)
-+lists the settings. Workers Builds runs `pnpm run build`, which runs
-+`convex deploy --cmd "vp build"` when `WORKERS_CI` is `1`. The Convex CLI reads `WORKERS_CI_BRANCH`
-+itself: with the project's preview deploy key it deploys to a preview deployment named after the
-+branch, and it refuses a production deploy key on any branch but `main`. `convex deploy` gives the
-+build `VITE_CONVEX_URL` and pushes after it. Then Workers Builds runs `pnpm run deploy`
-+(`wrangler deploy`) on `main` and `pnpm run deploy:preview` (`wrangler preview`) on other branches.
-+Both read the configuration that the build wrote to `dist/server/wrangler.json`.
++Preview for every other branch.
++[docs/workers.md](../../docs/workers.md#the-same-app-on-cloudflare-workers) lists the settings.
++Workers Builds runs `pnpm run build`, which runs `convex deploy --cmd "vp build"` when `WORKERS_CI`
++is `1`. The Convex CLI reads `WORKERS_CI_BRANCH` itself: with the project's preview deploy key it
++deploys to a preview deployment named after the branch, and it refuses a production deploy key on
++any branch but `main`. `convex deploy` gives the build `VITE_CONVEX_URL` and pushes after it. Then
++Workers Builds runs `pnpm run deploy` (`wrangler deploy`) on `main` and `pnpm run deploy:preview`
++(`wrangler preview`) on other branches. Both read the configuration that the build wrote to
++`dist/server/wrangler.json`.
  
 -- A preview deploy key, as the repository secret `CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SSR`. The
 -  dashboard creates one under Project Settings, and so does the platform API
