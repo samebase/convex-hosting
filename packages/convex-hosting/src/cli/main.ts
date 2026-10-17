@@ -175,10 +175,10 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
   // A deploy key wins over every selector in the Convex CLI, so a production key in the environment
   // would send --dev or --preview-name to production, with a frontend built for development.
   const env = readConvexEnv(cli);
-  // The Convex CLI reads this value as no key at all.
-  const key = [env.CONVEX_DEPLOY_KEY, env.CONVEX_DEPLOYMENT_TOKEN].find(
-    (value) => value && value !== "<ignore_deploy_key>",
-  );
+  // As the Convex CLI reads them: the first variable set decides, and its value may be the
+  // sentinel that means no key.
+  const set = env.CONVEX_DEPLOY_KEY || env.CONVEX_DEPLOYMENT_TOKEN;
+  const key = set === "<ignore_deploy_key>" ? undefined : set;
   if (key && options.destination.kind === "dev") {
     throw new Error(
       "--dev deploys to this checkout's development deployment, and a deploy key in " +

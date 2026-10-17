@@ -284,9 +284,15 @@ describe("deploy keys that are not keys", () => {
     expect(logs.join("\n")).not.toContain("s3cret");
   });
 
-  test("the Convex CLI's ignore sentinel counts as no key", async () => {
-    const { cli } = fake(app(site), { env: { CONVEX_DEPLOY_KEY: "<ignore_deploy_key>" } });
-    expect(await main(DEV, cli)).toBe(0);
+  test("the Convex CLI's ignore sentinel counts as no key, also over a token behind it", async () => {
+    const envs: Record<string, string>[] = [
+      { CONVEX_DEPLOY_KEY: "<ignore_deploy_key>" },
+      { CONVEX_DEPLOY_KEY: "<ignore_deploy_key>", CONVEX_DEPLOYMENT_TOKEN: "prod:x|y" },
+    ];
+    for (const env of envs) {
+      const { cli } = fake(app(site), { env });
+      expect(await main(DEV, cli)).toBe(0);
+    }
   });
 });
 
