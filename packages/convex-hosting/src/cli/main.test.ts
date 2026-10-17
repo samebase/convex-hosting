@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { parseEnv } from "node:util";
 import { describe, expect, test } from "vite-plus/test";
 import { deploymentSelector, type Cli } from "./convex.js";
 import { main, VERSION_FILE } from "./main.js";
@@ -74,6 +75,8 @@ function fake(
   const endChild: ((code: number) => void)[] = [];
   const stored = new Map<string, string>();
   const logs: string[] = [];
+  /** The URLs that the readiness check asked. */
+  const fetched: string[] = [];
   const ok = (value: unknown) => ({
     exitCode: 0,
     stdout: value === null ? "" : JSON.stringify(value, null, 2),
@@ -144,17 +147,38 @@ function fake(
       events.push("build");
       return (await options.build?.()) ?? 0;
     },
-    fetch: async (_url, init) => {
+    fetch: async (url, init) => {
+      if (init?.body === undefined) {
+        fetched.push(String(url));
+        return new Response(null);
+      }
       const storageId = `storage-${stored.size}`;
-      stored.set(storageId, await new Response(init?.body).text());
+      stored.set(storageId, await new Response(init.body).text());
       return Response.json({ storageId });
+    },
+    envLocal: () => {
+      const path = join(cwd, ".env.local");
+      return existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};
     },
     log: (message) => logs.push(message),
   };
   const calls = () => runs.map(callName);
   const callArgs = (name: string) =>
     runs.filter((args) => args[3] === name).map((args) => JSON.parse(args[4]));
-  return { cli, runs, pushes, builds, events, stored, logs, calls, callArgs, children, endChild };
+  return {
+    cli,
+    runs,
+    pushes,
+    builds,
+    events,
+    stored,
+    logs,
+    calls,
+    callArgs,
+    children,
+    endChild,
+    fetched,
+  };
 }
 
 /** Runs the upload that `deploy` put in `--cmd`, the way the shell would. */
@@ -320,6 +344,24 @@ describe("dev", () => {
     });
     expect(await main(["dev", "--dist", "dist"], cli)).toBe(130);
     expect(children).toHaveLength(1);
+  });
+
+  test("a deploy failure after npx convex dev ended reports the child's code, not the failure", async () => {
+    const { cli, children, endChild } = fake(app(site), {
+      push: async () => {
+        endChild[0](130);
+        return 1;
+      },
+    });
+    expect(await main(["dev", "--dist", "dist"], cli)).toBe(130);
+    expect(children).toHaveLength(1);
+  });
+
+  test("asks the URL that .env.local names, not an older one in .env", async () => {
+    const cwd = app({ ...site, ".env": "CONVEX_URL=https://old-dog-1.convex.cloud\n" });
+    const { cli, fetched } = fake(cwd, { child: (start) => (start === 2 ? 0 : undefined) });
+    expect(await main(["dev", "--dist", "dist"], cli)).toBe(0);
+    expect(fetched).toEqual(["https://happy-cat-123.convex.cloud"]);
   });
 
   test("a self-hosted deployment answers without CONVEX_DEPLOYMENT", async () => {

@@ -202,6 +202,11 @@ async function dev(cli: Cli, options: Options, build: string | undefined): Promi
     const exited = await deploymentAnswers(cli, first.exited);
     if (exited !== undefined) return exited;
     await deploy(cli, { ...options, destination: { kind: "dev" } }, build);
+  } catch (error) {
+    // The child ended during the deploy: the user stopped the first run, and the failure of the
+    // step that was under way is its consequence, not the news.
+    if (ended !== undefined) return ended;
+    throw error;
   } finally {
     interrupted = ended;
     first.stop();
@@ -216,25 +221,26 @@ async function dev(cli: Cli, options: Options, build: string | undefined): Promi
  * Resolves with `undefined` once the deployment answers a request, or with the child's exit code
  * when `npx convex dev` ends first. The deployment is the self-hosted one when
  * `CONVEX_SELF_HOSTED_URL` is set (the Convex CLI then keeps `CONVEX_DEPLOYMENT` out of
- * `.env.local`), else the one `.env.local` names, at the URL written next to it. A cloud deployment
- * answers at once; a local backend answers when the child has started it.
+ * `.env.local`), else the one `.env.local` names, at the URL the Convex CLI wrote next to it in
+ * that file (an older `.env` can hold another). A cloud deployment answers at once; a local
+ * backend answers when the child has started it. A request that hangs is given five seconds.
  */
 async function deploymentAnswers(cli: Cli, exited: Promise<number>): Promise<number | undefined> {
   let ended: number | undefined;
   void exited.then((code) => (ended = code));
   for (;;) {
     if (ended !== undefined) return ended;
-    const env = readConvexEnv(cli);
+    const local = cli.envLocal();
     const url =
-      env.CONVEX_SELF_HOSTED_URL ??
-      (env.CONVEX_DEPLOYMENT === undefined
+      readConvexEnv(cli).CONVEX_SELF_HOSTED_URL ??
+      (local.CONVEX_DEPLOYMENT === undefined
         ? undefined
-        : Object.entries(env).find(
+        : Object.entries(local).find(
             ([name, value]) => name.endsWith("CONVEX_URL") && value !== undefined,
           )?.[1]);
     if (url !== undefined) {
       try {
-        await cli.fetch(url);
+        await cli.fetch(url, { signal: AbortSignal.timeout(5000) });
         return undefined;
       } catch {
         // Not listening yet.
