@@ -184,3 +184,17 @@ name its files, Convex gives code no channel for that but an imported file, so a
 before the first push. The first run can be made cheaper and its failures named; it cannot be made
 to disappear without giving up the push as the switch for some sites, which the reviews show is the
 wrong trade for any site that calls backend functions.
+
+## Attempt: `convex-hosting dev` (PR 69, draft)
+
+The first run as one command that generates nothing: start `npx convex dev --codegen disable`, wait
+until the deployment answers, run `deploy --dev`, stop that child, start `npx convex dev` with
+codegen and stay attached. It worked on a fresh project with an anonymous local backend and on the
+cloud examples. The Codex design review would not merge it: the first child is a live publisher, so
+on a repeat run its watcher can push a new renderer with the old file set during the build; on
+Windows `kill("SIGINT")` is a forced kill, so a local backend survives and the restarted
+`npx convex dev` refuses to start; readiness guesses the target from a URL variable; a production
+deploy key sends a command named `dev` to production. Its conclusion: a one-command first run needs
+a hook in Convex's own lifecycle, after configure and backend start and before the first push, which
+does not exist (`--start` runs after the first successful push; `--skip-push` returns instead of
+holding a local backend). Until then the three documented commands stay.
