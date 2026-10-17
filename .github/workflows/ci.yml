@@ -201,6 +201,8 @@ jobs:
           fi
 
       # One pkg.pr.new preview per commit for both packages, so a consumer can install a PR build
-      # before an npm release. --pnpm packs with pnpm, which resolves catalog and workspace versions.
+      # before an npm release, from the repository's own Node only. --pnpm packs with pnpm, which
+      # resolves catalog and workspace versions.
       - name: Publish preview packages
+        if: matrix.name == 'check'
         run: pnpm exec pkg-pr-new publish --pnpm --packageManager=pnpm './packages/*'
