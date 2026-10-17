@@ -6,14 +6,14 @@ Put them at the root of `--dist`, as for Cloudflare:
 [`_headers`](https://developers.cloudflare.com/workers/static-assets/headers/),
 [`_redirects`](https://developers.cloudflare.com/workers/static-assets/redirects/), and
 [`.assetsignore`](https://developers.cloudflare.com/workers/static-assets/binding/#ignoring-assets).
-For a Vite app, put them in `public/`, which Vite copies into `dist/`. They are not served. Symbolic
-links in `--dist` are followed, as Wrangler follows them, also when they point outside the folder; a
-link to nothing, or to a folder that contains it, is skipped with a message, and a link to another
-folder in `--dist` uploads its files under both paths. `.assetsignore` excludes what a link should
-not publish.
+For a Vite app, put them in `public/`, which Vite copies into `dist/`. They are not served. A link
+to a file in `--dist` counts as the file it points to, as in Wrangler, also when it points outside
+the folder; a link to a folder is not walked, as Wrangler does not walk it, and a link to nothing is
+skipped, both with a message. `.assetsignore` excludes what a link should not publish.
 
-Every asset has `Cache-Control: public, max-age=0, must-revalidate` and an `ETag`. To cache hashed
-files for a year, add a `_headers` rule:
+Every asset answers with an `ETag` and, unless the request carries `Authorization` or `Range`,
+`Cache-Control: public, max-age=0, must-revalidate`. To cache hashed files for a year, add a
+`_headers` rule:
 
 ```
 /assets/*

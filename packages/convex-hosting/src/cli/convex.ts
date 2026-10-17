@@ -71,7 +71,7 @@ function exitCode(child: ChildProcess): Promise<number> {
  * The variables that the Convex CLI reads to select a deployment, in its order: the process
  * environment first, then `.env.local`, then `.env`.
  */
-function readConvexEnv(cli: Cli): Record<string, string | undefined> {
+export function readConvexEnv(cli: Cli): Record<string, string | undefined> {
   const fromFile = (name: string) => {
     const path = join(cli.cwd, name);
     return existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};

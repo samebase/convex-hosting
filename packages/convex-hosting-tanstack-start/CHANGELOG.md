@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1
+
+- npm metadata: homepage, bugs, keywords, and Node 22 or later.
+
 ## 0.9.0
 
 - Pages stream, as on a Cloudflare Worker: the server entry is TanStack's own stream handler, the

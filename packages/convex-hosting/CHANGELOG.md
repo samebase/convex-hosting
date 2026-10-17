@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0
+
+- `deploy --dev` refuses a deploy key in the environment, and `deploy --preview-name` accepts only a
+  preview key: a deploy key wins over every selector in the Convex CLI, so a production key would
+  have sent either to production, with a frontend built for development.
+- A link to a folder in `--dist` is not walked, as Wrangler does not walk it; a link to a file still
+  counts as the file it points to.
+- When the push landed but the site URL could not be read, the error says the version was deployed.
+- A failed upload names the file and says the deploy can be run again.
+- The package ships the Cloudflare notice and licenses it owes (`NOTICE`, `LICENSE-MIT`,
+  `LICENSE-APACHE`) and declares Node 22 or later, which its `parseEnv` call needs.
+
 ## 0.11.0
 
 - `deploy` no longer requires `--build`: a site with no build, such as a folder of files, deploys

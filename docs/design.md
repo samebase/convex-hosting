@@ -89,7 +89,7 @@ Bristol's production used it while hosting 0.3 and 0.4 ran side by side under tw
       entry is never without a file;
    5. calls `finishVersion`, which puts the version in state `ready`. The CLI calls it only after
       every batch succeeded; a crashed upload leaves an `uploading` version, and a retry reuses
-      every file the crashed run stored, through step 3;
+      every file the crashed run recorded, through step 3;
    6. writes `.convex-hosting/version.js` with the id, in the CLI's state folder at the project
       root, like Wrangler's `.wrangler/`; the folder carries its own `.gitignore`, so nothing of it
       reaches git and no tool writes into `convex/`. The file is a build artifact that `http.ts`
@@ -246,9 +246,10 @@ component's storage, so each asset hit costs that one fetch.
 
 When the version does not exist, is still `uploading`, or is `deleting`, `serveSite` answers a 404
 response that names the version, with `Cache-Control: no-store`, so a half-installed site answers
-404 rather than rendering pages without their files, and the deployment's Cloudflare front, which
-caches 404 answers on static paths, does not keep that answer after the upload ends. A `null` asset
-means one thing: no asset matched, and `worker` answers.
+404 rather than rendering pages without their files. The deployment's Cloudflare front keeps
+`no-store` for a path without an extension and gives a path with one a four-hour browser `max-age`
+anyway; the deploy order keeps that moot, because no page refers to a file that is not uploaded yet.
+A `null` asset means one thing: no asset matched, and `worker` answers.
 
 When `route` reports the version in state `ready`, `serveSite` calls `markLive` once, before it
 answers. `markLive` marks the version only when no live version was created after it, inside its own

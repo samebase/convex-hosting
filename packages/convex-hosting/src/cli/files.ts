@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { Config } from "../component/lib.js";
 import {
@@ -50,15 +50,12 @@ export async function readDist(
   const { assetsIgnoreFunction } = await createAssetsIgnoreFunction(dist);
   const entries: DistEntry[] = [];
 
-  // The real paths of the folders that contain the one being walked. A link to one of them, for
-  // example a link to `dist` itself, is a cycle and would otherwise be walked without end. A link to
-  // any other folder, such as a sibling, is walked, so its files are uploaded under both paths.
-  const ancestors = new Set([realpathSync(dist)]);
   const walk = (directory: string) => {
     for (const name of readdirSync(directory)) {
       const file = join(directory, name);
-      // A symbolic link counts as what it points to, as in Wrangler, which reads each path with
-      // `stat`. A name that `readdir` lists and `stat` cannot find is a link to nothing.
+      // A link to a file counts as the file it points to, as in Wrangler, which reads each path
+      // with `stat`; a link to a folder is not walked, as Wrangler's listing does not follow it. A
+      // name that `readdir` lists and `stat` cannot find is a link to nothing.
       const stats = statSync(file, { throwIfNoEntry: false });
       if (stats === undefined) {
         log(`Skipped ${file}: a symbolic link to nothing.`);
@@ -69,14 +66,11 @@ export async function readDist(
       if (stats.isDirectory()) {
         // An ignored directory is not walked: gitignore rules cannot re-include a file in it.
         if (assetsIgnoreFunction(`${ignorePath}/`)) continue;
-        const real = realpathSync(file);
-        if (ancestors.has(real)) {
-          log(`Skipped ${file}: a link to a folder that contains it.`);
+        if (lstatSync(file).isSymbolicLink()) {
+          log(`Skipped ${file}: a link to a folder, which Wrangler does not walk.`);
           continue;
         }
-        ancestors.add(real);
         walk(file);
-        ancestors.delete(real);
       } else if (stats.isFile() && !assetsIgnoreFunction(ignorePath)) {
         const bytes = readFileSync(file);
         // Cloudflare's limit per asset, 25 MiB. The HTTP action that serves a file cannot answer

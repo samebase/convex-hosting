@@ -247,6 +247,61 @@ describe("deploy --dev", () => {
   });
 });
 
+describe("deploy keys and selectors", () => {
+  test("--dev refuses a deploy key in the environment, before any process", async () => {
+    const keys: Record<string, string>[] = [
+      { CONVEX_DEPLOY_KEY: "prod:x|y" },
+      { CONVEX_DEPLOYMENT_TOKEN: "dev:x|y" },
+    ];
+    for (const env of keys) {
+      const { cli, events, logs } = fake(app(site), { env });
+      expect(await main(DEV, cli)).toBe(1);
+      expect(events).toEqual([]);
+      expect(logs[logs.length - 1]).toContain("Unset the key.");
+    }
+  });
+
+  test("--preview-name accepts a preview key and refuses any other", async () => {
+    const refused = fake(app(site), { env: { CONVEX_DEPLOY_KEY: "prod:x|y" } });
+    expect(await main([...DEPLOY, "--preview-name", "pr-7"], refused.cli)).toBe(1);
+    expect(refused.events).toEqual([]);
+    expect(refused.logs[refused.logs.length - 1]).toContain("the key set is a prod key");
+    const accepted = fake(app(site), {
+      env: { CONVEX_DEPLOY_KEY: "preview:t:p|y" },
+      push: innerUpload,
+    });
+    expect(await main([...DEPLOY, "--preview-name", "pr-7"], accepted.cli)).toBe(0);
+  });
+});
+
+describe("deploy reports", () => {
+  test("a push that landed is reported even when the site URL cannot be read", async () => {
+    const { cli, logs } = fake(app(site), { push: innerUpload });
+    const convex = cli.convex;
+    cli.convex = async (args) =>
+      callName(args) === "site url"
+        ? { exitCode: 1, stdout: "", stderr: "✖ Not logged in." }
+        : convex(args);
+    expect(await main(DEPLOY, cli)).toBe(1);
+    expect(logs[logs.length - 1]).toMatch(
+      /^Deployed version [0-9a-f-]+, but reading the site URL failed: ✖ Not logged in\.$/,
+    );
+  });
+
+  test("a failed upload names the file", async () => {
+    const { cli, logs } = fake(app(site));
+    // The config, a string, stores; the files, bytes, do not.
+    cli.fetch = async (_url, init) => {
+      if (typeof init?.body === "string") return Response.json({ storageId: "storage-0" });
+      throw new TypeError("fetch failed");
+    };
+    expect(await main(DEV, cli)).toBe(1);
+    expect(logs[logs.length - 1]).toMatch(
+      /^Storing .*dist.* failed: fetch failed\. Run the deploy again/,
+    );
+  });
+});
+
 describe("deploy without --build", () => {
   test("--dev uploads the folder as it is, then pushes", async () => {
     const { cli, events, builds } = fake(app(site));
@@ -445,21 +500,19 @@ describe("upload", () => {
     expect(logs).toContain(`Skipped ${join(cwd, "dist", "gone.txt")}: a symbolic link to nothing.`);
   });
 
-  test("uploads a linked sibling folder under both paths, and skips a link to dist itself", async () => {
+  test("does not walk a link to a folder, as Wrangler does not", async () => {
     const cwd = app({ "dist/assets/app.js": "console.log(1)" });
-    // `alias` comes before `assets` in the listing.
     symlinkSync(join(cwd, "dist", "assets"), join(cwd, "dist", "alias"));
     symlinkSync(join(cwd, "dist"), join(cwd, "dist", "loop"));
     const { cli, callArgs, logs } = fake(cwd);
     expect(await main(upload(), cli)).toBe(0);
     const [{ entries }] = callArgs("lib:recordFiles");
-    expect(entries.map((entry: { path: string }) => entry.path).sort()).toEqual([
-      "/alias/app.js",
-      "/assets/app.js",
-    ]);
-    expect(logs).toContain(
-      `Skipped ${join(cwd, "dist", "loop")}: a link to a folder that contains it.`,
-    );
+    expect(entries.map((entry: { path: string }) => entry.path)).toEqual(["/assets/app.js"]);
+    for (const name of ["alias", "loop"]) {
+      expect(logs).toContain(
+        `Skipped ${join(cwd, "dist", name)}: a link to a folder, which Wrangler does not walk.`,
+      );
+    }
   });
 
   test("an ignored link to a folder does not hide the folder it points to", async () => {
