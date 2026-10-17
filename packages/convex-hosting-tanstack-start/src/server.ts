@@ -19,9 +19,10 @@ if (new URLSearchParams().size === undefined) {
   });
 }
 
-// Convex has no queueMicrotask. TanStack calls it on the server: the ssr-query cache listener for a
-// query that starts during the render rather than in a loader, and `attachRouterServerSsrUtils`
-// when streamed hydration data, such as ssr-query's, finishes. Both look it up on each call.
+// Convex has no queueMicrotask, and TanStack calls it on the server. `attachRouterServerSsrUtils`
+// calls it once on every rendered page: the ReferenceError is swallowed and the page answers 200,
+// but seroval's dispose step does not run. The ssr-query cache listener calls it for a query that
+// starts after the first dehydrate, and that query's hydration data carries the ReferenceError.
 if (typeof globalThis.queueMicrotask !== "function") {
   globalThis.queueMicrotask = (callback) => {
     void Promise.resolve().then(callback);
