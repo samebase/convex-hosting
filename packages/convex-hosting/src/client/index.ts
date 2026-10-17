@@ -9,7 +9,7 @@ import {
 import type { ComponentApi } from "../component/_generated/component.js";
 
 /**
- * The HTTP action that serves the site, for `registerSite`: it answers a request with the file of
+ * The HTTP action that serves the site, for `routeAll`: it answers a request with the file of
  * version `versionId` (another method than GET or HEAD on a file answers 405), else with what
  * `worker` answers, else 404. `worker` is the Worker script, the object with `fetch(request)`
  * that the app's server entry exports: the code that runs on a miss. As on Cloudflare, the presence
@@ -22,7 +22,7 @@ import type { ComponentApi } from "../component/_generated/component.js";
  * with one, so a browser that asks for a script before its upload ended keeps the 404; the deploy
  * order prevents that case, because no page refers to a file that is not uploaded yet.
  */
-export function serveSite(
+function serveSite(
   component: ComponentApi,
   versionId: string,
   worker?: { fetch(request: Request): Promise<Response> },
@@ -40,15 +40,25 @@ export function serveSite(
 }
 
 /**
- * Routes `site` for every method Convex routes, at every path, as every request reaches a Cloudflare
- * Worker with static assets. Convex answers HEAD through GET. An exact route, such as a session
- * route under a component's HTTP prefix, is the app's own `http.route({ path, method, handler })`
- * with the same action.
+ * Routes the site on the app's router: `serveSite`'s action for every method Convex routes, at
+ * every path, as every request reaches a Cloudflare Worker with static assets. Convex answers HEAD
+ * through GET.
+ *
+ * Returns the action, for the paths that a component's HTTP prefix would otherwise take: Convex
+ * picks an exact route first, then the longest prefix, so an app whose session routes sit under a
+ * component's prefix registers them with `http.route({ path, method, handler })`.
  */
-export function registerSite(http: HttpRouter, site: PublicHttpAction): void {
+export function routeAll(
+  http: HttpRouter,
+  component: ComponentApi,
+  versionId: string,
+  worker?: { fetch(request: Request): Promise<Response> },
+): PublicHttpAction {
+  const site = serveSite(component, versionId, worker);
   for (const method of ROUTABLE_HTTP_METHODS) {
     http.route({ pathPrefix: "/", method, handler: site });
   }
+  return site;
 }
 
 /**

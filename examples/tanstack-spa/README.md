@@ -2,7 +2,7 @@
 
 Live at [quick-fish-630.convex.site](https://quick-fish-630.convex.site), deployed from `main`.
 
-TanStack Start in SPA mode, served from Convex by `serveSite` with
+TanStack Start in SPA mode, served from Convex by `routeAll` with
 `--not-found-handling single-page-application`. It has no server entry, no adapter, and no sign-in.
 The example has its own schema, so it needs its own Convex project.
 

@@ -4,7 +4,7 @@ import { anyApi, httpRouter, ROUTABLE_HTTP_METHODS } from "convex/server";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { internal } from "../component/_generated/api.js";
 import schema from "../component/schema.js";
-import { registerSite, serveSite } from "./index.js";
+import { routeAll } from "./index.js";
 
 const modules = import.meta.glob(["../component/**/*.ts", "!../component/**/*.test.ts"]);
 
@@ -41,7 +41,7 @@ async function setup(config = "{}") {
       const runMutation = vi.spyOn(ctx, "runMutation");
       const url = `https://example.convex.site${path}`;
       const worker = render === undefined ? undefined : { fetch: render };
-      const site = serveSite(component, versionId, worker);
+      const site = routeAll(httpRouter(), component, versionId, worker);
       // @ts-expect-error httpActionGeneric keeps the function as _handler; PublicHttpAction does not declare it.
       const response: Response = await site._handler(ctx, new Request(url));
       return {
@@ -72,18 +72,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("registerSite", () => {
-  test("routes the action for every method Convex routes, at every path", () => {
+describe("routeAll", () => {
+  test("routes the action for every method Convex routes, at every path, and returns it", () => {
     const http = httpRouter();
-    const site = serveSite(component, "v1");
-    registerSite(http, site);
+    const site = routeAll(http, component, "v1");
     for (const method of ROUTABLE_HTTP_METHODS) {
       expect(http.lookup("/any/path", method)).toEqual([site, method, "/*"]);
     }
   });
 });
 
-describe("serveSite", () => {
+describe("the site's action", () => {
   test("answers a hit with the stored body and the handler's headers", async () => {
     const fetchStorage = vi.fn(async () => new Response("<h1>Home</h1>"));
     vi.stubGlobal("fetch", fetchStorage);

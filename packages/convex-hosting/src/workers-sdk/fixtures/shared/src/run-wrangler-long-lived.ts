@@ -94,13 +94,13 @@ export default app;
   writeFileSync(
     join(project, "convex/http.ts"),
     `import { httpRouter } from "convex/server";
-import { registerSite, serveSite } from "@samebase/convex-hosting";
+import { routeAll } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
 import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
-registerSite(http, serveSite(components.hosting, versionId));
+routeAll(http, components.hosting, versionId);
 
 export default http;
 `,

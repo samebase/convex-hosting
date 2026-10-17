@@ -52,13 +52,13 @@ Cloudflare Worker:
 
 ```ts
 import { httpRouter } from "convex/server";
-import { registerSite, serveSite } from "@samebase/convex-hosting";
+import { routeAll } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
 import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
-registerSite(http, serveSite(components.hosting, versionId));
+routeAll(http, components.hosting, versionId);
 
 export default http;
 ```
@@ -85,7 +85,7 @@ npx convex dev               # then work as usual
 ```
 
 For pages rendered on the server, pass the app's server entry, the object with `fetch(request)`, as
-the third argument of `serveSite`. The
+the fourth argument of `routeAll`. The
 [adapter](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start)
 shows it for TanStack Start.
 

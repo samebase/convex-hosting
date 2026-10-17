@@ -32,7 +32,7 @@ other request goes to the server, as it goes to a Cloudflare Worker:
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
-registerSite(http, serveSite(components.hosting, versionId, server));
+routeAll(http, components.hosting, versionId, server);
 ```
 
 Vite names the entry `server.js` when the app's `package.json` has `"type": "module"`, and

@@ -4,7 +4,7 @@ Live at [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site), de
 
 TanStack Start pages rendered inside a Convex HTTP action, with
 [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies.
-`convex/http.ts` serves the browser files with `serveSite` and hands every other path to the server
+`convex/http.ts` serves the browser files with `routeAll` and hands every other path to the server
 build of `src/server.ts`, which renders it through
 [`@samebase/convex-hosting-tanstack-start`](../../packages/convex-hosting-tanstack-start). The
 example has its own schema, so it needs its own Convex project.
@@ -16,7 +16,7 @@ user gets a readable name when it is created, todos have an author and a done st
 site needs caps on text length and todos per user.
 
 - `/about`: a static file from the build. `vite.config.ts` has TanStack Start prerender this page
-  only, into `dist/client/about/index.html`, and `serveSite` serves it like any other file. As on
+  only, into `dist/client/about/index.html`, and `routeAll` serves it like any other file. As on
   Cloudflare, `/about` answers 307 to `/about/`, which answers the file with an ETag and
   `Cache-Control: public, max-age=0, must-revalidate`, where a rendered page answers `no-store`. A
   navigation inside the app renders the route in the browser like any other, so a prerendered route
