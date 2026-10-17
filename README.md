@@ -331,8 +331,8 @@ writes the patch again from the committed folders and fails when it differs from
 - `convex/http.ts`: on Convex only. It serves the files and forwards every other request to
   `src/server.ts`.
 - `src/server.ts`: the same file on both hosts, the `/auth` routes and the session lines around the
-  server entry, but for two lines: the entry it wraps (the adapter's on Convex, TanStack Start's
-  default on the Worker) and `no-store` on rendered pages, which `serveSite` sets on Convex.
+  server entry, but for one line: the entry it wraps, the adapter's on Convex and TanStack Start's
+  default on the Worker.
 - `convex/convex.config.ts` and `convex/_generated/api.d.ts`: `app.use(hosting)` on Convex only.
 - `vite.config.ts`: `convexSsr()` on Convex; Cloudflare's Vite plugin on the Worker.
 - `package.json`: `@samebase/convex-hosting` and `convex-hosting deploy` on Convex; `wrangler`,
