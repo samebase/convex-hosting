@@ -131,25 +131,25 @@ not an inner loop, and Cloudflare's tooling has the same shape. `http.ts` import
 `.convex-hosting/version.js`, which only a deploy writes, and a server-rendered app's `http.ts` also
 imports its server build, such as `dist/server/server.js`, which only a build writes. So a fresh
 clone cannot push before its first deploy, and that deploy's build needs the deployment's URL, which
-`npx convex dev` writes to `.env.local` when it creates the deployment. The first step is
-`npx convex dev --skip-push`, a hidden flag of the Convex CLI (1.46): it configures the deployment,
-writes `.env.local`, and exits without pushing. Then `convex-hosting deploy --dev` builds, uploads,
-writes the version file, and pushes, and from then on `npx convex dev` works as usual. When `dist/`
-or `.convex-hosting/` is deleted later, `npx convex dev` fails with a "Could not resolve" error that
-names the file, and `deploy --dev` writes both again. Against a local deployment, the upload needs a
-running backend, which a Convex CLI call starts only for itself (see the table below). So a fresh
-clone starts `npx convex dev` first and keeps it running: its first push fails to resolve the
-imports, `deploy --dev` in a second terminal pushes, installs, and uploads, and the running
-`npx convex dev` pushes again at the next change under `convex/` (run against an anonymous
-deployment on 2026-10-15). A plain `npx convex deploy` from a fresh clone fails to bundle, and from
-a checkout that deployed elsewhere it pushes that deploy's id and the site answers 404, which is why
-production and previews deploy only through `convex-hosting deploy`. Two things in this loop are
-transient and documented, not solved: when a server-rendered app's build changes `dist/server`,
-which `http.ts` imports, a running `npx convex dev` pushes before `deploy --dev` has written the new
-id, so pages reference files that answer 404 until that run ends; and a production deploy run from
-the same checkout writes production's id, which a running `npx convex dev` then pushes to the
-development deployment, where that version does not exist, until the next `deploy --dev`. Production
-deploys belong in CI or a separate checkout.
+`npx convex dev` writes to `.env.local` when it creates the deployment. The first run is two
+terminals: `npx convex dev`, which configures the deployment, writes `.env.local`, fails its first
+push on the version file, and keeps running; then `convex-hosting deploy --dev` in the other, which
+builds, uploads, writes the version file, and pushes. From then on `npx convex dev` works as usual.
+When `dist/` or `.convex-hosting/` is deleted later, `npx convex dev` fails with a "Could not
+resolve" error that names the file, and `deploy --dev` writes both again. Against a local
+deployment, the upload needs a running backend, which a Convex CLI call starts only for itself (see
+the table below). So a fresh clone starts `npx convex dev` first and keeps it running: its first
+push fails to resolve the imports, `deploy --dev` in a second terminal pushes, installs, and
+uploads, and the running `npx convex dev` pushes again at the next change under `convex/` (run
+against an anonymous deployment on 2026-10-15). A plain `npx convex deploy` from a fresh clone fails
+to bundle, and from a checkout that deployed elsewhere it pushes that deploy's id and the site
+answers 404, which is why production and previews deploy only through `convex-hosting deploy`. Two
+things in this loop are transient and documented, not solved: when a server-rendered app's build
+changes `dist/server`, which `http.ts` imports, a running `npx convex dev` pushes before
+`deploy --dev` has written the new id, so pages reference files that answer 404 until that run ends;
+and a production deploy run from the same checkout writes production's id, which a running
+`npx convex dev` then pushes to the development deployment, where that version does not exist, until
+the next `deploy --dev`. Production deploys belong in CI or a separate checkout.
 
 The server import names the framework's own output, `../dist/server/server.js` for TanStack Start,
 with nothing in between. The adapter declares that module as a default export with `fetch(request)`,

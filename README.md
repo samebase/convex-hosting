@@ -74,15 +74,20 @@ It builds, uploads `dist`, pushes the functions, and prints
 Deploy production with this command, never with a plain `npx convex deploy`: a plain push uploads no
 files, and the site answers 404 until the next `convex-hosting deploy`.
 
-On a fresh clone, `npx convex dev` fails until the first deploy: `convex/http.ts` imports
-`.convex-hosting/version.js`, which only a deploy writes, and the deploy's build needs the
-deployment URL, which only `npx convex dev` writes to `.env.local`. So the first time:
+On a fresh clone, the first push of `npx convex dev` fails: `convex/http.ts` imports
+`.convex-hosting/version.js`, which only a deploy writes. `npx convex dev` keeps running after that
+error, so the first run is two terminals, for a cloud, local, or anonymous deployment alike:
 
 ```sh
-npx convex dev --skip-push   # creates your dev deployment and .env.local, no push
-npx convex-hosting deploy --dev --build "vite build" --dist dist --not-found-handling single-page-application
-npx convex dev               # then work as usual
+npx convex dev   # creates your dev deployment and .env.local; keep it running
 ```
+
+```sh
+npx convex-hosting deploy --dev --build "vite build" --dist dist --not-found-handling single-page-application
+```
+
+The deploy writes the version file and pushes; the watcher in the first terminal shows its error
+until the next change under `convex/`, and works as usual from then on.
 
 For pages rendered on the server, pass the app's server entry, the object with `fetch(request)`, as
 the fourth argument of `routeAll`. The

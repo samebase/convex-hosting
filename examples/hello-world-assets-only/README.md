@@ -29,20 +29,25 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST <site>/     # 405
 
 From `examples/hello-world-assets-only`:
 
+In one terminal, kept running:
+
 ```sh
 pnpm install
-npx convex dev --skip-push        # creates your dev deployment and .env.local, no push
+npx convex dev                    # creates your dev deployment and .env.local; its first push fails
+```
+
+In another:
+
+```sh
 pnpm run deploy:dev               # uploads public/, writes .convex-hosting/version.js, pushes
-npx convex dev                    # then work as usual
 ```
 
 The example commits `convex/_generated`, as Convex recommends, so a fresh clone typechecks:
 `npx convex codegen` bundles `convex/http.ts`, which imports `.convex-hosting/version.js`, so on a
 fresh clone it fails with "Could not resolve" until the first `deploy:dev`.
 
-Local deployment (anonymous or `--local`): the backend must be running while `deploy:dev` uploads,
-else the upload fails with `fetch failed`. Run `npx convex dev` first and keep it running, then run
-`pnpm run deploy:dev` in a second terminal.
+Local deployment (anonymous or `--local`): the backend runs inside `npx convex dev`, so the first
+terminal must stay open while `deploy:dev` uploads, else the upload fails with `fetch failed`.
 
 ## Commands
 
