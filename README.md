@@ -108,7 +108,8 @@ works through every interleaving.
 
 - [hello-world-assets-only](https://github.com/samebase/convex-hosting/tree/main/examples/hello-world-assets-only):
   Cloudflare's static-site template, one `index.html` and no build, deployed with
-  `convex-hosting deploy --dist public`. Its
+  `convex-hosting deploy --dist public`, live at
+  [courteous-dalmatian-252.convex.site](https://courteous-dalmatian-252.convex.site). Its
   [Worker twin](https://github.com/samebase/convex-hosting/tree/main/examples/hello-world-assets-only-workers)
   is the template unchanged.
 - [tanstack-spa](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa): a

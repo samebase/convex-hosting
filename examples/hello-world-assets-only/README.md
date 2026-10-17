@@ -1,5 +1,8 @@
 # Static site example
 
+Live at [courteous-dalmatian-252.convex.site](https://courteous-dalmatian-252.convex.site), deployed
+from `main`.
+
 Cloudflare's own static-site template, what `npm create cloudflare` writes for "Static site"
 (`hello-world-assets-only`): one `public/index.html`, no build, no script. `convex/http.ts` serves
 it with `routeAll` and nothing else, and `public/` is byte-identical to
