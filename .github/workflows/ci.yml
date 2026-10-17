@@ -17,7 +17,8 @@ permissions:
 jobs:
   # Each example pair is one app on both hosts: examples/<name> on Convex and examples/<name>-workers
   # on a Cloudflare Worker. Their diff, the part that is specific to convex-hosting, is committed as
-  # examples/<name>-workers.patch, without convex/_generated, which only follows convex.config.ts.
+  # examples/<name>-workers.patch, without the READMEs and convex/_generated, which only follows
+  # convex.config.ts.
   # diff-tree is plumbing, so user diff settings such as diff.algorithm never change the patch.
   examples-diff:
     name: examples-diff
@@ -33,7 +34,7 @@ jobs:
       - name: Compare each example pair with its committed patch
         run: |
           for pair in tanstack-ssr hello-world-assets-only; do
-            git diff-tree -p --full-index "HEAD:examples/$pair" "HEAD:examples/$pair-workers" -- . ':!convex/_generated' > "examples/$pair-workers.patch"
+            git diff-tree -p --full-index "HEAD:examples/$pair" "HEAD:examples/$pair-workers" -- . ':!convex/_generated' ':!README.md' > "examples/$pair-workers.patch"
           done
           git diff --exit-code -- 'examples/*.patch' || {
             echo "::error::An examples patch is stale. Run pnpm run examples:diff and commit the result."
