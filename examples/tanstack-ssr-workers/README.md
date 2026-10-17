@@ -5,8 +5,9 @@ Live at
 deployed from `main`.
 
 The app of [`examples/tanstack-ssr`](../tanstack-ssr), deployed as a Cloudflare Worker with static
-assets instead of on Convex. Convex stays the backend. The files that differ between the two folders
-are what is specific to convex-hosting; CI fails on any other difference.
+assets instead of on Convex. Convex stays the backend. The files that differ between the two
+folders, the READMEs and `convex/_generated` aside, are what is specific to convex-hosting; CI fails
+on any other difference.
 
 TanStack Start pages rendered in a Worker, with
 [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies. Cloudflare

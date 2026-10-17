@@ -7,8 +7,8 @@ Cloudflare's own static-site template, what `npm create cloudflare` writes for "
 (`hello-world-assets-only`), deployed as a Worker with static assets: one `public/index.html`, no
 build, no script. `public/` is byte-identical to
 [`examples/hello-world-assets-only`](../hello-world-assets-only), the same template on Convex; the
-files that differ between the two folders are what is specific to convex-hosting, and CI fails on
-any other difference.
+files that differ between the two folders, the READMEs and `convex/_generated` aside, are what is
+specific to convex-hosting, and CI fails on any other difference.
 
 ## Deploy
 

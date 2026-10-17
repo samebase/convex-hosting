@@ -19,9 +19,9 @@ row names a document.
 deployed as a Cloudflare Worker with static assets, with Convex still the backend. Live at
 [convex-hosting-tanstack-ssr-workers.pfp.workers.dev](https://convex-hosting-tanstack-ssr-workers.pfp.workers.dev).
 [`examples/tanstack-ssr-workers.patch`](../examples/tanstack-ssr-workers.patch) is the diff between
-the two folders, and so the definition of what convex-hosting adds to an app. CI writes the patch
-again from the committed folders and fails when it differs from the committed file;
-`pnpm run examples:diff` refreshes it. The patch covers:
+the two folders, without the READMEs and `convex/_generated`, and so the definition of what
+convex-hosting adds to an app. CI writes the patch again from the committed folders and fails when
+it differs from the committed file; `pnpm run examples:diff` refreshes it. The patch covers:
 
 - `convex/http.ts`: on Convex only. It serves the files and forwards every other request to
   `src/server.ts`.
@@ -34,7 +34,6 @@ again from the committed folders and fails when it differs from the committed fi
 - `package.json`: `@samebase/convex-hosting` and `convex-hosting deploy` on Convex; `wrangler`,
   `@cloudflare/vite-plugin`, and the Workers Builds scripts on the Worker.
 - `wrangler.jsonc`: on the Worker only.
-- `README.md`.
 
 Workers Builds deploys it. Once, in the Cloudflare dashboard, create a Worker from this repository
 with:
