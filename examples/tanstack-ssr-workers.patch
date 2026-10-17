@@ -227,14 +227,13 @@ index 60a75e8eab323c608072534ae02fd139765d2c14..637b40dfc520ceab54ff05b3fee7061f
  export default app;
 diff --git a/convex/http.ts b/convex/http.ts
 deleted file mode 100644
-index 30d6e3ae2ad6efccb0f348bccb263d6bbe5fb71f..0000000000000000000000000000000000000000
+index 6573e553e5974da486a38a478e06cb90a061eea2..0000000000000000000000000000000000000000
 --- a/convex/http.ts
 +++ /dev/null
-@@ -1,25 +0,0 @@
+@@ -1,22 +0,0 @@
 -import { httpRouter } from "convex/server";
--import { serveSite } from "@samebase/convex-hosting";
+-import { registerSite, serveSite } from "@samebase/convex-hosting";
 -import { components } from "./_generated/api.js";
--import { httpAction } from "./_generated/server.js";
 -import { versionId } from "../.convex-hosting/version.js";
 -// Type only, nothing is bundled: the server build imported below.
 -import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
@@ -244,11 +243,9 @@ index 30d6e3ae2ad6efccb0f348bccb263d6bbe5fb71f..00000000000000000000000000000000
 -
 -// Every method, every path: a file for a path that has one (another method than GET or HEAD on it
 -// answers 405), the app's server (src/server.ts) for every other path, as a Cloudflare Worker with
--// static assets does. Convex answers HEAD through GET without the body.
--const site = httpAction(serveSite(components.hosting, versionId, server));
--for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
--  http.route({ pathPrefix: "/", method, handler: site });
--}
+-// static assets does.
+-const site = serveSite(components.hosting, versionId, server);
+-registerSite(http, site);
 -// Exact routes for the three auth paths: the Convex Auth component holds the /auth prefix, where it
 -// serves the key set, and the longest prefix wins, so the catch-all above never sees them.
 -for (const path of ["/auth/signin", "/auth/refresh", "/auth/signout"]) {
