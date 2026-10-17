@@ -28,12 +28,17 @@ site with it as the Worker: a file answers GET, another method on a file answers
 other request goes to the server, as it goes to a Cloudflare Worker:
 
 ```ts
+import { routeAll } from "@samebase/convex-hosting";
 // Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
 routeAll(http, components.hosting, versionId, server);
 ```
+
+Import `@samebase/convex-hosting` before the server build: it defines `queueMicrotask` when it
+loads, because Convex's runtime has none, and TanStack calls it on the server once on every rendered
+page and for a query that starts after the first dehydrate.
 
 Vite names the entry `server.js` when the app's `package.json` has `"type": "module"`, and
 `server.mjs` without it; import the name that the build emits. The `server-build` entry declares
@@ -209,7 +214,9 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
 
 `@convex-dev/auth` is an optional peer dependency with no version range: only the `convex-auth`
 entry uses it, and that entry needs Convex Auth 2. An app with another auth provider, or on Convex
-Auth 0.0.x, installs the adapter as is and does not import the entry.
+Auth 0.0.x, installs the adapter as is and does not import the entry. The server entry needs
+`@samebase/convex-hosting` 0.13.0 or later, which defines `queueMicrotask`; the peer is optional
+because the `convex-auth` entry alone, as on a Worker, does not need the core.
 
 The entry declares Start's `Register.server` with a request context that holds only the token, so an
 app that uses the entry cannot add its own fields to `serverContext` today; an app that needs that
@@ -227,9 +234,6 @@ is the signal to make the context a type the app registers itself.
 - The server entry is TanStack's own stream handler, so pages stream as they do on a Worker: the
   document goes out as it renders, and each Suspense boundary or deferred loader value follows in
   its own chunk. A client that TanStack takes for a bot, by its user agent, gets the whole document.
-- The server entry supplies the missing `queueMicrotask` on Convex. TanStack calls it on the server
-  once on every rendered page, and for a query that starts after the first dehydrate. A native
-  implementation is left intact.
 
 These settings apply to builds. Development and Node-based tests keep their normal dependency
 resolution.

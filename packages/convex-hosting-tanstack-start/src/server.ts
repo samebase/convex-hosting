@@ -1,6 +1,7 @@
 // TanStack Start server entry for Convex HTTP actions. An app re-exports it from its own
 // `src/server.ts`, which Vite builds as the server entry. Keep it self-contained: import only
-// TanStack and React, never app code.
+// TanStack and React, never app code. TanStack calls `queueMicrotask`, which Convex's runtime lacks;
+// `@samebase/convex-hosting` defines it, and `convex/http.ts` imports that package first.
 
 import type { Register } from "@tanstack/react-start";
 import {
@@ -8,16 +9,6 @@ import {
   defaultStreamHandler,
   type RequestHandler,
 } from "@tanstack/react-start/server";
-
-// Convex has no queueMicrotask, and TanStack calls it on the server. `attachRouterServerSsrUtils`
-// calls it once on every rendered page: the ReferenceError is swallowed and the page answers 200,
-// but seroval's dispose step does not run. The ssr-query cache listener calls it for a query that
-// starts after the first dehydrate, and that query's hydration data carries the ReferenceError.
-if (typeof globalThis.queueMicrotask !== "function") {
-  globalThis.queueMicrotask = (callback) => {
-    void Promise.resolve().then(callback);
-  };
-}
 
 // TanStack's own stream handler, as on every other host: React's Web Stream renderer, the
 // document sent as it renders, each Suspense boundary and deferred loader value in a later chunk.

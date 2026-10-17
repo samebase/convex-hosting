@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-// The test runtime resolves React's Node server build, which reads queueMicrotask when it loads;
-// the Convex build uses `react-dom/server.edge`, which checks for it first. The entry's
-// dependencies therefore load here, before a test deletes the global.
-import "@tanstack/react-start/server";
 
-// Convex's runtime has no queueMicrotask, so a test deletes the test runtime's own before the entry
-// is evaluated.
+// Convex's runtime has no queueMicrotask, so a test deletes the test runtime's own before the
+// package entry is evaluated. The tests import the entry, as apps do: `runtime.ts` is a script,
+// which a dynamic import cannot type. Besides it, the entry loads only `convex/server`, which never
+// reads the global.
 const queueMicrotaskDescriptor = Object.getOwnPropertyDescriptor(globalThis, "queueMicrotask");
 
 beforeEach(() => {
@@ -21,7 +19,7 @@ afterEach(() => {
 test("defines queueMicrotask when the runtime has none", async () => {
   Reflect.deleteProperty(globalThis, "queueMicrotask");
   expect("queueMicrotask" in globalThis).toBe(false);
-  await import("./server.js");
+  await import("./index.js");
 
   const order: string[] = [];
   const ran = new Promise<void>((resolve) => {
@@ -36,7 +34,7 @@ test("defines queueMicrotask when the runtime has none", async () => {
 });
 
 test("leaves the runtime's queueMicrotask in place", async () => {
-  await import("./server.js");
+  await import("./index.js");
   expect(Object.getOwnPropertyDescriptor(globalThis, "queueMicrotask")).toEqual(
     queueMicrotaskDescriptor,
   );
