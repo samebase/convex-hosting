@@ -62,6 +62,17 @@ export const add = mutation({
   },
 });
 
+// Anyone may remove any todo: the site is a public demo, and whoever sees something out of place
+// takes it down. Todos are disposable here, and anyone can add more.
+export const remove = mutation({
+  args: { id: v.id("todos") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if ((await ctx.db.get("todos", args.id)) !== null) await ctx.db.delete("todos", args.id);
+    return null;
+  },
+});
+
 export const toggle = mutation({
   args: { id: v.id("todos") },
   returns: v.null(),

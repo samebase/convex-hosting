@@ -30,7 +30,8 @@ site needs caps on text length and todos per user.
   data.
 - `/`: rendered per request, and needs no session. The first HTML response contains the latest
   twenty todos of all users with their authors from `todos.latest`, and the list stays live after
-  React hydrates.
+  React hydrates. Each has a Remove button for anyone, through `todos.remove`: the demo is public,
+  and whoever sees something out of place takes it down.
 - `/todos`: rendered as the user. The first HTML response contains the user's todos from
   `todos.list`, the form adds one with `todos.add`, and a checkbox toggles `todos.toggle`. The page
   sits behind the pathless layout in `src/routes/_authed.tsx`: without a session, the server
