@@ -13,7 +13,7 @@ https://www.convex.dev/components/submit.
 | Short Description (150 characters) | Static files and server-rendered pages from your backend's Convex deployment. Files follow Cloudflare Workers rules. TanStack Start adapter available. |
 | Tags                               | hosting, static, ssr, tanstack, cloudflare                                                                                                             |
 | Video                              | none                                                                                                                                                   |
-| Logo                               | [docs/directory/logo.svg](./logo.svg)                                                                                                                  |
+| Logo                               | [docs/directory/logo.svg](./logo.svg), the Samebase mark (compact identity, `logo-v1-side-primary.svg` in samebase/samebase), transparent background   |
 | Thumbnail                          | [docs/directory/thumbnail.png](./thumbnail.png) (1536 x 864)                                                                                           |
 
 `thumbnail.html` is the source of `thumbnail.png`; its first comment has the render command.
