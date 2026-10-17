@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0
+
+- The package defines `queueMicrotask` when the runtime has none. Convex's runtime lacks it, and a
+  handler written for Cloudflare Workers may call it (TanStack's router does on every rendered
+  page). The definition runs when `convex/http.ts` imports this package, so import it before the
+  app's server entry. It moved here from the TanStack Start adapter 0.9.3, because the gap is
+  Convex's, not the framework's.
+
 ## 0.12.0
 
 - `deploy --dev` refuses a deploy key in the environment, and `deploy --preview-name` accepts only a

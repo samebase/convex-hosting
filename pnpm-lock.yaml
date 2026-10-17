@@ -492,6 +492,9 @@ importers:
       '@convex-dev/react-query':
         specifier: 'catalog:'
         version: 0.1.0(@tanstack/react-query@5.103.1(react@19.3.0))(convex@1.46.0(react@19.3.0))
+      '@samebase/convex-hosting':
+        specifier: workspace:*
+        version: link:../convex-hosting
       '@tanstack/react-router':
         specifier: 'catalog:'
         version: 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

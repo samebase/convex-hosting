@@ -1,3 +1,4 @@
+import "./runtime.js";
 import {
   httpActionGeneric,
   ROUTABLE_HTTP_METHODS,
