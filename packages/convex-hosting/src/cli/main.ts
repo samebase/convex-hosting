@@ -193,9 +193,10 @@ async function init(cli: Cli, options: Options, build: string | undefined): Prom
       `init sets up a cloud development deployment, and ${what}. The README says what to run instead.`,
     );
   };
+  // An empty value is unset, as the Convex CLI reads it.
   const notDev = (env: Record<string, string | undefined>) => {
     const deployment = env.CONVEX_DEPLOYMENT;
-    if (deployment !== undefined && !deployment.startsWith("dev:")) {
+    if (deployment && !deployment.startsWith("dev:")) {
       refuse(`this checkout's deployment is ${deployment}`);
     }
   };
@@ -206,7 +207,7 @@ async function init(cli: Cli, options: Options, build: string | undefined): Prom
   // Its exit code says nothing here: on a fresh checkout the push fails on the version file.
   await cli.convexInherited(["dev", "--once"]);
   const after = readConvexEnv(cli);
-  if (after.CONVEX_DEPLOYMENT === undefined && after.CONVEX_SELF_HOSTED_URL === undefined) {
+  if (!after.CONVEX_DEPLOYMENT && !after.CONVEX_SELF_HOSTED_URL) {
     throw new Error("npx convex dev --once configured no deployment.");
   }
   notDev(after);

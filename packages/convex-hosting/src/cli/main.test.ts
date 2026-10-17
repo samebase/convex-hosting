@@ -271,6 +271,12 @@ describe("init", () => {
     expect(logs[logs.length - 1]).toBe("Now run npx convex dev.");
   });
 
+  test("an empty CONVEX_DEPLOYMENT is unset, as the Convex CLI reads it", async () => {
+    const { cli, events } = fake(app({ ...site, ".env.local": "CONVEX_DEPLOYMENT=\n" }));
+    expect(await main(INIT, cli)).toBe(0);
+    expect(events[0]).toBe("push: dev");
+  });
+
   test("fails when npx convex dev --once configured no deployment", async () => {
     const { cli, events, logs } = fake(app(site), { deployment: null });
     expect(await main(INIT, cli)).toBe(1);
