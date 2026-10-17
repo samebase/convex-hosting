@@ -1,5 +1,5 @@
 diff --git a/README.md b/README.md
-index 9ef28027861ca136b275478de75a76b45fbfb62c..20791bff71331e1b3e3cc278aaf4e2e2f4c2c15b 100644
+index d2965666acdd127a6386be69ec1bb3217b904b8d..20791bff71331e1b3e3cc278aaf4e2e2f4c2c15b 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,13 +1,18 @@
@@ -47,7 +47,22 @@ index 9ef28027861ca136b275478de75a76b45fbfb62c..20791bff71331e1b3e3cc278aaf4e2e2
  - `/`: rendered per request, and needs no session. The first HTML response contains the latest
    twenty todos of all users with their authors from `todos.latest`, and the list stays live after
    React hydrates.
-@@ -52,81 +58,72 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
+@@ -29,14 +35,6 @@ site needs caps on text length and todos per user.
+   sits behind the pathless layout in `src/routes/_authed.tsx`: without a session, the server
+   redirects to `/signin`, and the browser does the same when the session ends.
+ - `/signin`: a button that signs in anonymously and opens `/todos`.
+-- `/stream`: the loader returns a promise that resolves two seconds later, without awaiting it. The
+-  document goes out at once with a fallback, and the value follows in a later chunk, as on a Worker;
+-  the header's link requests the document, because a navigation inside the app would run the loader
+-  in the browser.
+-- `/server`: a server function that answers with what the server saw, a server function that
+-  redirects to `/about`, and a server route at the same path that takes a form upload. The request
+-  middleware in `src/start.ts` puts `Cache-Control: no-store` on every answer Start gives, pages and
+-  these included.
+ - The header on every page: the root route's loader queries `users.me`, so the first HTML response
+   of a rendered page shows `Signed in as <name>` with a sign-out button, or a link to `/signin`. The
+   build has no session, so on `/about` the header fills in after React hydrates.
+@@ -60,81 +58,72 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
  client before the page knows the session, so `SessionProvider` releases it when the provider reports
  none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
  
@@ -282,7 +297,7 @@ index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f
    }
  }
 diff --git a/src/server.ts b/src/server.ts
-index 276e876364b7ec56cc28b6a2a57229c2835d681e..73deca587d2c5dc5a35d40e073f2b6ed737cec38 100644
+index b42a86af27b60caec6881f43c9b3b33ae498a0e4..509ad51724ccf12be017c1eb3e9ccd1a1bba4d03 100644
 --- a/src/server.ts
 +++ b/src/server.ts
 @@ -1,5 +1,5 @@

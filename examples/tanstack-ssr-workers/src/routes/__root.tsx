@@ -59,6 +59,7 @@ function Root() {
               <Link to="/stream" reloadDocument>
                 Stream
               </Link>
+              <Link to="/server">Server</Link>
             </nav>
             <SessionHeader />
           </header>

@@ -29,6 +29,14 @@ site needs caps on text length and todos per user.
   sits behind the pathless layout in `src/routes/_authed.tsx`: without a session, the server
   redirects to `/signin`, and the browser does the same when the session ends.
 - `/signin`: a button that signs in anonymously and opens `/todos`.
+- `/stream`: the loader returns a promise that resolves two seconds later, without awaiting it. The
+  document goes out at once with a fallback, and the value follows in a later chunk, as on a Worker;
+  the header's link requests the document, because a navigation inside the app would run the loader
+  in the browser.
+- `/server`: a server function that answers with what the server saw, a server function that
+  redirects to `/about`, and a server route at the same path that takes a form upload. The request
+  middleware in `src/start.ts` puts `Cache-Control: no-store` on every answer Start gives, pages and
+  these included.
 - The header on every page: the root route's loader queries `users.me`, so the first HTML response
   of a rendered page shows `Signed in as <name>` with a sign-out button, or a link to `/signin`. The
   build has no session, so on `/about` the header fills in after React hydrates.
