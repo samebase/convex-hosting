@@ -80,8 +80,10 @@ Convex's 100 MiB response limit anyway.
   that tool's push step, with the deploy key in `CONVEX_DEPLOY_KEY`.
 - **A deploy key limited to some actions** needs `deployment:deploy`,
   `deployment:functions:runInternalQueries`, `deployment:functions:runInternalMutations`,
-  `deployment:functions:runInternalActions` (the upload calls one internal action), and
-  `deployment:functions:runTestQuery` (the first-install check and the site URL are inline queries).
+  `deployment:functions:runInternalActions` (the upload calls one internal action),
+  `deployment:functions:runTestQuery` (the first-install check and the site URL are inline queries),
+  and `deployment:data:view` (`npx convex run`, which the upload uses for the internal functions, is
+  refused without it).
 - **Checks that must stop a release** run before `convex-hosting deploy`, because its push switches
   the site. Checks that need the new functions run after it.
 - **A re-run of an old workflow run** checks out its old commit, and its push puts older code over
