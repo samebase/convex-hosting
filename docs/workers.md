@@ -28,7 +28,8 @@ again from the committed folders and fails when it differs from the committed fi
 - `src/server.ts`: the same file on both hosts, the `/auth` routes and the session lines around the
   server entry, but for one line: the entry it wraps, the adapter's on Convex and TanStack Start's
   default on the Worker.
-- `convex/convex.config.ts` and `convex/_generated/api.d.ts`: `app.use(hosting)` on Convex only.
+- `convex/convex.config.ts`: `app.use(hosting)` on Convex only. The generated `convex/_generated`
+  files follow it and are left out of the patch.
 - `vite.config.ts`: `convexSsr()` on Convex; Cloudflare's Vite plugin on the Worker.
 - `package.json`: `@samebase/convex-hosting` and `convex-hosting deploy` on Convex; `wrangler`,
   `@cloudflare/vite-plugin`, and the Workers Builds scripts on the Worker.
