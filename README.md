@@ -75,17 +75,18 @@ Deploy production with this command, never with a plain `npx convex deploy`: a p
 files, and the site answers 404 until the next `convex-hosting deploy`.
 
 On a fresh clone, `npx convex dev` fails until the first deploy: `convex/http.ts` imports
-`.convex-hosting/version.js`, which only a deploy writes. `init` is that first run: it configures
-the development deployment without a push, which creates it and `.env.local` on a new project, then
-deploys the site to it as `deploy --dev` does. After it, `npx convex dev` works as usual:
+`.convex-hosting/version.js`, which only a deploy writes. With a cloud development deployment,
+`init` is the first run: it runs `npx convex dev --once`, which configures the deployment and fails
+its push on that file, once, then deploys the site to it as `deploy --dev` does:
 
 ```sh
 npx convex-hosting init --build "vite build" --dist dist --not-found-handling single-page-application
 npx convex dev
 ```
 
-A local or anonymous deployment runs its backend inside `npx convex dev`, so there `init`
-configures, then says which two commands to run instead.
+A local or anonymous deployment runs its backend inside `npx convex dev`, so there the first run is
+`npx convex dev` in one terminal, kept running, and `deploy --dev` with the same options in another;
+`init` refuses those deployments and says so.
 
 For pages rendered on the server, pass the app's server entry, the object with `fetch(request)`, as
 the fourth argument of `routeAll`. The

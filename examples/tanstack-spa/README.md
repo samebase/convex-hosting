@@ -31,12 +31,9 @@ From `examples/tanstack-spa`:
 
 ```sh
 pnpm install
-pnpm run init                     # creates your dev deployment, builds, uploads, pushes
+pnpm run init                     # creates your cloud dev deployment, builds, uploads, pushes
 npx convex dev                    # then work as usual
 ```
-
-`init` is `convex-hosting init`: `npx convex dev --skip-push` and `pnpm run deploy:dev` as one
-command.
 
 The example commits `convex/_generated`, as Convex recommends, so a fresh clone can build:
 `npx convex dev --skip-push` does not write it, and `npx convex codegen` bundles `convex/http.ts`,
@@ -46,8 +43,8 @@ so on a fresh clone it fails with the "Could not resolve" error below.
 `.convex-hosting/` is deleted later, `npx convex dev` fails with a clear "Could not resolve" error,
 and `pnpm run deploy:dev` fixes it. `deploy:dev` prints the site URL when it ends.
 
-Local deployment (anonymous or `--local`): the backend must be running while `deploy:dev` uploads,
-else the upload fails with `fetch failed`. Run `npx convex dev` first and keep it running, then run
+Local deployment (anonymous or `--local`): `init` refuses it, because the backend must be running
+while the upload happens. Run `npx convex dev` first and keep it running, then run
 `pnpm run deploy:dev` in a second terminal. `deploy:dev` pushes by itself, so the site works when it
 ends. The running `npx convex dev` keeps its "Could not resolve" error until the next change under
 `convex/`, then pushes as usual.

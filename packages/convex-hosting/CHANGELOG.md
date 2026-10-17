@@ -2,12 +2,9 @@
 
 ## 0.12.0
 
-- `convex-hosting init`: the first run of a checkout. It runs `npx convex dev --once --skip-push`,
-  which configures the development deployment and writes `.env.local` without a push, then the
-  build, upload, and push of `deploy --dev`. Same options as `deploy`, without `--dev` and
-  `--preview-name`; it refuses to run with a deploy key set. On a local or anonymous deployment it
-  configures, then prints the two commands to run instead, because that deploy needs the backend
-  that only a running `npx convex dev` provides.
+- `convex-hosting init`: the first run of a checkout with a cloud development deployment,
+  `npx convex dev --once` followed by the deploy of `deploy --dev`; see
+  [docs/development.md](https://github.com/samebase/convex-hosting/blob/main/docs/development.md).
 
 ## 0.11.0
 

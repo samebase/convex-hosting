@@ -31,19 +31,16 @@ From `examples/hello-world-assets-only`:
 
 ```sh
 pnpm install
-pnpm run init                     # creates your dev deployment, uploads public/, pushes
+pnpm run init                     # creates your cloud dev deployment, uploads public/, pushes
 npx convex dev                    # then work as usual
 ```
-
-`init` is `convex-hosting init`: `npx convex dev --skip-push` and `pnpm run deploy:dev` as one
-command.
 
 The example commits `convex/_generated`, as Convex recommends, so a fresh clone typechecks:
 `npx convex codegen` bundles `convex/http.ts`, which imports `.convex-hosting/version.js`, so on a
 fresh clone it fails with "Could not resolve" until the first `deploy:dev`.
 
-Local deployment (anonymous or `--local`): the backend must be running while `deploy:dev` uploads,
-else the upload fails with `fetch failed`. Run `npx convex dev` first and keep it running, then run
+Local deployment (anonymous or `--local`): `init` refuses it, because the backend must be running
+while the upload happens. Run `npx convex dev` first and keep it running, then run
 `pnpm run deploy:dev` in a second terminal.
 
 ## Commands

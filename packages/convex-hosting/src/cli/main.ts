@@ -32,8 +32,8 @@ const USAGE = `Usage:
       the site.
       Prints the site URL, and appends url=<site URL> to $GITHUB_OUTPUT when it is set.
   convex-hosting init --dist <dir> [options]
-      The first run of a checkout: configures the development deployment without a push, then
-      deploys the site to it as deploy --dev does. Then run npx convex dev. --dev and
+      The first run of a checkout with a cloud development deployment: npx convex dev --once,
+      which configures it, then the deploy of deploy --dev. Then run npx convex dev. --dev and
       --preview-name are deploy's.
 
 Options:
@@ -180,49 +180,39 @@ function quote(arg: string): string {
 }
 
 /**
- * The first run of a checkout. `npx convex dev --once --skip-push` configures the development
- * deployment, asking for the team and project on a new one, and writes `.env.local` without the
- * push that would fail on the version file no deploy has written yet; then one `deploy --dev`
- * writes it and pushes, and `npx convex dev` works from then on. A local or anonymous deployment
- * has its backend inside `npx convex dev`, so there the deploy needs that command running: `init`
- * configures, then says so and stops. A deploy key would make the Convex CLI ignore `.env.local`,
- * so `init` refuses one.
+ * The first run of a checkout with a cloud development deployment: `npx convex dev --once`
+ * configures it, asking for the team and project on a new project, and on a fresh checkout its
+ * push fails on the version file that no deploy has written yet; then one `deploy --dev` writes it
+ * and pushes. A local or anonymous deployment runs its backend inside `npx convex dev`, and a
+ * deploy key or a production deployment would send the deploy elsewhere: `init` refuses those
+ * before it starts anything.
  */
 async function init(cli: Cli, options: Options, build: string | undefined): Promise<number> {
-  const env = readConvexEnv(cli);
-  if (env.CONVEX_DEPLOY_KEY || env.CONVEX_DEPLOYMENT_TOKEN) {
+  const refuse = (what: string): never => {
     throw new Error(
-      "init sets up a development checkout. Unset CONVEX_DEPLOY_KEY and CONVEX_DEPLOYMENT_TOKEN.",
+      `init sets up a cloud development deployment, and ${what}. The README says what to run instead.`,
     );
+  };
+  const notDev = (env: Record<string, string | undefined>) => {
+    const deployment = env.CONVEX_DEPLOYMENT;
+    if (deployment !== undefined && !deployment.startsWith("dev:")) {
+      refuse(`this checkout's deployment is ${deployment}`);
+    }
+  };
+  const before = readConvexEnv(cli);
+  if (before.CONVEX_DEPLOY_KEY || before.CONVEX_DEPLOYMENT_TOKEN) refuse("a deploy key is set");
+  if (before.CONVEX_AGENT_MODE === "anonymous") refuse("CONVEX_AGENT_MODE is anonymous");
+  notDev(before);
+  // Its exit code says nothing here: on a fresh checkout the push fails on the version file.
+  await cli.convexInherited(["dev", "--once"]);
+  const after = readConvexEnv(cli);
+  if (after.CONVEX_DEPLOYMENT === undefined && after.CONVEX_SELF_HOSTED_URL === undefined) {
+    throw new Error("npx convex dev --once configured no deployment.");
   }
-  const configured = await cli.convexInherited(["dev", "--once", "--skip-push"]);
-  if (configured !== 0) return configured;
-  const deployment = readConvexEnv(cli).CONVEX_DEPLOYMENT ?? "";
-  if (deployment.startsWith("local:") || deployment.startsWith("anonymous:")) {
-    cli.log(
-      `${deployment} is a local deployment: its backend runs inside npx convex dev. Run npx convex dev ` +
-        `and keep it running, then in another terminal:\n  npx convex-hosting deploy --dev ${deployArgs(options, build)}`,
-    );
-    return 1;
-  }
+  notDev(after);
   await deploy(cli, { ...options, destination: { kind: "dev" } }, build);
   cli.log("Now run npx convex dev.");
   return 0;
-}
-
-/** The options of a deploy, as the command line that gives them. */
-function deployArgs(options: Options, build: string | undefined): string {
-  return [
-    ...(build === undefined ? [] : ["--build", JSON.stringify(build)]),
-    "--dist",
-    options.dist,
-    "--html-handling",
-    options.html_handling,
-    "--not-found-handling",
-    options.not_found_handling,
-    "--component",
-    options.component,
-  ].join(" ");
 }
 
 /**

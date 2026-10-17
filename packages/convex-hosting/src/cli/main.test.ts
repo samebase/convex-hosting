@@ -56,7 +56,7 @@ function fake(
     known?: Record<string, string>;
     build?: () => Promise<number>;
     push?: (cli: Cli, args: string[]) => Promise<number>;
-    /** What `npx convex dev --once --skip-push` writes to `.env.local`; `null` writes nothing. */
+    /** What `npx convex dev --once` writes to `.env.local`; `null` writes nothing. */
     deployment?: string | null;
   } = {},
 ) {
@@ -105,7 +105,7 @@ function fake(
     convexInherited: async (args) => {
       pushes.push(args);
       events.push(`push: ${args[0]}`);
-      if (args[0] === "dev" && args.includes("--skip-push") && options.deployment !== null) {
+      if (args[0] === "dev" && options.deployment !== null) {
         writeFileSync(
           join(cwd, ".env.local"),
           `CONVEX_DEPLOYMENT=${options.deployment ?? "dev:happy-cat-123"}\n`,
@@ -258,43 +258,49 @@ describe("deploy --dev", () => {
 describe("init", () => {
   const INIT = ["init", "--build", "vite build", "--dist", "dist"];
 
-  test("configures without a push, deploys to the development deployment, then says to run npx convex dev", async () => {
+  test("configures with npx convex dev --once, whose push may fail, then deploys, then says to run npx convex dev", async () => {
     const cwd = app(site);
-    const { cli, events, pushes, logs } = fake(cwd);
+    const { cli, events, pushes, logs } = fake(cwd, {
+      push: async (_cli, args) => (args[0] === "dev" ? 1 : 0),
+    });
     expect(await main(INIT, cli)).toBe(0);
-    expect(pushes[0]).toEqual(["dev", "--once", "--skip-push"]);
-    expect(events.slice(0, 3)).toEqual(["push: dev", "build", "probe"]);
+    expect(pushes[0]).toEqual(["dev", "--once"]);
+    expect(events.slice(0, 2)).toEqual(["push: dev", "build"]);
     expect(events.slice(-2)).toEqual(["push: run", "site url"]);
     expect(existsSync(join(cwd, VERSION_FILE))).toBe(true);
     expect(logs[logs.length - 1]).toBe("Now run npx convex dev.");
   });
 
-  test("returns the configure's exit code when it fails, and deploys nothing", async () => {
-    const { cli, events } = fake(app(site), {
-      deployment: null,
-      push: async (_cli, args) => (args.includes("--skip-push") ? 1 : 0),
-    });
+  test("fails when npx convex dev --once configured no deployment", async () => {
+    const { cli, events, logs } = fake(app(site), { deployment: null });
+    expect(await main(INIT, cli)).toBe(1);
+    expect(events).toEqual(["push: dev"]);
+    expect(logs[logs.length - 1]).toBe("npx convex dev --once configured no deployment.");
+  });
+
+  test("refuses, before any process, a deploy key, anonymous mode, and a deployment that is not a cloud dev one", async () => {
+    const cases: [Record<string, string>, Record<string, string>][] = [
+      [{ CONVEX_DEPLOY_KEY: "prod:x|y" }, {}],
+      [{ CONVEX_AGENT_MODE: "anonymous" }, {}],
+      [{}, { ".env.local": "CONVEX_DEPLOYMENT=anonymous:anonymous-agent\n" }],
+      [{}, { ".env.local": "CONVEX_DEPLOYMENT=local:happy-cat-123\n" }],
+      [{ CONVEX_DEPLOYMENT: "prod:happy-cat-123" }, {}],
+    ];
+    for (const [env, files] of cases) {
+      const { cli, events, logs } = fake(app({ ...site, ...files }), { env });
+      expect(await main(INIT, cli)).toBe(1);
+      expect(events).toEqual([]);
+      expect(logs[logs.length - 1]).toContain("init sets up a cloud development deployment");
+    }
+  });
+
+  test("refuses a local deployment chosen at the configure prompt, and deploys nothing", async () => {
+    const { cli, events } = fake(app(site), { deployment: "anonymous:anonymous-agent" });
     expect(await main(INIT, cli)).toBe(1);
     expect(events).toEqual(["push: dev"]);
   });
 
-  test("on a local or anonymous deployment, configures, then says what to run, and deploys nothing", async () => {
-    for (const deployment of ["anonymous:anonymous-agent", "local:happy-cat-123"]) {
-      const { cli, events, logs } = fake(app(site), { deployment });
-      expect(await main(INIT, cli)).toBe(1);
-      expect(events).toEqual(["push: dev"]);
-      expect(logs[logs.length - 1]).toContain("Run npx convex dev and keep it running");
-      expect(logs[logs.length - 1]).toContain(
-        'npx convex-hosting deploy --dev --build "vite build" --dist dist',
-      );
-    }
-  });
-
-  test("refuses a deploy key, and --dev or --preview-name", async () => {
-    const keyed = fake(app(site), { env: { CONVEX_DEPLOY_KEY: "prod:x|y" } });
-    expect(await main(INIT, keyed.cli)).toBe(1);
-    expect(keyed.events).toEqual([]);
-    expect(keyed.logs[keyed.logs.length - 1]).toContain("Unset CONVEX_DEPLOY_KEY");
+  test("refuses --dev and --preview-name", async () => {
     for (const extra of [["--dev"], ["--preview-name", "pr-7"]]) {
       const { cli, events, logs } = fake(app(site));
       expect(await main([...INIT, ...extra], cli)).toBe(1);
