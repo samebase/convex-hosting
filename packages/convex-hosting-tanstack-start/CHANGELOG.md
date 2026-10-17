@@ -2,12 +2,14 @@
 
 ## 0.9.2
 
-- The server entry defines `queueMicrotask` when the runtime has none, as it does
-  `URLSearchParams.size`. Convex's runtime has no `queueMicrotask`, and TanStack calls it on the
-  server. `attachRouterServerSsrUtils` calls it once on every rendered page: the `ReferenceError`
-  was swallowed and the page answered 200, but seroval's dispose step did not run. The ssr-query
-  cache listener calls it for a query that starts after the first dehydrate, and that query's
-  hydration data carried `ReferenceError: queueMicrotask is not defined`.
+- The server entry defines `queueMicrotask` when the runtime has none. Convex's runtime has no
+  `queueMicrotask`, and TanStack calls it on the server. `attachRouterServerSsrUtils` calls it once
+  on every rendered page: the `ReferenceError` was swallowed and the page answered 200, but
+  seroval's dispose step did not run. The ssr-query cache listener calls it for a query that starts
+  after the first dehydrate, and that query's hydration data carried
+  `ReferenceError: queueMicrotask is not defined`.
+- The `URLSearchParams.size` definition is gone: Convex defines `size` now, on the cloud and on the
+  local backend (version precompiled-2026-10-10-72ce13c).
 
 ## 0.9.1
 

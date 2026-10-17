@@ -227,10 +227,9 @@ is the signal to make the context a type the app registers itself.
 - The server entry is TanStack's own stream handler, so pages stream as they do on a Worker: the
   document goes out as it renders, and each Suspense boundary or deferred loader value follows in
   its own chunk. A client that TanStack takes for a bot, by its user agent, gets the whole document.
-- The server entry supplies the missing `URLSearchParams.size` getter and `queueMicrotask` on
-  Convex. TanStack needs the getter to normalize URLs with query parameters, and calls
-  `queueMicrotask` on the server for a query that starts during the render rather than in a loader.
-  Native implementations are left intact.
+- The server entry supplies the missing `queueMicrotask` on Convex. TanStack calls it on the server
+  once on every rendered page, and for a query that starts after the first dehydrate. A native
+  implementation is left intact.
 
 These settings apply to builds. Development and Node-based tests keep their normal dependency
 resolution.
