@@ -231,9 +231,10 @@ configuration. When an asset answers, Cloudflare's `handleRequest` computes the 
 workers-sdk, copied by the same sync script as the handler) run through `route` in
 `src/component/conformance.test.ts`, with each case's files as a version's entries. Cloudflare's
 integration fixtures for static assets (`fixtures/workers-with-assets-only` in workers-sdk, copied
-unchanged with their `public/` folders) run against the whole path an app takes: our implementation
-of the helper they import to start `wrangler dev` starts an anonymous local Convex deployment,
-deploys the fixture's assets with `convex-hosting deploy --dev`, and returns the site's address.
+at the same pinned commit with their `public/` folders, their imports pointed at this package) run
+against the whole path an app takes: our implementation of the helper they import to start
+`wrangler dev` starts an anonymous local Convex deployment, deploys the fixture's assets with
+`convex-hosting deploy --dev`, and returns the site's address.
 `scripts/fixtures-expected-failures.json` lists each test that fails by a stated difference from
 Cloudflare, and the run fails when the list and the outcome disagree. The query drops
 `CF-Cache-Status`, which describes a cache we do not run, sets `Cache-Control: no-store` on every

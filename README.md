@@ -14,7 +14,7 @@ tests against it: its
 [196 cases](https://github.com/samebase/convex-hosting/blob/main/packages/convex-hosting/src/component/conformance.test.ts)
 for `html_handling` and path encoding, and its
 [integration test](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting/src/workers-sdk/fixtures/workers-with-assets-only)
-for a files-only site, unchanged, on a local Convex deployment.
+for a files-only site, with its imports pointed at this package, on a local Convex deployment.
 
 An app that renders pages takes the place of the Worker script: an object with `fetch(request)` that
 answers what no file answers. TanStack Start has
