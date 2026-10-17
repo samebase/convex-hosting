@@ -7,6 +7,9 @@ request that the new code serves marks its version live, which deletes the versi
 before it. A version that never becomes live, from a deploy that failed, is deleted when it is a day
 old, with the stored files that no version uses. Nothing is deleted while a site gets no request.
 
+`convex-hosting dev` is `deploy --dev` with `npx convex dev` around it, for the first run of a
+checkout; see [Development](./development.md).
+
 `deploy` goes to production. `--preview-name <name>` sends it to that preview (with a login or a
 project's preview deploy key; always pass the name with that key), and `--dev` to the development
 deployment (see [Development](./development.md)). A deploy key in `CONVEX_DEPLOY_KEY` or

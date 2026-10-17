@@ -31,10 +31,12 @@ From `examples/hello-world-assets-only`:
 
 ```sh
 pnpm install
-npx convex dev --skip-push        # creates your dev deployment and .env.local, no push
-pnpm run deploy:dev               # uploads public/, writes .convex-hosting/version.js, pushes
-npx convex dev                    # then work as usual
+pnpm run dev:convex               # creates your dev deployment, deploys public/, runs npx convex dev
 ```
+
+`dev:convex` is `convex-hosting dev`: the first push of `npx convex dev` fails on the missing
+version file, once, then the deploy writes it and pushes. The three steps by hand:
+`npx convex dev --skip-push`, `pnpm run deploy:dev`, `npx convex dev`.
 
 The example commits `convex/_generated`, as Convex recommends, so a fresh clone typechecks:
 `npx convex codegen` bundles `convex/http.ts`, which imports `.convex-hosting/version.js`, so on a

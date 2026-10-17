@@ -90,9 +90,13 @@ From `examples/tanstack-ssr`:
 pnpm install
 npx convex dev --skip-push        # creates your dev deployment and .env.local, no push
 npx @convex-dev/auth              # new deployment only: sets AUTH_PRIVATE_KEY and AUTH_JWKS on it
-pnpm run deploy:dev               # builds, uploads, writes .convex-hosting/version.js, pushes
-npx convex dev                    # then work as usual
+pnpm run dev:convex               # deploys the build, then runs npx convex dev
 ```
+
+`dev:convex` is `convex-hosting dev`: the first push of `npx convex dev` fails on the missing
+version file, once, then the deploy writes it and pushes. The push needs the signing keys, so
+`npx @convex-dev/auth` comes first on a new deployment. The steps by hand: `pnpm run deploy:dev`,
+then `npx convex dev`.
 
 The example commits `convex/_generated`, as Convex recommends, so a fresh clone can build:
 `npx convex dev --skip-push` does not write it, and `npx convex codegen` bundles `convex/http.ts`,

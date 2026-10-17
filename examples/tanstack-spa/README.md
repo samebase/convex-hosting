@@ -31,10 +31,12 @@ From `examples/tanstack-spa`:
 
 ```sh
 pnpm install
-npx convex dev --skip-push        # creates your dev deployment and .env.local, no push
-pnpm run deploy:dev               # builds, uploads, writes .convex-hosting/version.js, pushes
-npx convex dev                    # then work as usual
+pnpm run dev:convex               # creates your dev deployment, deploys the build, runs npx convex dev
 ```
+
+`dev:convex` is `convex-hosting dev`: the first push of `npx convex dev` fails on the missing
+version file, once, then the deploy writes it and pushes. The three steps by hand:
+`npx convex dev --skip-push`, `pnpm run deploy:dev`, `npx convex dev`.
 
 The example commits `convex/_generated`, as Convex recommends, so a fresh clone can build:
 `npx convex dev --skip-push` does not write it, and `npx convex codegen` bundles `convex/http.ts`,

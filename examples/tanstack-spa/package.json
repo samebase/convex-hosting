@@ -5,6 +5,7 @@
   "scripts": {
     "build": "vp build",
     "dev": "vp dev",
+    "dev:convex": "convex-hosting dev --build \"pnpm run build\" --dist dist/client --not-found-handling single-page-application",
     "deploy:dev": "convex-hosting deploy --dev --build \"pnpm run build\" --dist dist/client --not-found-handling single-page-application",
     "deploy": "convex-hosting deploy --build \"pnpm run build\" --dist dist/client --not-found-handling single-page-application",
     "typecheck": "tsc -p . && tsc -p convex"

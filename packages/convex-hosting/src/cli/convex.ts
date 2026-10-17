@@ -23,6 +23,12 @@ export interface Cli {
   /** Runs the app's `convex` CLI with this process's standard streams; resolves with its exit code. */
   convexInherited: (args: string[]) => Promise<number>;
   /**
+   * Starts the app's `convex` CLI with this process's standard streams and leaves it running:
+   * `exited` resolves with its exit code, `stop` interrupts it. While it runs, an interrupt of this
+   * process is passed to it and this process waits for it, so the exit code is the child's.
+   */
+  convexChild: (args: string[]) => { exited: Promise<number>; stop: () => void };
+  /**
    * Runs a shell command in `cwd` with this process's environment and standard streams; resolves
    * with its exit code.
    */
@@ -55,6 +61,17 @@ export const nodeCli: Cli = {
     }),
   convexInherited: (args) =>
     exitCode(spawn(process.execPath, [convexBin(process.cwd()), ...args], { stdio: "inherit" })),
+  convexChild: (args) => {
+    const child = spawn(process.execPath, [convexBin(process.cwd()), ...args], {
+      stdio: "inherit",
+    });
+    // The terminal interrupts the whole foreground group, a supervisor only this process: either
+    // way the child gets the interrupt and this process outlives it.
+    const forward = () => void child.kill("SIGINT");
+    process.on("SIGINT", forward);
+    const exited = exitCode(child).finally(() => process.off("SIGINT", forward));
+    return { exited, stop: () => void child.kill("SIGINT") };
+  },
   shell: (command) => exitCode(spawn(command, { shell: true, stdio: "inherit" })),
   fetch: (input, init) => fetch(input, init),
   log: (message) => console.error(message),
@@ -71,7 +88,7 @@ function exitCode(child: ChildProcess): Promise<number> {
  * The variables that the Convex CLI reads to select a deployment, in its order: the process
  * environment first, then `.env.local`, then `.env`.
  */
-function readConvexEnv(cli: Cli): Record<string, string | undefined> {
+export function readConvexEnv(cli: Cli): Record<string, string | undefined> {
   const fromFile = (name: string) => {
     const path = join(cli.cwd, name);
     return existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};

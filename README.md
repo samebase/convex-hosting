@@ -75,14 +75,17 @@ Deploy production with this command, never with a plain `npx convex deploy`: a p
 files, and the site answers 404 until the next `convex-hosting deploy`.
 
 On a fresh clone, `npx convex dev` fails until the first deploy: `convex/http.ts` imports
-`.convex-hosting/version.js`, which only a deploy writes, and the deploy's build needs the
-deployment URL, which only `npx convex dev` writes to `.env.local`. So the first time:
+`.convex-hosting/version.js`, which only a deploy writes. `convex-hosting dev` is the first run as
+one command. It starts `npx convex dev`, which creates the development deployment and `.env.local`
+on a new project, deploys the site to it as `deploy --dev` does, and keeps `npx convex dev` running:
 
 ```sh
-npx convex dev --skip-push   # creates your dev deployment and .env.local, no push
-npx convex-hosting deploy --dev --build "vite build" --dist dist --not-found-handling single-page-application
-npx convex dev               # then work as usual
+npx convex-hosting dev --build "vite build" --dist dist --not-found-handling single-page-application
 ```
+
+The first push that `npx convex dev` makes fails with
+`Could not resolve "../.convex-hosting/version.js"`, once; the deploy right after it is what makes
+the next push work.
 
 For pages rendered on the server, pass the app's server entry, the object with `fetch(request)`, as
 the fourth argument of `routeAll`. The

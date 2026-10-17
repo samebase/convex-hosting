@@ -56,12 +56,20 @@ function fake(
     known?: Record<string, string>;
     build?: () => Promise<number>;
     push?: (cli: Cli, args: string[]) => Promise<number>;
+    /**
+     * What `npx convex dev` does when started: its exit code, which ends it at once, or
+     * `undefined` to run until stopped. The first start writes `.env.local` as configure does,
+     * unless `configure` is false.
+     */
+    child?: (start: number) => number | undefined;
+    configure?: boolean;
   } = {},
 ) {
   const runs: string[][] = [];
   const pushes: string[][] = [];
   const builds: string[] = [];
   const events: string[] = [];
+  const children: string[][] = [];
   const stored = new Map<string, string>();
   const logs: string[] = [];
   const ok = (value: unknown) => ({
@@ -105,6 +113,29 @@ function fake(
       events.push(`push: ${args[0]}`);
       return (await options.push?.(cli, args)) ?? 0;
     },
+    convexChild: (args) => {
+      children.push(args);
+      events.push(`child: ${args.join(" ")}`);
+      if (children.length === 1 && options.configure !== false) {
+        writeFileSync(
+          join(cwd, ".env.local"),
+          "CONVEX_DEPLOYMENT=dev:happy-cat-123\nCONVEX_URL=https://happy-cat-123.convex.cloud\n",
+        );
+      }
+      const code = options.child?.(children.length);
+      let end: (code: number) => void = () => {};
+      const exited = new Promise<number>((resolve) => {
+        end = resolve;
+        if (code !== undefined) resolve(code);
+      });
+      return {
+        exited,
+        stop: () => {
+          events.push("stop");
+          end(130);
+        },
+      };
+    },
     shell: async (command) => {
       builds.push(command);
       events.push("build");
@@ -120,7 +151,7 @@ function fake(
   const calls = () => runs.map(callName);
   const callArgs = (name: string) =>
     runs.filter((args) => args[3] === name).map((args) => JSON.parse(args[4]));
-  return { cli, runs, pushes, builds, events, stored, logs, calls, callArgs };
+  return { cli, runs, pushes, builds, events, stored, logs, calls, callArgs, children };
 }
 
 /** Runs the upload that `deploy` put in `--cmd`, the way the shell would. */
@@ -244,6 +275,37 @@ describe("deploy --dev", () => {
     expect(await main([...DEV, "--preview-name", "pr-7"], cli)).toBe(1);
     expect(events).toEqual([]);
     expect(logs[logs.length - 1]).toBe("--dev and --preview-name exclude each other.");
+  });
+});
+
+describe("dev", () => {
+  test("starts npx convex dev without codegen, deploys once the deployment answers, then restarts it with codegen", async () => {
+    const cwd = app(site);
+    // The second child is what the user stops.
+    const { cli, events, children, logs } = fake(cwd, {
+      child: (start) => (start === 2 ? 0 : undefined),
+    });
+    expect(await main(["dev", "--build", "vite build", "--dist", "dist"], cli)).toBe(0);
+    expect(children).toEqual([["dev", "--codegen", "disable"], ["dev"]]);
+    expect(events.slice(0, 3)).toEqual(["child: dev --codegen disable", "build", "probe"]);
+    expect(events.slice(-4)).toEqual(["push: run", "site url", "stop", "child: dev"]);
+    expect(existsSync(join(cwd, VERSION_FILE))).toBe(true);
+    expect(logs.some((line) => line.includes("that is expected"))).toBe(true);
+  });
+
+  test("returns the exit code of npx convex dev when it ends before the deployment answers", async () => {
+    const { cli, events } = fake(app(site), { child: () => 1, configure: false });
+    expect(await main(["dev", "--dist", "dist"], cli)).toBe(1);
+    expect(events).toEqual(["child: dev --codegen disable"]);
+  });
+
+  test("refuses --dev and --preview-name", async () => {
+    for (const extra of [["--dev"], ["--preview-name", "pr-7"]]) {
+      const { cli, events, logs } = fake(app(site));
+      expect(await main(["dev", "--dist", "dist", ...extra], cli)).toBe(1);
+      expect(events).toEqual([]);
+      expect(logs[logs.length - 1]).toMatch(/^Usage:/);
+    }
   });
 });
 
