@@ -231,9 +231,10 @@ configuration. When an asset answers, Cloudflare's `handleRequest` computes the 
 workers-sdk, copied by the same sync script as the handler) run through `route` in
 `src/component/conformance.test.ts`, with each case's files as a version's entries. Cloudflare's
 integration fixtures for static assets (`fixtures/workers-with-assets-only` in workers-sdk, copied
-unchanged with their `public/` folders) run against the whole path an app takes: our implementation
-of the helper they import to start `wrangler dev` starts an anonymous local Convex deployment,
-deploys the fixture's assets with `convex-hosting deploy --dev`, and returns the site's address.
+at the same pinned commit with their `public/` folders, their imports pointed at this package) run
+against the whole path an app takes: our implementation of the helper they import to start
+`wrangler dev` starts an anonymous local Convex deployment, deploys the fixture's assets with
+`convex-hosting deploy --dev`, and returns the site's address.
 `scripts/fixtures-expected-failures.json` lists each test that fails by a stated difference from
 Cloudflare, and the run fails when the list and the outcome disagree. The query drops
 `CF-Cache-Status`, which describes a cache we do not run, sets `Cache-Control: no-store` on every
@@ -431,12 +432,14 @@ static assets, with Convex still the backend. The diff between the two folders, 
 again from the committed folders with `git diff-tree -p --full-index` and fails when it differs from
 the committed file; `pnpm run examples:diff` refreshes it. It covers `convex/http.ts`,
 `app.use(hosting)` in `convex/convex.config.ts` (the generated API that follows it is left out),
-`src/server.ts`, `vite.config.ts`, `package.json`, the README, and the Worker's `wrangler.jsonc`.
-`src/server.ts` is the same file on both hosts, the `/auth` routes and the session lines around the
-server entry, but for two lines: the entry it wraps (the adapter's on Convex, TanStack Start's
-default on the Worker) and `Cache-Control: no-store` on rendered pages, which `serveSite` sets on
-Convex. Vite's dev server calls that file too, so development renders with the session on both
-hosts, and the build's prerender runs through it without cookies, as a signed-out request.
+`src/server.ts`, `vite.config.ts`, `package.json`, and the Worker's `wrangler.jsonc`, and leaves out
+the READMEs. `src/server.ts` is the same file on both hosts, the `/auth` routes and the session
+lines around the server entry, but for one line: the entry it wraps, the adapter's on Convex and
+TanStack Start's default on the Worker. Vite's dev server calls that file too, so development
+renders with the session on both hosts. The build's prerender runs through it as well: its requests
+carry the header that `tanstackStart({ prerender: { headers } })` sends and get `undefined` as the
+token, so `SignedIn` and `SignedOut` wait for the browser on the prerendered page instead of saying
+signed out.
 
 ## What an app writes
 

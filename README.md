@@ -1,26 +1,28 @@
 # Convex Hosting
 
-Serves a web app from its own Convex deployment, at `https://<deployment>.convex.site`: the files of
-a build, and the pages the app renders.
+Serves a web app from the Convex deployment that runs its backend, at
+`https://<deployment>.convex.site`: the files of a build and the pages the app renders. One
+deployment, one URL, one deploy command.
 
-The serving code is Cloudflare's. The asset Worker behind
-[Cloudflare Workers with static assets](https://developers.cloudflare.com/workers/static-assets/) is
-copied from [cloudflare/workers-sdk](https://github.com/cloudflare/workers-sdk) at a pinned commit
-and runs inside a Convex HTTP action. So `_headers`, `_redirects`, `.assetsignore`, `html_handling`,
-and `not_found_handling` mean what they mean on Cloudflare, and a request gets the response a Worker
-sends. This repository's CI runs Cloudflare's own tests against it: its
+The files follow
+[Cloudflare Workers rules](https://developers.cloudflare.com/workers/static-assets/). The serving
+code is Cloudflare's asset Worker, copied from
+[cloudflare/workers-sdk](https://github.com/cloudflare/workers-sdk) at a pinned commit and run
+inside a Convex HTTP action, so `_headers`, `_redirects`, `.assetsignore`, `html_handling`, and
+`not_found_handling` mean what they mean on Cloudflare. This repository's CI runs Cloudflare's own
+tests against it: its
 [196 cases](https://github.com/samebase/convex-hosting/blob/main/packages/convex-hosting/src/component/conformance.test.ts)
 for `html_handling` and path encoding, and its
 [integration test](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting/src/workers-sdk/fixtures/workers-with-assets-only)
-for a files-only site, unchanged, on a local Convex deployment.
+for a files-only site, with its imports pointed at this package, on a local Convex deployment.
 
 An app that renders pages takes the place of the Worker script: an object with `fetch(request)` that
 answers what no file answers. TanStack Start has
 [an adapter](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start),
 with streamed pages, server functions, server routes, request middleware, and cookie sessions. The
 [TanStack Start example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
-is deployed here and, from the same source, as a real Worker; CI keeps the two byte-identical but
-for the files that name the host.
+is deployed here and, from the same source, as a real Worker; CI keeps the difference between the
+two to a committed patch.
 
 Use it when the backend is Convex and a second host for the frontend is one host too many. A Worker
 has what Convex does not: the data center nearest the visitor, Node's built-in modules, an edge
