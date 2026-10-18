@@ -139,7 +139,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - if: github.event.action != 'closed'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 24 }
       - if: github.event.action != 'closed'
         run: npm ci
@@ -164,7 +165,8 @@ A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy
   these environments stay in the repository's settings after the close, empty.
 - The job's `if` skips a pull request from a fork, which gets no secrets.
 - On a closed pull request the job skips the install: the delete needs none, and a broken install
-  must not keep the preview.
+  must not keep the preview. It skips the Node setup too: with `cache: npm` or `cache: pnpm`, the
+  setup's post step fails on a run without an install, because the folder that it caches is missing.
 - GitHub runs no `pull_request` workflow for a pull request with a merge conflict, so closing such a
   pull request keeps its preview until Convex deletes it.
 - To post the URL as a comment too, add `pull-requests: write` to `permissions` and this step after
