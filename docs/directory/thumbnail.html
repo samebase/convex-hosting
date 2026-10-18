@@ -1,0 +1,113 @@
+<!doctype html>
+<!-- Fonts: SF Pro and SF Mono from macOS. Render: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --window-size=1536,864 --screenshot=thumbnail.png thumbnail.html -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hosting thumbnail, r4 three lines</title>
+    <style>
+      @font-face {
+        font-family: "SF Mono Local";
+        font-weight: 400;
+        src: url("file:///System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SF-Mono-Regular.otf");
+      }
+      @font-face {
+        font-family: "SF Mono Local";
+        font-weight: 500;
+        src: url("file:///System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SF-Mono-Medium.otf");
+      }
+      :root {
+        --bg: #fbfaf6;
+        --grid: #efede5;
+        --ink: #1a1a18;
+        --muted: #6e6b63;
+        --soft: #e4e1d8;
+        --accent: #0f7c70;
+        --sans: system-ui, -apple-system, "Helvetica Neue", sans-serif;
+        --mono: "SF Mono Local", Menlo, monospace;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        width: 1536px;
+        height: 864px;
+        overflow: hidden;
+        background: var(--bg);
+        position: relative;
+      }
+      svg {
+        position: absolute;
+        inset: 0;
+      }
+      .text {
+        position: absolute;
+        left: 96px;
+        top: 0;
+        height: 864px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .name {
+        font-family: var(--mono);
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+      }
+      .tagline {
+        font-family: var(--sans);
+        line-height: 1.3;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .mono {
+        font-family: var(--mono);
+        fill: var(--ink);
+      }
+      .accent {
+        color: var(--accent);
+        fill: var(--accent);
+      }
+      .name {
+        font-size: 154px;
+      }
+      .big {
+        margin-top: 24px;
+        font-family: var(--sans);
+        font-weight: 600;
+        font-size: 170px;
+        line-height: 1;
+        letter-spacing: -0.025em;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+      .tagline {
+        margin-top: 44px;
+        font-size: 34px;
+      }
+      .tagline + .tagline {
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="1536" height="864" viewBox="0 0 1536 864" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+          <path d="M48 0H0V48" fill="none" stroke="var(--grid)" stroke-width="2" />
+        </pattern>
+      </defs>
+      <rect width="1536" height="864" fill="url(#grid)" />
+    </svg>
+    <div class="text">
+      <div class="name">hosting</div>
+      <div class="big">static files + <span class="accent">SSR</span></div>
+      <div class="tagline">One Convex deployment.</div>
+      <div class="tagline">The Cloudflare Workers model.</div>
+      <div class="tagline">Cloudflare’s own code and tests.</div>
+    </div>
+  </body>
+</html>
