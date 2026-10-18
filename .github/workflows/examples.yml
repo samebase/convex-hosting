@@ -47,12 +47,16 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
+      # Deleting the preview of a closed pull request needs no toolchain, and a broken install must
+      # not keep the preview alive.
       - name: Setup pnpm
+        if: github.event.action != 'closed'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 12.10.1
 
       - name: Setup Node.js
+        if: github.event.action != 'closed'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
@@ -60,6 +64,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
+        if: github.event.action != 'closed'
         run: pnpm install --frozen-lockfile
 
       - name: Deploy, or delete the preview of a closed pull request

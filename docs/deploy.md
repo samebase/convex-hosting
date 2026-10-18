@@ -102,13 +102,12 @@ Convex's 100 MiB response limit anyway.
   the pull request is closed. So a re-run of an old run never puts older code over newer code.
 
 Its `url` output is the site URL. The job keeps the install, the checks, `concurrency`,
-`permissions`, and the secret names; the deploy flags stay in the `deploy` script. The inputs
-`script` and `working-directory` select another script or package. The action needs
-`@samebase/convex-hosting` 0.12.0 or later, which refuses a production key with `--preview-name`,
-Node 22.3 or later for `node --run`, and `gh`, `curl`, and `jq`, which GitHub's runners have.
+`permissions`, and the secret names; the deploy flags stay in the `deploy` script, and the input
+`working-directory` selects the package. The action needs `@samebase/convex-hosting` 0.12.0 or
+later, which refuses a production key with `--preview-name`, Node 22.3 or later for `node --run`,
+and `gh`, `curl`, and `jq`, which GitHub's runners have.
 
 ```yaml
-name: Deploy
 on:
   push: { branches: [main] }
   pull_request: { types: [opened, synchronize, reopened, closed] }
@@ -127,7 +126,8 @@ jobs:
         with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 24 }
-      - run: npm ci
+      - if: github.event.action != 'closed'
+        run: npm ci
       - id: deploy
         uses: samebase/convex-hosting/actions/deploy@v1
         with:
@@ -139,6 +139,8 @@ jobs:
   replaces the older one, so a re-run of an old commit could replace the newest run, which would
   then never deploy.
 - `environment` shows the URL on the pull request as a deployment.
+- On a closed pull request the job skips the install: the delete needs none, and a broken install
+  must not keep the preview.
 - To post the URL as a comment too, add `pull-requests: write` to `permissions` and this step after
   the deploy:
 

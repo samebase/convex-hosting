@@ -1,25 +1,17 @@
 name: convex-hosting deploy
 description: >-
-  Runs the app's convex-hosting deploy script, to production or to a pull request's preview, after
-  it checks that the checkout is the head of its branch. When the pull request closes, deletes its
-  preview instead. Needs @samebase/convex-hosting 0.12.0 or later.
+  Runs the app's package.json deploy script, to production or to the preview pr-<number> of a pull
+  request, after it checks that the checkout is the head of its branch. When the pull request
+  closes, deletes that preview instead. Needs @samebase/convex-hosting 0.12.0 or later.
 inputs:
   deploy-key:
     description: >-
       The Convex deploy key, from a secret: the production key, or the project's preview deploy key
       on a pull request.
     required: true
-  preview-name:
-    description: >-
-      The preview deployment's name. On a pull request it defaults to pr-<number>; anywhere else, an
-      empty name deploys to production.
-    default: ""
   working-directory:
-    description: The directory of the package.json whose script runs convex-hosting deploy.
+    description: The directory of the package.json whose deploy script runs convex-hosting deploy.
     default: .
-  script:
-    description: The package.json script that runs convex-hosting deploy with the app's flags.
-    default: deploy
 outputs:
   url:
     description: The site URL that the deploy reported. Empty when a preview was deleted.
@@ -68,19 +60,16 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
-        PREVIEW_NAME:
-          ${{ inputs.preview-name || (github.event.pull_request.number && format('pr-{0}',
-          github.event.pull_request.number)) || '' }}
-        SCRIPT: ${{ inputs.script }}
+        PR: ${{ github.event.pull_request.number }}
       run: |
         if [ -z "$CONVEX_DEPLOY_KEY" ]; then
           echo "::error::deploy-key is empty. A pull request from a fork gets no secrets; skip its job."
           exit 1
         fi
-        if [ -n "$PREVIEW_NAME" ]; then
-          node --run "$SCRIPT" -- --preview-name "$PREVIEW_NAME"
+        if [ -n "$PR" ]; then
+          node --run deploy -- --preview-name "pr-$PR"
         else
-          node --run "$SCRIPT"
+          node --run deploy
         fi
 
     # A preview deploy key may read its project's deployments and delete its previews through the
@@ -90,9 +79,14 @@ runs:
       shell: bash
       env:
         CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
-        PREVIEW_NAME:
-          ${{ inputs.preview-name || format('pr-{0}', github.event.pull_request.number) }}
+        GH_TOKEN: ${{ github.token }}
+        PR: ${{ github.event.pull_request.number }}
       run: |
+        # A re-run of an old closed run must not delete the preview of a reopened pull request.
+        if [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .state)" = open ]; then
+          echo "Pull request $PR is open again, so its preview stays."
+          exit 0
+        fi
         IFS=: read -r kind team project <<< "${CONVEX_DEPLOY_KEY%%|*}"
         if [ "$kind" != preview ]; then
           echo "::error::deploy-key is not a preview deploy key. A pull request from a fork gets no secrets; skip its job."
@@ -104,13 +98,13 @@ runs:
             { echo "$1: $body" >&2; return 1; }
           printf '%s' "$body"
         }
-        project_json=$(api "teams/$team/projects/$project")
-        previews=$(api "projects/$(jq -r .id <<< "$project_json")/list_deployments?deploymentType=preview")
-        names=$(jq -r --arg name "$PREVIEW_NAME" '.[] | select(.previewIdentifier == $name) | .name' <<< "$previews")
+        id=$(api "teams/$team/projects/$project" | jq -r .id)
+        names=$(api "projects/$id/list_deployments?deploymentType=preview" |
+          jq -r --arg name "pr-$PR" '.[] | select(.previewIdentifier == $name) | .name')
         if [ -z "$names" ]; then
-          echo "No preview named $PREVIEW_NAME in $project."
+          echo "No preview named pr-$PR in $project."
         fi
         for name in $names; do
           api "deployments/$name/delete" -X POST > /dev/null
-          echo "Deleted the preview $PREVIEW_NAME ($name) in $project."
+          echo "Deleted the preview pr-$PR ($name) in $project."
         done
