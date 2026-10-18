@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.1
+
+- `deploy --preview-name` without a deploy key, and without a login whose project is in
+  `CONVEX_DEPLOYMENT`, says before the build that the project's preview deploy key is missing from
+  `CONVEX_DEPLOY_KEY`. Before, `npx convex deploy` failed with "No CONVEX_DEPLOYMENT set".
+- A deploy to an instance without `createVersion`, such as one of convex-hosting 0.3.x or of
+  Convex's static-hosting, says that the instance is not convex-hosting 0.4 or later and links to
+  the steps to move, in place of the Convex CLI's "Could not find function" error. The page "From
+  static-hosting" in the repository's `docs/` has a section for 0.3.x.
+- The published manifest no longer lists `vite` in `devDependencies` as an `npm:` alias of the Vite+
+  core, as the adapter has not since 0.8.0. CI rejects an `npm:` alias in the packed manifest of
+  both packages.
+
 ## 0.13.0
 
 - The package defines `queueMicrotask` when the runtime has none. Convex's runtime lacks it, and a

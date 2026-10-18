@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+/// <reference types="vite-plus/client" />
 import { convexTest } from "convex-test";
 import { anyApi, httpRouter, ROUTABLE_HTTP_METHODS } from "convex/server";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
