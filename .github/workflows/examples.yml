@@ -27,8 +27,7 @@ jobs:
         include:
           - example: tanstack-ssr
             key: TANSTACK_SSR
-          - example: tanstack-spa
-            key: TANSTACK_SPA
+          # Temporary: the plain job below deploys tanstack-spa's preview instead.
           - example: hello-world-assets-only
             key: HELLO_WORLD_ASSETS_ONLY
     # One run at a time per deployment, started in the order the runs began to wait: a re-run of an
@@ -76,3 +75,122 @@ jobs:
           # Convex deploy keys.
           deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
           preview-deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+
+  # Temporary: a plain npx convex deploy of examples/tanstack-spa's functions through the action, with
+  # no deploy script and no convex-hosting, and a probe of the production keys.
+  plain:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: examples-tanstack-spa-${{ github.event.number }}
+      queue: max
+    environment:
+      name: tanstack-spa preview
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        if: github.event.action != 'closed'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 12.10.1
+
+      - name: Setup Node.js
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        if: github.event.action != 'closed'
+        run: pnpm install --frozen-lockfile
+
+      # The deploy script runs convex-hosting deploy, and convex/http.ts imports the version file
+      # that only convex-hosting deploy writes. Without both, the app is a plain Convex app.
+      - name: Make examples/tanstack-spa a plain Convex app
+        if: github.event.action != 'closed'
+        working-directory: examples/tanstack-spa
+        run: |
+          jq 'del(.scripts.deploy)' package.json > package.json.plain
+          mv package.json.plain package.json
+          rm convex/http.ts
+
+      # Prints only whether each key's prefix is prod:<name>, and the status code of
+      # GET /v1/deployments/<name> with that key, and the CONVEX_SITE_URL that an inline query reads.
+      - name: Probe the production deploy keys
+        if: github.event.action != 'closed'
+        env:
+          TANSTACK_SPA: ${{ secrets.CONVEX_DEPLOY_KEY_TANSTACK_SPA }}
+          TANSTACK_SSR: ${{ secrets.CONVEX_DEPLOY_KEY_TANSTACK_SSR }}
+          HELLO_WORLD_ASSETS_ONLY: ${{ secrets.CONVEX_DEPLOY_KEY_HELLO_WORLD_ASSETS_ONLY }}
+        run: |
+          for var in TANSTACK_SPA TANSTACK_SSR HELLO_WORLD_ASSETS_ONLY; do
+            key=${!var}
+            prefix=${key%%|*}
+            if [[ $prefix =~ ^prod:[a-z0-9-]+$ ]]; then
+              status=$(curl -s -o "$RUNNER_TEMP/body.json" -w '%{http_code}' -H "Authorization: Bearer $key" "https://api.convex.dev/v1/deployments/${prefix#prod:}")
+              code=$(jq -r '.code // "none"' "$RUNNER_TEMP/body.json" 2> /dev/null || echo "not JSON")
+              site=$(cd examples/tanstack-spa && CONVEX_DEPLOY_KEY=$key npx convex run --inline-query process.env.CONVEX_SITE_URL)
+              echo "$var: prefix is prod:<name>: yes; GET /v1/deployments/<name>: $status, code $code; CONVEX_SITE_URL from an inline query: $site"
+            else
+              echo "$var: prefix is prod:<name>: no"
+            fi
+          done
+          rm -f "$RUNNER_TEMP/body.json"
+
+      - name: Deploy, or delete the preview of a closed pull request
+        id: deploy
+        uses: ./actions/deploy
+        with:
+          working-directory: examples/tanstack-spa
+          deploy-key: ${{ secrets.CONVEX_DEPLOY_KEY_TANSTACK_SPA }}
+          preview-deploy-key: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SPA }}
+
+      - name: Show the URL output
+        if: github.event.action != 'closed'
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          site=$(curl -s -o /dev/null -w '%{http_code}' "$URL/")
+          query=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"path":"counter:get","args":{},"format":"json"}' "${URL%.convex.site}.convex.cloud/api/query")
+          {
+            echo "url output (from the Convex API): $URL"
+            echo ""
+            echo "The site answers $site: a plain deploy uploads no files, and this app has no HTTP routes."
+            echo ""
+            echo "counter:get on the same deployment: $query"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Temporary: the production key and an empty preview key on a pull request. The action deploys
+  # nothing and writes the notice; the job installs nothing, so no deploy could run.
+  no-preview-key:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Deploy, or delete the preview of a closed pull request
+        id: deploy
+        uses: ./actions/deploy
+        with:
+          working-directory: examples/hello-world-assets-only
+          deploy-key: ${{ secrets.CONVEX_DEPLOY_KEY_HELLO_WORLD_ASSETS_ONLY }}
+          preview-deploy-key: ""
+
+      - name: Show the URL output
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: echo "url output is [$URL]"
