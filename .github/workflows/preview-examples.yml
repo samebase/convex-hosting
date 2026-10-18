@@ -33,6 +33,8 @@ jobs:
             key: TANSTACK_SPA
           - example: hello-world-assets-only
             key: HELLO_WORLD_ASSETS_ONLY
+          - example: tanstack-ssr-workers
+            key: NO_SUCH_SECRET
     # All pull requests share each example's preview environment.
     environment:
       name: ${{ matrix.example }} preview
@@ -92,6 +94,8 @@ jobs:
             key: TANSTACK_SPA
           - example: hello-world-assets-only
             key: HELLO_WORLD_ASSETS_ONLY
+          - example: tanstack-ssr-workers
+            key: NO_SUCH_SECRET
     concurrency:
       group: preview ${{ matrix.example }} ${{ github.head_ref }}
       queue: max
