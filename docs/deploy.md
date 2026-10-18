@@ -147,7 +147,7 @@ permissions: { contents: read }
 jobs:
   production:
     runs-on: ubuntu-latest
-    environment: production
+    environment: { name: production, url: "${{ steps.deploy.outputs.url }}" }
     concurrency: { group: production, queue: max }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -155,12 +155,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 24 }
       - run: npm ci
-      - uses: samebase/convex-hosting/actions/deploy@v1
+      - id: deploy
+        uses: samebase/convex-hosting/actions/deploy@v1
         with: { deploy-key: "${{ secrets.CONVEX_DEPLOY_KEY }}" }
 ```
 
-`.github/workflows/preview.yml` deploys each pull request to its preview, comments the links, and
-deletes the preview when the pull request closes:
+`.github/workflows/preview.yml` deploys each pull request to its preview and deletes it when the
+pull request closes:
 
 ```yaml
 on:
@@ -183,12 +184,6 @@ jobs:
       - id: deploy
         uses: samebase/convex-hosting/actions/deploy@v1
         with: { deploy-key: "${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}" }
-      - uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          message: |
-            Preview `${{ steps.deploy.outputs.preview-name }}`: ${{ steps.deploy.outputs.url }}
-            Deployment: ${{ steps.deploy.outputs.deployment-url }}
-            Dashboard: ${{ steps.deploy.outputs.dashboard-url }}
   cleanup:
     if:
       github.event.action == 'closed' && github.event.pull_request.head.repo.full_name ==
@@ -198,11 +193,6 @@ jobs:
     steps:
       - uses: samebase/convex-hosting/actions/deploy@v1
         with: { deploy-key: "${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}" }
-      - uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          append: true
-          only_update: true
-          message: Preview deleted when the pull request closed.
 ```
 
 A `convex-hosting` app uses the same workflows and keeps its flags in its `deploy` script, such as
@@ -214,9 +204,11 @@ A `convex-hosting` app uses the same workflows and keeps its flags in its `deplo
   newest run, which would then never deploy. The cleanup shares the preview's group, so it waits for
   a running deploy of the branch instead of deleting the preview under it.
 - The jobs' `if` skips a pull request from a fork, which gets no secrets.
-- The pull request gets one comment with the preview's links, which each deploy updates. The cleanup
-  keeps them and adds a line that the preview was deleted; a pull request that had no comment gets
-  none. The comment needs `pull-requests: write`.
+- The action keeps one comment on the pull request with the preview's links, which each deploy
+  updates; on the close it adds a line that the preview was deleted. A pull request without a
+  preview gets no comment. The comment needs `pull-requests: write`, the only permission beyond
+  `contents: read`; `comment: false` turns it off. Its header names the `working-directory`, so the
+  cleanup passes the same one as the preview job.
 - Pull requests share the `preview` environment, so when one deploys, GitHub marks the others'
   deployments inactive and hides their buttons; their comments keep the links.
 - A re-run of an old cleanup deletes the preview even after a reopen; the next push deploys it
