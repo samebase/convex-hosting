@@ -9,10 +9,8 @@ on:
 
 permissions:
   contents: read
-  # The comment with the preview's links, and the cleanup's list of the branch's open pull requests.
+  # The comment with the preview's links.
   pull-requests: write
-  # The cleanup marks the branch's deployments inactive.
-  deployments: write
 
 jobs:
   preview:
