@@ -9,6 +9,9 @@ inputs:
   working-directory:
     description: The directory of the app's package.json.
     default: .
+  comment:
+    description: Keep a pull request comment with the preview's links; needs pull-requests write.
+    default: "true"
 outputs:
   url:
     description: The site URL (CONVEX_SITE_URL). Empty when none deployed or not readable.
@@ -64,6 +67,17 @@ runs:
         printf 'url=%s\ndeployment-url=%s\ndashboard-url=%s\npreview-name=%s\n' "$url" "$cloud" "$dashboard" "$GITHUB_HEAD_REF" >> "$GITHUB_OUTPUT"
         printf -- '- Site: %s\n- Deployment: %s\n- Dashboard: %s\n' "${url:-unknown}" "${cloud:-unknown}" "${dashboard:-unknown}" >> "$GITHUB_STEP_SUMMARY"
 
+    # One comment per app and pull request: the header names the app's directory.
+    - name: Comment the preview's links
+      if: inputs.comment == 'true' && steps.deploy.outputs.preview-name && steps.deploy.outputs.url
+      uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+      with:
+        header: preview ${{ inputs.working-directory }}
+        message: |
+          Preview `${{ steps.deploy.outputs.preview-name }}`${{ inputs.working-directory != '.' && format(' of {0}', inputs.working-directory) || '' }}: ${{ steps.deploy.outputs.url }}
+          Deployment: ${{ steps.deploy.outputs.deployment-url }}
+          Dashboard: ${{ steps.deploy.outputs.dashboard-url }}
+
     - name: Delete the preview of the closed pull request
       if: github.event.action == 'closed' && inputs.deploy-key
       shell: bash
@@ -83,3 +97,12 @@ runs:
           api "deployments/$name/delete" -X POST > /dev/null
           echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
         done
+
+    - name: Note the deleted preview in the comment
+      if: inputs.comment == 'true' && github.event.action == 'closed'
+      uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+      with:
+        header: preview ${{ inputs.working-directory }}
+        append: true
+        only_update: true
+        message: Preview deleted when the pull request closed.
