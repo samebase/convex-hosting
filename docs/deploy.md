@@ -95,38 +95,45 @@ previews are deleted when the pull request closes. It works for any Convex app, 
 production key in `deploy-key` and the project's preview deploy key in `preview-deploy-key`:
 
 - It runs the `deploy` script of the app's `package.json`, or `npx convex deploy` when there is no
-  such script. On a pull request it appends `--preview-name pr-<number>`, which both commands take.
+  such script. On a pull request it appends `--preview-name <branch>`, which both commands take.
 - On a push, it deploys to production with `deploy-key`, which must start with `prod:`.
-- On a pull request, it deploys to the preview `pr-<number>` with `preview-deploy-key`, which must
-  start with `preview:`: `npx convex deploy` with a production key ignores `--preview-name` and
-  deploys the pull request to production. A second push reuses the preview. Without
-  `preview-deploy-key`, it deploys nothing and notes in the job how to get previews.
+- On a pull request, it deploys to the preview named after the pull request's branch
+  (`GITHUB_HEAD_REF` as it is, the name that `npx convex deploy` takes by default in GitHub Actions
+  and that a Worker's Workers Builds preview uses) with `preview-deploy-key`, which must start with
+  `preview:`: `npx convex deploy` with a production key ignores `--preview-name` and deploys the
+  pull request to production. A second push reuses the preview. Without `preview-deploy-key`, it
+  deploys nothing and notes in the job how to get previews.
 - When the pull request closes, it deletes that preview through the Convex management API, with the
-  same preview key. A closed pull request then holds no deployment of the team's quota.
+  same preview key, unless another open pull request has the same branch. A closed pull request then
+  holds no deployment of the team's quota. It also marks the branch's GitHub deployments inactive,
+  so the pull request links to no deleted preview. A branch renamed while its pull request is open
+  deploys a new preview under the new name; the old one stays until Convex deletes it.
 - Before a deploy, it fails when the commit is no longer the head of its branch, when the checkout
   is another commit (on a pull request, `actions/checkout` takes a merge commit by default), or when
   the pull request is closed. So a re-run of an old run never puts older code over newer code.
 
 Its `url` output is the site URL, where the deployment's HTTP actions answer, and the job's
 `environment` shows it on the pull request. The deployment gives it, as `CONVEX_SITE_URL`, to an
-inline query with the same key, so it is right in every region. The job keeps the install, the
-checks, `concurrency`, `permissions`, and the secret names, and the input `working-directory`
-selects the package. The action needs Node 22.3 or later for `node --run`, and `gh`, `curl`, and
-`jq`, which GitHub's runners have. This workflow deploys a plain Convex app:
+inline query with the same key, so it is right in every region. Its `preview-name` output is the
+preview's name, for a later `npx convex run --preview-name`; both outputs are empty on a close and
+when nothing deployed, and `preview-name` on production too. The job keeps the install, the checks,
+`concurrency`, `permissions`, and the secret names, and the input `working-directory` selects the
+package. The action needs Node 22.3 or later for `node --run`, and `gh`, `curl`, and `jq`, which
+GitHub's runners have. This workflow deploys a plain Convex app:
 
 ```yaml
 on:
   push: { branches: [main] }
   pull_request: { types: [opened, synchronize, reopened, closed] }
-permissions: { contents: read, pull-requests: read }
+permissions: { contents: read, pull-requests: read, deployments: write }
 jobs:
   deploy:
     # A pull request from a fork gets no secrets.
     if: github.event.pull_request.head.repo.full_name == github.repository || !github.head_ref
     runs-on: ubuntu-latest
-    concurrency: { group: "deploy-${{ github.event.number || 'production' }}", queue: max }
+    concurrency: { group: "deploy-${{ github.head_ref || 'production' }}", queue: max }
     environment:
-      name: ${{ github.head_ref && 'preview' || 'production' }}
+      name: ${{ github.head_ref && format('preview/{0}', github.head_ref) || 'production' }}
       url: ${{ steps.deploy.outputs.url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -149,6 +156,10 @@ A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy
 - `queue: max` keeps every pending run of the group, in order. With the default, a new pending run
   replaces the older one, so a re-run of an old commit could replace the newest run, which would
   then never deploy.
+- Each branch has its own environment, `preview/<branch>`: in an environment that all pull requests
+  share, the newest deployment hides the link of every other pull request. The workflow's token
+  cannot delete an environment (that needs administration rights), so these environments stay in the
+  repository's settings after the close, empty.
 - On a closed pull request the job skips the install: the delete needs none, and a broken install
   must not keep the preview.
 - GitHub runs no `pull_request` workflow for a pull request with a merge conflict, so closing such a

@@ -1,7 +1,7 @@
 name: Examples
 
 # A push to main deploys each example to production. A pull request deploys each example to its
-# preview, pr-<number>, and deletes the previews when it closes.
+# preview, named after the branch, and deletes the previews when it closes.
 on:
   push:
     branches: [main]
@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: read
+  # The close run marks the branch's deployments inactive.
+  deployments: write
 
 jobs:
   deploy:
@@ -34,11 +36,13 @@ jobs:
     # One run at a time per deployment, started in the order the runs began to wait: a re-run of an
     # old commit waits, fails the action's head check, and never replaces the newest pending run.
     concurrency:
-      group: examples-${{ matrix.example }}-${{ github.event.number || 'production' }}
+      group: examples-${{ matrix.example }}-${{ github.head_ref || 'production' }}
       queue: max
-    # The pull request shows the preview URL as a deployment.
+    # The pull request shows the preview URL as a deployment, one environment per branch: in a shared
+    # environment, the newest deployment of any pull request hides the others.
     environment:
-      name: ${{ matrix.example }}${{ github.event_name == 'pull_request' && ' preview' || '' }}
+      name:
+        ${{ matrix.example }}${{ github.head_ref && format(' preview/{0}', github.head_ref) || '' }}
       url: ${{ steps.deploy.outputs.url }}
     steps:
       - name: Checkout code

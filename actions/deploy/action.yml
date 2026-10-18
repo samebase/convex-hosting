@@ -1,8 +1,8 @@
 name: Convex deploy with previews deleted on close
 description: >-
-  Deploys a Convex app to production on a push, or to the preview pr-<number> of a pull request,
-  after it checks that the checkout is the head of its branch, and outputs the site URL. When the
-  pull request closes, deletes that preview.
+  Deploys a Convex app to production on a push, or to the preview named after the branch of a pull
+  request, after it checks that the checkout is the head of its branch, and outputs the site URL.
+  When the pull request closes, deletes that preview.
 inputs:
   deploy-key:
     description: The production deploy key, from a secret.
@@ -19,6 +19,11 @@ outputs:
   url:
     description: The site URL, where the deployment's HTTP actions answer. Empty when none deployed.
     value: ${{ steps.deploy.outputs.url }}
+  preview-name:
+    description: >-
+      The name of the preview deployed, the pull request's branch, for npx convex run and other
+      commands after the deploy. Empty on production and when none deployed.
+    value: ${{ steps.deploy.outputs.preview-name }}
 runs:
   using: composite
   steps:
@@ -65,7 +70,9 @@ runs:
 
     # Runs the app's deploy script, or npx convex deploy; node --run puts the node_modules/.bin
     # folders on PATH, whatever the package manager. A pull request's step gets only the preview
-    # key, so the app's code never holds the production key there.
+    # key, so the app's code never holds the production key there. The preview's name is
+    # GITHUB_HEAD_REF as it is, which npx convex deploy also takes by default in GitHub Actions;
+    # Convex keeps it as the previewIdentifier.
     - name: Deploy
       id: deploy
       if: >-
@@ -88,7 +95,8 @@ runs:
         fi
         args=()
         if [ -n "$PR" ]; then
-          args=(--preview-name "pr-$PR")
+          args=(--preview-name "$GITHUB_HEAD_REF")
+          echo "preview-name=$GITHUB_HEAD_REF" >> "$GITHUB_OUTPUT"
         fi
         if [ -n "$(jq -r '.scripts.deploy // empty' package.json)" ]; then
           node --run deploy -- "${args[@]}"
@@ -102,19 +110,21 @@ runs:
         echo "url=$url" >> "$GITHUB_OUTPUT"
 
     # A preview deploy key may read its project's deployments and delete its previews through the
-    # management API.
+    # management API. Then the branch's GitHub deployments go inactive, so the pull request shows no
+    # link to the deleted preview; that needs deployments: write.
     - name: Delete the preview of the closed pull request
       if: github.event.action == 'closed' && inputs.preview-deploy-key
       shell: bash
       env:
         CONVEX_DEPLOY_KEY: ${{ inputs.preview-deploy-key }}
         GH_TOKEN: ${{ github.token }}
-        PR: ${{ github.event.pull_request.number }}
+        HEAD_LABEL: ${{ github.event.pull_request.head.label }}
       run: |
-        # A re-run of an old closed run must not delete the preview of a reopened pull request.
-        state=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .state)
-        if [ "$state" != closed ]; then
-          echo "Pull request $PR is $state again, so its preview stays."
+        # A re-run of an old closed run must not delete a preview that an open pull request uses: the
+        # reopened one, or another one from the same branch.
+        open=$(gh api -X GET "repos/$GITHUB_REPOSITORY/pulls" -f state=open -f head="$HEAD_LABEL" --jq length)
+        if [ "$open" != 0 ]; then
+          echo "An open pull request still has the branch $GITHUB_HEAD_REF, so its preview stays."
           exit 0
         fi
         IFS=: read -r kind team project <<< "${CONVEX_DEPLOY_KEY%%|*}"
@@ -130,11 +140,17 @@ runs:
         }
         id=$(api "teams/$team/projects/$project" | jq -r .id)
         names=$(api "projects/$id/list_deployments?deploymentType=preview" |
-          jq -r --arg name "pr-$PR" '.[] | select(.previewIdentifier == $name) | .name')
+          jq -r --arg name "$GITHUB_HEAD_REF" '.[] | select(.previewIdentifier == $name) | .name')
         if [ -z "$names" ]; then
-          echo "No preview named pr-$PR in $project."
+          echo "No preview named $GITHUB_HEAD_REF in $project."
         fi
         for name in $names; do
           api "deployments/$name/delete" -X POST > /dev/null
-          echo "Deleted the preview pr-$PR ($name) in $project."
+          echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
         done
+        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
+        for deployment in $ids; do
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
+            { echo "::error::Marking the deployments of $GITHUB_HEAD_REF inactive needs deployments: write in the job's permissions."; exit 1; }
+        done
+        echo "Marked $(wc -w <<< "$ids") GitHub deployments of $GITHUB_HEAD_REF inactive."
