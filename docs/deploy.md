@@ -93,8 +93,9 @@ Convex's 100 MiB response limit anyway.
 ## GitHub Actions
 
 [`actions/deploy`](../actions/deploy/action.yml) is a Convex deploy action whose pull request
-previews are deleted when the pull request closes. It works for any Convex app, and takes the
-production key in `deploy-key` and the project's preview deploy key in `preview-deploy-key`:
+previews are deleted when the pull request closes. It works for any Convex app. Its `deploy-key` is
+the production key on a push and may be the project's preview deploy key on a pull request; a job
+that holds both keys passes the preview key in `preview-deploy-key`:
 
 - It runs the `deploy` script of the app's `package.json`, or `npx convex deploy` when there is no
   such script. On a pull request it appends `--preview-name <branch>`, which both commands take.
@@ -106,9 +107,8 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
   and that a Worker's Workers Builds preview uses) with `preview-deploy-key`, which must start with
   `preview:`: `npx convex deploy` with a production key ignores `--preview-name` and deploys the
   pull request to production. Without `preview-deploy-key`, it uses `deploy-key` when that is a
-  preview key (see [The production key in an environment](#the-production-key-in-an-environment)),
-  and with neither it deploys nothing and notes in the job how to get previews. A second push reuses
-  the preview.
+  preview key, as `preview.yml` below does, and with neither it deploys nothing and notes in the job
+  how to get previews. A second push reuses the preview.
 - When the pull request closes, it deletes that preview through the Convex management API, with the
   same preview key, unless another open pull request has the same branch. A closed pull request then
   holds no deployment of the team's quota. It also marks the branch's GitHub deployments inactive,
@@ -132,75 +132,96 @@ The deployment gives both URLs to an inline query with the same key, so they are
 region. A plain Convex app whose key may not run inline queries still deploys; then the two URLs are
 empty, with a warning, so a step that must follow every deploy checks the event or `preview-name`,
 not `url`. (`convex-hosting deploy` needs inline queries for its upload; see the deploy key
-permissions above.) Every output is empty on a close and when nothing deployed. The job keeps the
-install, the checks, `concurrency`, `permissions`, and the secret names, and the input
+permissions above.) Every output is empty on a close and when nothing deployed. The workflows keep
+the install, the checks, `concurrency`, `permissions`, and the secret names, and the input
 `working-directory` selects the package. The action needs Node 22.3 or later for `node --run`, and
-`gh`, `curl`, and `jq`, which GitHub's runners have. This workflow deploys a plain Convex app:
+`gh`, `curl`, and `jq`, which GitHub's runners have.
+
+Two workflows deploy a plain Convex app. Two files keep each one a straight list of steps, and the
+pull request's jobs never name the production key, so they never receive it.
+`.github/workflows/deploy.yml` deploys `main` to production:
 
 ```yaml
 on:
   push: { branches: [main] }
+permissions: { contents: read }
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency: { group: production, queue: max }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 24 }
+      - run: npm ci
+      - uses: samebase/convex-hosting/actions/deploy@v1
+        with: { deploy-key: "${{ secrets.CONVEX_DEPLOY_KEY }}" }
+```
+
+`.github/workflows/preview.yml` deploys each pull request to its preview, comments the links, and
+deletes the preview when the pull request closes:
+
+```yaml
+on:
   pull_request: { types: [opened, synchronize, reopened, closed] }
 permissions: { contents: read, pull-requests: write, deployments: write }
 jobs:
-  deploy:
-    if: github.event.pull_request.head.repo.full_name == github.repository || !github.head_ref
+  preview:
+    if:
+      github.event.action != 'closed' && github.event.pull_request.head.repo.full_name ==
+      github.repository
     runs-on: ubuntu-latest
-    concurrency:
-      group: deploy ${{ github.head_ref && format('preview/{0}', github.head_ref) || 'production' }}
-      queue: max
-    environment:
-      name: ${{ github.head_ref && 'preview' || 'production' }}
-      url: ${{ steps.deploy.outputs.url }}
-      deployment: ${{ github.event.action != 'closed' }}
+    environment: { name: preview, url: "${{ steps.deploy.outputs.url }}" }
+    concurrency: { group: "preview-${{ github.head_ref }}", queue: max }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
-      - if: github.event.action != 'closed'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 24 }
-      - if: github.event.action != 'closed'
-        run: npm ci
+      - run: npm ci
       - id: deploy
         uses: samebase/convex-hosting/actions/deploy@v1
+        with: { deploy-key: "${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}" }
+      - uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
-          deploy-key: ${{ secrets.CONVEX_DEPLOY_KEY }}
-          preview-deploy-key: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
-      - if: steps.deploy.outputs.preview-name
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          header: preview
           message: |
             Preview `${{ steps.deploy.outputs.preview-name }}`: ${{ steps.deploy.outputs.url }}
             Deployment: ${{ steps.deploy.outputs.deployment-url }}
             Dashboard: ${{ steps.deploy.outputs.dashboard-url }}
-      - if: github.event.action == 'closed'
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+  cleanup:
+    if:
+      github.event.action == 'closed' && github.event.pull_request.head.repo.full_name ==
+      github.repository
+    runs-on: ubuntu-latest
+    concurrency: { group: "preview-${{ github.head_ref }}", queue: max }
+    steps:
+      - uses: samebase/convex-hosting/actions/deploy@v1
+        with: { deploy-key: "${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}" }
+      - uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
-          header: preview
           append: true
           only_update: true
           message: Preview deleted when the pull request closed.
 ```
 
-A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy` script, such as
+A `convex-hosting` app uses the same workflows and keeps its flags in its `deploy` script, such as
 `convex-hosting deploy --build "vite build" --dist dist`; without that script, the plain
 `npx convex deploy` leaves its site answering 404 (see [Rules](#rules)).
 
 - `queue: max` keeps up to 100 pending runs of the group, in the order each began to wait. With the
   default, a new pending run replaces the older one, so a re-run of an old commit could replace the
-  newest run, which would then never deploy. The group of a branch named `production` is not the
-  production group.
-- The job's `if` skips a pull request from a fork, which gets no secrets.
-- The pull request gets one comment with the preview's links, which each deploy updates. On a close
-  the comment keeps them and gets a line that the preview was deleted; a pull request that had no
-  preview gets no comment. The comment needs `pull-requests: write`.
+  newest run, which would then never deploy. The cleanup shares the preview's group, so it waits for
+  a running deploy of the branch instead of deleting the preview under it.
+- The jobs' `if` skips a pull request from a fork, which gets no secrets.
+- The pull request gets one comment with the preview's links, which each deploy updates. The cleanup
+  keeps them and adds a line that the preview was deleted; a pull request that had no comment gets
+  none. The comment needs `pull-requests: write`.
 - Pull requests share the `preview` environment, so when one deploys, GitHub marks the others'
-  deployments inactive and hides their buttons; their comments keep the links. On a close,
-  `deployment` is false, so the close run creates no deployment.
-- On a closed pull request the job skips the install: the delete needs none, and a broken install
-  must not keep the preview. It skips the Node setup too: with `cache: npm` or `cache: pnpm`, the
-  setup's post step fails on a run without an install, because the folder that it caches is missing.
+  deployments inactive and hides their buttons; their comments keep the links.
+- The cleanup has no checkout, Node setup, or install: the delete needs none, and a broken install
+  must not keep the preview.
 - GitHub runs no `pull_request` workflow for a pull request with a merge conflict, or whose head
   commit's message has a skip instruction such as `[skip ci]`, so closing such a pull request keeps
   its preview until Convex deletes it.
@@ -209,25 +230,18 @@ A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy
 
 ### The production key in an environment
 
-With the two repository secrets, a pull request's job receives the production key too. A job gets
-every secret that it names, and it runs the pull request's install, build, and deploy script, so
-that code can reach the key (for example in the runner's memory), although the deploy step gets only
-the preview key. Where agents or outside collaborators open pull requests, keep the production key
-in the `production` environment, under the name that the repository secret uses for the preview key:
-one `CONVEX_DEPLOY_KEY` with a value per environment, as in
-[Convex's Vercel and Netlify setup](https://docs.convex.dev/production/multiple-deployments#preview).
-Create the environment and its secret:
+`preview.yml` never names the production key, but a pull request from the repository runs its own
+copy of the workflows, so it can edit them to name the key. Where agents or outside collaborators
+open pull requests, keep the production key in the `production` environment's secrets instead of the
+repository's, and allow only `main` in that environment's deployment branches (Settings,
+Environments, `production`):
 
 ```sh
 gh api -X PUT "repos/{owner}/{repo}/environments/production" > /dev/null
 key=$(npx convex deployment token create "<repository> deploy.yml" --prod) && printf '%s' "$key" | gh secret set CONVEX_DEPLOY_KEY --env production
 ```
 
-Then store the preview key as the repository secret `CONVEX_DEPLOY_KEY` (the `curl` command above,
-ending in `gh secret set CONVEX_DEPLOY_KEY`), delete `CONVEX_PREVIEW_DEPLOY_KEY`, and remove the
-`preview-deploy-key` line. The job names `production` only on a push, and there the environment's
-secret takes the place of the repository's, so `deploy-key` is the production key on a push and the
-preview key on a pull request. To keep a workflow edit on another branch from naming the
-environment, allow only `main` in its deployment branches. The environment's name is the caller's
-choice; a repository that already has one, such as `Production`, keeps it (GitHub compares
-environment names without case).
+Then delete the repository secret `CONVEX_DEPLOY_KEY`. `deploy.yml` names the environment, so its
+`secrets.CONVEX_DEPLOY_KEY` is the environment's. The environment's name is the caller's choice; a
+repository that already has one, such as `Production`, keeps it (GitHub compares environment names
+without case).
