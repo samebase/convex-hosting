@@ -39,11 +39,13 @@ jobs:
       group: examples-${{ matrix.example }}-${{ github.head_ref || 'production' }}
       queue: max
     # The pull request shows the preview URL as a deployment, one environment per branch: in a shared
-    # environment, the newest deployment of any pull request hides the others.
+    # environment, the newest deployment of any pull request hides the others. The close run creates
+    # no deployment, which would replace the link of a reopened pull request.
     environment:
       name:
         ${{ matrix.example }}${{ github.head_ref && format(' preview/{0}', github.head_ref) || '' }}
       url: ${{ steps.deploy.outputs.url }}
+      deployment: ${{ github.event.action != 'closed' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

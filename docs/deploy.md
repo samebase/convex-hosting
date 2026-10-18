@@ -128,13 +128,13 @@ on:
 permissions: { contents: read, pull-requests: read, deployments: write }
 jobs:
   deploy:
-    # A pull request from a fork gets no secrets.
     if: github.event.pull_request.head.repo.full_name == github.repository || !github.head_ref
     runs-on: ubuntu-latest
     concurrency: { group: "deploy-${{ github.head_ref || 'production' }}", queue: max }
     environment:
       name: ${{ github.head_ref && format('preview/{0}', github.head_ref) || 'production' }}
       url: ${{ steps.deploy.outputs.url }}
+      deployment: ${{ github.event.action != 'closed' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
@@ -157,9 +157,11 @@ A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy
   replaces the older one, so a re-run of an old commit could replace the newest run, which would
   then never deploy.
 - Each branch has its own environment, `preview/<branch>`: in an environment that all pull requests
-  share, the newest deployment hides the link of every other pull request. The workflow's token
-  cannot delete an environment (that needs administration rights), so these environments stay in the
-  repository's settings after the close, empty.
+  share, the newest deployment hides the link of every other pull request. On a close, `deployment`
+  is false, so the close run creates no deployment, which would hide the link of a reopened pull
+  request. The workflow's token cannot delete an environment (that needs administration rights), so
+  these environments stay in the repository's settings after the close, empty.
+- The job's `if` skips a pull request from a fork, which gets no secrets.
 - On a closed pull request the job skips the install: the delete needs none, and a broken install
   must not keep the preview.
 - GitHub runs no `pull_request` workflow for a pull request with a merge conflict, so closing such a
