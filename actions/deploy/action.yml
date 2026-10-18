@@ -171,7 +171,7 @@ runs:
       run: |
         id=$(gh api "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -f environment="$ENVIRONMENT" -F transient_environment=true -F production_environment=false -F auto_merge=false -f "required_contexts[]" --jq .id) ||
           { echo "::error::Creating a deployment needs deployments: write in the job's permissions."; exit 1; }
-        gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success -f environment_url="$URL" -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" -F auto_inactive=false > /dev/null
+        gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success -f environment_url="$URL" -F auto_inactive=false > /dev/null
 
     # A preview deploy key may read its project's deployments and delete its previews through the
     # management API. Then the branch's deployments go inactive, so the pull request shows no link
