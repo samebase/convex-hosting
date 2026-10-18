@@ -80,3 +80,5 @@ export function useReloadOnNewVersion() {
   }, [versionId]);
 }
 ```
+
+This line exists only for the preview-delete demo of #89.
