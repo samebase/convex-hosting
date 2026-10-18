@@ -165,6 +165,7 @@ runs:
         CONVEX_DEPLOY_KEY: ${{ inputs.preview-deploy-key || inputs.deploy-key }}
         GH_TOKEN: ${{ github.token }}
         HEAD_LABEL: ${{ github.event.pull_request.head.label }}
+        CLOSED_AT: ${{ github.event.pull_request.closed_at }}
       run: |
         # A re-run of an old closed run must not delete a preview that an open pull request uses: the
         # reopened one, or another one from the same branch.
@@ -194,8 +195,10 @@ runs:
           api "deployments/$name/delete" -X POST > /dev/null
           echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
         done
-        # Also when Convex had already deleted the preview, and on a re-run after a failure here.
-        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
+        # Also when Convex had already deleted the preview, and on a re-run after a failure here. Only
+        # the deployments made before the close: another app of a reopened pull request may have
+        # deployed again already.
+        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[] | select(.created_at <= env.CLOSED_AT) | .id')
         for deployment in $ids; do
           gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
             { echo "::error::Marking a deployment inactive needs deployments: write in the job's permissions."; exit 1; }
