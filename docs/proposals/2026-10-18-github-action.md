@@ -205,6 +205,68 @@ environments under [Secrets](#secrets).
 - An empty key fails with a message that names forks. A production key with `--preview-name` is
   refused by the CLI from 0.12.0, so the action's README requires 0.12.0 or later.
 
+## Preview lifetime
+
+Measured on 2026-10-18: the Convex team is at its quota of 300 deployments, 243 of them previews
+under 126 branch names, 85 of them created in the last day. Each pull request in this repository
+makes four previews: one in each example's project, and one in the project of the Worker twin, whose
+Workers Builds build runs `convex deploy`. Nothing deletes a preview when its pull request closes,
+and Convex deletes it only 14 days after it was created on this team's plan, so creation outruns
+expiry. The previews of [#87](https://github.com/samebase/convex-hosting/pull/87) and
+[#88](https://github.com/samebase/convex-hosting/pull/88) failed today with
+`DeploymentQuotaReached`.
+
+**Delete on close.** The management API deletes a deployment, with its data and files, through
+`POST /v1/deployments/{deployment_name}/delete` ([OpenAPI](https://api.convex.dev/v1/openapi.json)).
+A sibling action, `actions/preview-delete`, runs on `pull_request_target` with `types: [closed]` and
+deletes the branch's preview. It needs:
+
+- **The deployment name.** The preview's URL carries it (`capable-antelope-100.convex.site`), and
+  the preview comment holds the URL, so the action can read it from its own comment. With a
+  management token, `GET /v1/projects/{project_id}/list_deployments?deploymentType=preview` returns
+  each preview's `previewIdentifier`, its branch name, instead. A preview deploy key cannot call
+  that list.
+- **A credential.** The OpenAPI description lists the preview deploy key for the delete endpoint,
+  "Allowed only when operating on preview deployments in the key's project", and the CLI's
+  `--preview-create` already deletes and recreates a preview with that key. No call has confirmed
+  it; one delete of a closed branch's preview with the preview key settles it. If the API accepts
+  the key, the delete needs no new secret. If it refuses it, the delete needs a management token: a
+  team access token, or an OAuth project token from a Convex OAuth application.
+- **`pull_request_target`, not `pull_request`.** It runs the workflow file of the default branch, so
+  a branch cannot change the job that holds the credential, and its `GITHUB_REF` is the default
+  branch, so a management token can sit in an environment limited to `main` (see
+  [Secrets](#secrets)). The job checks out nothing, so no pull request code runs next to the token,
+  and it skips pull requests from forks, which have no preview.
+
+**What a management token can do.** In the OpenAPI description, a team access token can also delete
+projects and production deployments, create deploy keys for any deployment of the team, production
+included, create preview deploy keys, transfer deployments, and change custom domains. Its creation
+takes only a name and an optional expiry (`CreateTeamAccessTokenArgs`), so no team token is limited
+to previews or to deletes. An OAuth project token is limited to one project, but in that project it
+can still create production deploy keys and delete the production deployment. Convex documents no
+narrower token. For this repository, that means one team token, or four project tokens, readable by
+every workflow that can reach them: the control of the whole team, or of all four projects, behind
+the CI.
+
+**Path filters.** A pull request could preview only the examples that it touches. `paths` in
+`on.pull_request` filters a whole workflow, not a matrix entry, so the job needs a changed-files
+step, such as `gh pr diff --name-only`, that picks the examples. A change under `packages/` still
+previews all of them; a docs-only pull request, such as #87 and #88, previews none. If a preview job
+is a required check, a workflow skipped by its filter leaves the check pending and blocks the merge
+([skipped but required checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks)).
+The Worker twin's preview comes from Workers Builds, whose
+[build watch paths](https://developers.cloudflare.com/workers/ci-cd/builds/build-watch-paths/) skip
+a push that changes no matching file. Filters lower the rate; they delete nothing.
+
+**A cleanup script.** With no token in CI, a script run from the owner's laptop, with a team access
+token from the local environment, lists each project's previews, keeps those whose
+`previewIdentifier` names an open pull request, and deletes the rest. It runs on demand or from a
+local schedule, and the token never reaches GitHub, but it depends on someone running it.
+
+Proposed: delete on close with the preview deploy key, once one call confirms that the API accepts
+it; path filters for this repository's examples; the laptop script until both exist. A management
+token in CI only if the API refuses the preview key, and then in an environment limited to `main`.
+
 ## Candidate shapes
 
 ### A. Two composite actions (proposed)
@@ -506,10 +568,8 @@ each package release.
   newest run, and the action cannot see that.
 - **A manual run.** `workflow_dispatch` has no `head_ref`, so the deploy goes to production with
   whatever key the caller passes. The caller's triggers decide who reaches production.
-- **The deployment quota.** Each branch is one Convex deployment until it expires. Today the
-  previews of [#87](https://github.com/samebase/convex-hosting/pull/87) failed with
-  `DeploymentQuotaReached: Your team's deployment quota of 300 has been reached`. The actions do not
-  delete previews: `convex` 1.46.0 has no command for it.
+- **The deployment quota.** Each branch is one Convex deployment until it expires, and the team is
+  at its quota today. See [Preview lifetime](#preview-lifetime).
 - **Supply chain.** The deploy action runs with the deploy key, so callers pin it by SHA like any
   other action.
 
@@ -529,7 +589,11 @@ each package release.
 6. **The comment:** the marked comment action (proposed), the job's `environment` URL, or none.
 7. **The production key:** a repository secret, with writers trusted, or a protected `production`
    environment limited to `main` (proposed for any repository with writers who should not hold it).
-8. **Who adopts them first:** the examples, in the pull request that adds the actions (proposed),
+8. **Preview lifetime:** delete on close through `actions/preview-delete` with the preview deploy
+   key, after one call confirms that the API accepts it, plus path filters for the examples
+   (proposed); a management token in a protected environment, if the key is refused; path filters
+   only; or a cleanup script run from a laptop.
+9. **Who adopts them first:** the examples, in the pull request that adds the actions (proposed),
    then ChessMerge, Scout, and Mail.
 
 ## Review
