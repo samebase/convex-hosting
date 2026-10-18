@@ -80,3 +80,20 @@ jobs:
           # Convex deploy keys.
           deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
           preview-deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+
+      # Temporary: the outputs, and whether the workflow token may delete the branch's environment.
+      - name: Show the outputs
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          PREVIEW_NAME: ${{ steps.deploy.outputs.preview-name }}
+        run: echo "url is [$URL]; preview-name is [$PREVIEW_NAME]" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Try to delete the environment with the workflow token
+        if: github.event.action == 'closed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENVIRONMENT: ${{ matrix.example }} preview/${{ github.head_ref }}
+        run: |
+          name=$(jq -rn --arg n "$ENVIRONMENT" '$n | @uri')
+          status=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/environments/$name")
+          echo "DELETE environment: $status" | tee -a "$GITHUB_STEP_SUMMARY"
