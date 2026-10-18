@@ -15,6 +15,11 @@ inputs:
   working-directory:
     description: The directory of the app's package.json.
     default: .
+  environment:
+    description: >-
+      The job's GitHub environment on a pull request, whose deployments go inactive when the pull
+      request closes.
+    default: preview/${{ github.head_ref }}
 outputs:
   url:
     description: The site URL, where the deployment's HTTP actions answer. Empty when none deployed.
@@ -110,8 +115,8 @@ runs:
         echo "url=$url" >> "$GITHUB_OUTPUT"
 
     # A preview deploy key may read its project's deployments and delete its previews through the
-    # management API. Then the GitHub deployments that link to it go inactive, so the pull request
-    # shows no link to a deleted preview; that needs deployments: write.
+    # management API. Then the deployments of the job's GitHub environment go inactive, so the pull
+    # request shows no link to a deleted preview; that needs deployments: write.
     - name: Delete the preview of the closed pull request
       if: github.event.action == 'closed' && inputs.preview-deploy-key
       shell: bash
@@ -119,6 +124,7 @@ runs:
         CONVEX_DEPLOY_KEY: ${{ inputs.preview-deploy-key }}
         GH_TOKEN: ${{ github.token }}
         HEAD_LABEL: ${{ github.event.pull_request.head.label }}
+        ENVIRONMENT: ${{ inputs.environment }}
       run: |
         # A re-run of an old closed run must not delete a preview that an open pull request uses: the
         # reopened one, or another one from the same branch.
@@ -139,28 +145,19 @@ runs:
           printf '%s' "$body"
         }
         id=$(api "teams/$team/projects/$project" | jq -r .id)
-        previews=$(api "projects/$id/list_deployments?deploymentType=preview" |
-          jq -r --arg name "$GITHUB_HEAD_REF" '.[] | select(.previewIdentifier == $name) | .name + " " + .deploymentUrl')
-        if [ -z "$previews" ]; then
+        names=$(api "projects/$id/list_deployments?deploymentType=preview" |
+          jq -r --arg name "$GITHUB_HEAD_REF" '.[] | select(.previewIdentifier == $name) | .name')
+        if [ -z "$names" ]; then
           echo "No preview named $GITHUB_HEAD_REF in $project."
-          exit 0
         fi
-        sites=" "
-        while read -r name cloud; do
+        for name in $names; do
           api "deployments/$name/delete" -X POST > /dev/null
           echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
-          sites+="${cloud%.convex.cloud}.convex.site "
-        done <<< "$previews"
-        # A deployment links to the preview when its newest status has the site URL, the url output
-        # that the job gave its environment. Other apps' deployments of the branch keep their links.
-        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
-        marked=0
-        for deployment in $ids; do
-          url=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" --jq '.[0].environment_url // ""')
-          if [ -n "$url" ] && [[ $sites == *" $url "* ]]; then
-            gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
-              { echo "::error::Marking a deployment inactive needs deployments: write in the job's permissions."; exit 1; }
-            marked=$((marked + 1))
-          fi
         done
-        echo "Marked $marked GitHub deployments that linked to it inactive."
+        # Also when Convex had already deleted the preview, and on a re-run after a failure here.
+        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f environment="$ENVIRONMENT" -F per_page=100 --jq '.[].id')
+        for deployment in $ids; do
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
+            { echo "::error::Marking a deployment inactive needs deployments: write in the job's permissions."; exit 1; }
+        done
+        echo "Marked $(wc -w <<< "$ids") deployments of the environment $ENVIRONMENT inactive."

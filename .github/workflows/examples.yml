@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  # The close run marks the deployments that link to a deleted preview inactive.
+  # The close run marks the deployments of the branch's environments inactive.
   deployments: write
 
 jobs:
@@ -78,6 +78,7 @@ jobs:
         uses: ./actions/deploy
         with:
           working-directory: examples/${{ matrix.example }}
+          environment: ${{ matrix.example }} preview/${{ github.head_ref }}
           # An index hands the runner every repository secret; all of them are the examples'
           # Convex deploy keys.
           deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]

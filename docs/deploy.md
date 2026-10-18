@@ -105,10 +105,10 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
   deploys nothing and notes in the job how to get previews.
 - When the pull request closes, it deletes that preview through the Convex management API, with the
   same preview key, unless another open pull request has the same branch. A closed pull request then
-  holds no deployment of the team's quota. It also marks the GitHub deployments that link to that
-  preview inactive, so the pull request links to no deleted preview. A branch renamed while its pull
-  request is open deploys a new preview under the new name; the old one stays until Convex deletes
-  it.
+  holds no deployment of the team's quota. It also marks the deployments of the job's GitHub
+  environment inactive (the input `environment`, `preview/<branch>` by default), so the pull request
+  links to no deleted preview. A branch renamed while its pull request is open deploys a new preview
+  under the new name; the old one stays until Convex deletes it.
 - Before a deploy, it fails when the commit is no longer the head of its branch, when the checkout
   is another commit (on a pull request, `actions/checkout` takes a merge commit by default), or when
   the pull request is closed. So a re-run of an old run never puts older code over newer code.
