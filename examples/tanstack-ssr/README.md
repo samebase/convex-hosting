@@ -119,11 +119,11 @@ Production needs its own key pair on the production deployment before the first 
 ## Previews
 
 `.github/workflows/preview-examples.yml` deploys each pull request to a Convex preview deployment
-named after its branch, through [`actions/deploy`](../../actions/deploy/action.yml), and the pull
+named after its branch, through [`actions/preview`](../../actions/preview/action.yml), and the pull
 request shows the site URL as a deployment. A second push reuses the deployment, and closing the
-pull request deletes it. Convex deletes a preview deployment some days after its creation (five on
-the free plan), and the hosting component's files go with it. The workflow needs two things once per
-project:
+pull request deletes it ([`actions/cleanup`](../../actions/cleanup/action.yml)). Convex deletes a
+preview deployment some days after its creation (five on the free plan), and the hosting component's
+files go with it. The workflow needs two things once per project:
 
 - A preview deploy key, as the repository secret `CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SSR`. The
   dashboard creates one under Project Settings, and so does the platform API
