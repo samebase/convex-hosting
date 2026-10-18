@@ -141,6 +141,8 @@ jobs:
 - `environment` shows the URL on the pull request as a deployment.
 - On a closed pull request the job skips the install: the delete needs none, and a broken install
   must not keep the preview.
+- GitHub runs no `pull_request` workflow for a pull request with a merge conflict, so closing such a
+  pull request keeps its preview until Convex deletes it.
 - To post the URL as a comment too, add `pull-requests: write` to `permissions` and this step after
   the deploy:
 

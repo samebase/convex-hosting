@@ -83,8 +83,9 @@ runs:
         PR: ${{ github.event.pull_request.number }}
       run: |
         # A re-run of an old closed run must not delete the preview of a reopened pull request.
-        if [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .state)" = open ]; then
-          echo "Pull request $PR is open again, so its preview stays."
+        state=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .state)
+        if [ "$state" != closed ]; then
+          echo "Pull request $PR is $state again, so its preview stays."
           exit 0
         fi
         IFS=: read -r kind team project <<< "${CONVEX_DEPLOY_KEY%%|*}"
