@@ -5,8 +5,10 @@ description: >-
   When the pull request closes, deletes that preview.
 inputs:
   deploy-key:
-    description: The production deploy key, from a secret.
-    required: true
+    description: >-
+      The production deploy key, from a secret of the production environment. A push needs it; a
+      pull request does not use it.
+    default: ""
   preview-deploy-key:
     description: >-
       The project's preview deploy key, from a secret. Without it, a pull request deploys nothing
@@ -133,10 +135,14 @@ runs:
           echo "::warning::Convex is deployed, but the key cannot run the inline query that reads the deployment's URLs (deployment:functions:runTestQuery), so url and deployment-url are empty."
         fi
         # A production key names its deployment (prod:<name>|...); a preview's name is the first
-        # label of its deployment URL's host. The dashboard's /d/<name> opens the deployment's page.
+        # label of its deployment URL's host, unless that is a custom domain. The dashboard's
+        # /d/<name> opens the deployment's page.
+        name=""
         if [ -n "$PR" ]; then
-          name=${cloud#https://}
-          name=${name%%.*}
+          if [[ $cloud == https://*.convex.cloud ]]; then
+            name=${cloud#https://}
+            name=${name%%.*}
+          fi
         else
           name=${CONVEX_DEPLOY_KEY#prod:}
           name=${name%%|*}
