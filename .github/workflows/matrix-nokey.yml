@@ -1,0 +1,15 @@
+# Throwaway job for the comment demo: the action without a key posts no comment. Never merged.
+name: Matrix no key
+on:
+  pull_request: { types: [opened, synchronize, reopened, closed] }
+permissions: { contents: read, pull-requests: write }
+jobs:
+  no-key:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
+      - uses: ./actions/deploy
+        with:
+          working-directory: examples/no-key-demo
+          deploy-key: ""
