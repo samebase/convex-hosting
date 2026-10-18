@@ -152,9 +152,11 @@ works through every interleaving.
 
 ## Status
 
-Before 1.0: a minor release can change the API, and the changelog says what changed. It began as a
-[fork of static-hosting](https://github.com/samebase/convex-hosting/blob/main/docs/from-static-hosting.md);
-since 0.4 none of that code remains. The author's apps run on it, among them
+Before 1.0: a minor release can change the API, and the changelog says what changed. It started from
+Convex's [static-hosting](https://github.com/convex/static-hosting) component and grew into a
+different design around Cloudflare's asset Worker;
+[From static-hosting](https://github.com/samebase/convex-hosting/blob/main/docs/from-static-hosting.md)
+lists what differs and how to move. The author's apps run on it, among them
 [Scout](https://github.com/samebase/scout) and [chessmerge.com](https://chessmerge.com).
 
 ## License

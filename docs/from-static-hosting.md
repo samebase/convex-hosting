@@ -1,11 +1,12 @@
 # From static-hosting
 
-This package exists to run server-rendered frameworks, such as TanStack Start, on Convex. Convex's
-own [static-hosting](https://github.com/convex/static-hosting) component serves only the files of a
-build. This package began as a fork of it, and since 0.4 none of the forked code remains. Both keep
-the files in the component's Convex file storage, upload them through the Convex CLI, and serve them
-at `https://<deployment>.convex.site`. What this page says about static-hosting comes from its
-README and source on 2026-10-18, version 0.2.1.
+Convex's own [static-hosting](https://github.com/convex/static-hosting) component serves the files
+of a build, and does that well. This package started from it and exists for frameworks that render
+pages on the server, such as TanStack Start, so it needed a different serving model: Cloudflare's
+rules for files, and a deploy that switches code and files together. Both keep the files in the
+component's Convex file storage, upload them through the Convex CLI, and serve them at
+`https://<deployment>.convex.site`. What this page says about static-hosting comes from its README
+and source on 2026-10-18, version 0.2.1.
 
 ## What differs
 

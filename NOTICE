@@ -2,9 +2,11 @@ convex-hosting
 Copyright 2026 Nicușor Chiciuc
 
 This project began in 2026 as a fork of static-hosting
-(https://github.com/get-convex/static-hosting), developed by Convex and licensed under the Apache
-License, Version 2.0. Since version 0.4 none of that code remains; the git history of
-https://github.com/samebase/convex-hosting records the origin.
+(https://github.com/convex/static-hosting), developed by Convex and licensed under the Apache
+License, Version 2.0. Version 0.4 rebuilt the serving and deploy design around Cloudflare's asset
+Worker; the git history of https://github.com/samebase/convex-hosting records the origin. Five
+lines are still static-hosting's: the declaration of the component's generateUploadUrls mutation,
+and its by_storageId index with the one lookup on it.
 
 packages/convex-hosting/src/workers-sdk is copied from cloudflare/workers-sdk
 (https://github.com/cloudflare/workers-sdk: packages/workers-shared and the test cases of
