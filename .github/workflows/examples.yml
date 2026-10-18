@@ -1,0 +1,110 @@
+name: Examples
+
+# A push to main deploys each example to production. A pull request deploys each example to its
+# preview, named after the branch, and deletes the previews when it closes.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  # The comment with the preview's links, and the close run's list of the branch's open pull
+  # requests.
+  pull-requests: write
+  # The close run marks the branch's deployments inactive.
+  deployments: write
+
+jobs:
+  deploy:
+    # A pull request from a fork gets no secrets.
+    if:
+      github.event_name == 'push' || github.event.pull_request.head.repo.full_name ==
+      github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # Each example deploys to its own Convex project, so one failure does not stop the others.
+      fail-fast: false
+      matrix:
+        include:
+          - example: tanstack-ssr
+            key: TANSTACK_SSR
+          - example: tanstack-spa
+            key: TANSTACK_SPA
+          - example: hello-world-assets-only
+            key: HELLO_WORLD_ASSETS_ONLY
+    # One run at a time per deployment, started in the order the runs began to wait: a re-run of an
+    # old commit waits, fails the action's head check, and never replaces the newest pending run.
+    concurrency:
+      group:
+        examples ${{ matrix.example }} ${{ github.head_ref && format('preview/{0}', github.head_ref)
+        || 'production' }}
+      queue: max
+    # A push deploys in the example's production environment, and a pull request in the example's
+    # preview environment, which all pull requests share. The close run creates no deployment, which
+    # would hide the link of another pull request.
+    environment:
+      name: ${{ github.head_ref && format('{0} preview', matrix.example) || matrix.example }}
+      url: ${{ steps.deploy.outputs.url }}
+      deployment: ${{ github.event.action != 'closed' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      # Deleting the preview of a closed pull request needs no toolchain, and a broken install must
+      # not keep the preview alive.
+      - name: Setup pnpm
+        if: github.event.action != 'closed'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 12.10.1
+
+      - name: Setup Node.js
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        if: github.event.action != 'closed'
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy, or delete the preview of a closed pull request
+        id: deploy
+        uses: ./actions/deploy
+        with:
+          working-directory: examples/${{ matrix.example }}
+          # Each example is its own Convex project, with its keys in the repository secrets
+          # CONVEX_DEPLOY_KEY_<KEY> and CONVEX_PREVIEW_DEPLOY_KEY_<KEY>. An index hands the runner
+          # every repository secret; all of them are the examples' Convex deploy keys.
+          deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+          preview-deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+
+      - name: Comment the preview's links
+        if: steps.deploy.outputs.preview-name
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: ${{ matrix.example }}
+          message: |
+            ${{ matrix.example }} preview `${{ steps.deploy.outputs.preview-name }}`: ${{ steps.deploy.outputs.url }}
+            Deployment: ${{ steps.deploy.outputs.deployment-url }}
+            Dashboard: ${{ steps.deploy.outputs.dashboard-url }}
+
+      # The comment keeps the links and says that the preview is gone; a pull request without one gets
+      # no comment.
+      - name: Note the deleted preview in the comment
+        if: github.event.action == 'closed'
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: ${{ matrix.example }}
+          append: true
+          only_update: true
+          message: Preview deleted when the pull request closed.
