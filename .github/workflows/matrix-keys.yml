@@ -49,7 +49,7 @@ jobs:
   url-refused:
     if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: ubuntu-latest
-    concurrency: { group: "examples-hello-world-assets-only-${{ github.head_ref }}", queue: max }
+    concurrency: { group: "examples hello-world-assets-only preview/${{ github.head_ref }}", queue: max }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
@@ -78,7 +78,7 @@ jobs:
   outputs:
     if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: ubuntu-latest
-    concurrency: { group: "examples-hello-world-assets-only-${{ github.head_ref }}", queue: max }
+    concurrency: { group: "examples hello-world-assets-only preview/${{ github.head_ref }}", queue: max }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
