@@ -29,6 +29,25 @@ Two cases are transient:
   `npx convex dev` pushes it to the development deployment, where that version does not exist, until
   the next `deploy --dev`. Run production deploys in CI or in a separate checkout.
 
+## Tests and codegen
+
+`convex/http.ts` imports two files that only a build and a deploy write:
+`.convex-hosting/version.js` and, in a server-rendered app, the server build, such as
+`dist/server/server.js`.
+
+- A convex-test test that calls `t.fetch` loads `convex/http.ts`. Mock both modules in the test
+  file, with paths relative to it; a files-only app mocks only the version module:
+
+  ```ts
+  vi.mock("../dist/server/server.js", () => ({ default: { fetch: async () => new Response() } }));
+  vi.mock("../.convex-hosting/version.js", () => ({ versionId: "test" }));
+  ```
+
+- `npx convex codegen` bundles `convex/http.ts`, so before the first `deploy --dev` it fails with
+  "Could not resolve". After it, `npx convex dev` regenerates `convex/_generated` at each push, also
+  after a change to `convex/convex.config.ts`. Commit `convex/_generated`, as the examples do, so a
+  fresh clone builds before its first deploy.
+
 ## Open tabs after a deploy
 
 A page opened before a deploy keeps asking for its hashed files, which the new version does not
