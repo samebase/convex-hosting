@@ -3,6 +3,8 @@
 // with the job token in GITHUB_TOKEN for the head check.
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 const key = process.env.CONVEX_DEPLOY_KEY ?? "";
 // A deploy key starts with its kind: prod:<deployment>|..., or preview:<team>:<project>|...
@@ -37,21 +39,25 @@ function deploy(branch: string, previewName: string) {
   }
 
   const args = previewName ? ["--preview-name", previewName] : [];
+  // The app's own Convex CLI, run with node: Windows cannot spawn the npx shim without a shell.
+  const convex = join(
+    dirname(createRequire(join(process.cwd(), "package.json")).resolve("convex/package.json")),
+    "bin",
+    "main.js",
+  );
   const { scripts }: { scripts?: { deploy?: string } } = JSON.parse(
     readFileSync("package.json", "utf8"),
   );
   // node --run puts node_modules/.bin on PATH and appends the arguments to the script's last command.
-  const [command, ...commandArgs] = scripts?.deploy
-    ? ["node", "--run", "deploy", "--"]
-    : ["npx", "convex", "deploy"];
-  const { status } = spawnSync(command, [...commandArgs, ...args], { stdio: "inherit" });
+  const command = scripts?.deploy ? ["--run", "deploy", "--"] : [convex, "deploy"];
+  const { status } = spawnSync(process.execPath, [...command, ...args], { stdio: "inherit" });
   if (status !== 0) process.exit(status ?? 1);
 
   // The deployment's own URLs are right in every region; a key without inline queries still deploys.
   const query = spawnSync(
-    "npx",
+    process.execPath,
     [
-      "convex",
+      convex,
       "run",
       "--inline-query",
       "[process.env.CONVEX_SITE_URL, process.env.CONVEX_CLOUD_URL]",

@@ -111,10 +111,10 @@ Three actions work for any Convex app, and each takes one key, `deploy-key`:
 
 `actions/deploy` and `actions/preview`:
 
-- Run the `deploy` script of the app's `package.json`, or `npx convex deploy` when there is no such
-  script. `actions/preview` appends `--preview-name <branch>`, which both commands take.
-  `node --run` appends it to the script's last command, so the deploy command must end the script,
-  and it runs no `predeploy` or `postdeploy` script.
+- Run the `deploy` script of the app's `package.json`, or `convex deploy` with the app's installed
+  Convex CLI when there is no such script. `actions/preview` appends `--preview-name <branch>`,
+  which both commands take. `node --run` appends it to the script's last command, so the deploy
+  command must end the script, and it runs no `predeploy` or `postdeploy` script.
 - Fail before the deploy when the checkout is not the head of its branch (the pushed branch, or the
   pull request's), as `git ls-remote` reads it: a re-run of an old commit, or a merge commit, which
   `actions/checkout` takes by default on a pull request. So a re-run of an old run never puts older
