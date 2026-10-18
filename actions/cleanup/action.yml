@@ -20,7 +20,7 @@ runs:
       shell: bash
       env:
         CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
-      run: node "$GITHUB_ACTION_PATH/../lib/convex-deploy.ts" cleanup
+      run: node "$GITHUB_ACTION_PATH/main.ts"
 
     - name: Note the deleted preview in the comment
       if: inputs.comment == 'true' && inputs.deploy-key

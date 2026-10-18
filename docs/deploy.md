@@ -136,8 +136,8 @@ empty, with a warning, so a step that must follow every preview deploy checks `p
 `url`. (`convex-hosting deploy` needs inline queries for its upload; see the deploy key permissions
 above.) Every output is empty when nothing deployed. The workflows keep the install, the checks,
 `concurrency`, `permissions`, and the secret names, and the input `working-directory` selects the
-package. The three actions share one script, `actions/lib/convex-deploy.ts`, which needs Node 22.18
-or later and `git`; GitHub's runners have both.
+package. Each action runs its `main.ts` with `node`, with the shared steps in
+`actions/lib/steps.ts`; they need Node 22.18 or later and `git`, which GitHub's runners have.
 
 Two workflows deploy a plain Convex app. Two files keep each one a straight list of steps, and the
 pull request's jobs never name the production key, so they never receive it.

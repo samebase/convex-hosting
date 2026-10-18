@@ -27,4 +27,4 @@ runs:
       env:
         CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
         GITHUB_TOKEN: ${{ github.token }}
-      run: node "$GITHUB_ACTION_PATH/../lib/convex-deploy.ts" deploy
+      run: node "$GITHUB_ACTION_PATH/main.ts"
