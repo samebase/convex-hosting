@@ -9,11 +9,13 @@ on:
 
 permissions:
   contents: read
-  # The action's comment with the preview's links.
-  pull-requests: write
 
 jobs:
   preview:
+    # The action's comment with the preview's links needs pull-requests: write.
+    permissions:
+      contents: read
+      pull-requests: write
     # A pull request from a fork gets no secrets.
     if:
       github.event.action != 'closed' && github.event.pull_request.head.repo.full_name ==
@@ -52,7 +54,7 @@ jobs:
           version: 12.10.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -72,6 +74,9 @@ jobs:
           deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
 
   cleanup:
+    permissions:
+      contents: read
+      pull-requests: write
     if:
       github.event.action == 'closed' && github.event.pull_request.head.repo.full_name ==
       github.repository
