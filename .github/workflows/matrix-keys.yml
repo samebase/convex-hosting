@@ -1,0 +1,81 @@
+# Throwaway jobs for the PR 89 deploy action matrix: wrong keys, a missing preview key, and the
+# setup where deploy-key holds the preview key. Never merged.
+name: Matrix keys
+
+on:
+  push: { branches: [tmp/matrix-y] }
+  pull_request: { types: [opened, synchronize, reopened, closed] }
+permissions: { contents: read, pull-requests: read, deployments: write }
+jobs:
+  # Row 7a: a production-shaped preview-deploy-key on a pull request (a fake string): refused.
+  production-preview-key-on-pr:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
+      - uses: ./actions/deploy
+        with:
+          working-directory: examples/hello-world-assets-only
+          deploy-key: ""
+          preview-deploy-key: "prod:name|x"
+  # Row 7a': a production-shaped deploy-key and no preview-deploy-key on a pull request (a fake
+  # string): no deploy, the notice. Also on close (row 12).
+  production-key-only-on-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
+      - uses: ./actions/deploy
+        with:
+          working-directory: examples/hello-world-assets-only
+          deploy-key: "prod:name|x"
+  # Row 7b: a preview key in deploy-key on a push to a branch that is not the default branch.
+  preview-key-on-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: ./actions/deploy
+        with:
+          working-directory: examples/hello-world-assets-only
+          deploy-key: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY_HELLO_WORLD_ASSETS_ONLY }}
+  # Row 12: no key at all, on open and on close.
+  no-key:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
+      - uses: ./actions/deploy
+        with:
+          working-directory: examples/hello-world-assets-only
+          deploy-key: ""
+  # The one-name setup: deploy-key is the preview key on a pull request. Same group as the examples
+  # job of this preview.
+  one-name:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    concurrency: { group: "examples hello-world-assets-only preview/${{ github.head_ref }}", queue: max }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with: { version: 12.10.1 }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version-file: .node-version, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - id: deploy
+        uses: ./actions/deploy
+        with:
+          working-directory: examples/hello-world-assets-only
+          environment: hello-world-assets-only preview
+          deploy-key: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY_HELLO_WORLD_ASSETS_ONLY }}
+      - env:
+          URL: ${{ steps.deploy.outputs.url }}
+          CLOUD: ${{ steps.deploy.outputs.deployment-url }}
+          DASHBOARD: ${{ steps.deploy.outputs.dashboard-url }}
+          NAME: ${{ steps.deploy.outputs.preview-name }}
+        run: echo "url=[$URL] deployment-url=[$CLOUD] dashboard-url=[$DASHBOARD] preview-name=[$NAME]"
