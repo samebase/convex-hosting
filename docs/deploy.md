@@ -108,11 +108,11 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
   the pull request is closed. So a re-run of an old run never puts older code over newer code.
 
 Its `url` output is the site URL, where the deployment's HTTP actions answer, and the job's
-`environment` shows it on the pull request. A preview's comes from the management API; a production
-key may not call that API, so production's comes from the deployment's own `CONVEX_SITE_URL`. The
-job keeps the install, the checks, `concurrency`, `permissions`, and the secret names, and the input
-`working-directory` selects the package. The action needs Node 22.3 or later for `node --run`, and
-`gh`, `curl`, and `jq`, which GitHub's runners have. This workflow deploys a plain Convex app:
+`environment` shows it on the pull request. The deployment gives it, as `CONVEX_SITE_URL`, to an
+inline query with the same key, so it is right in every region. The job keeps the install, the
+checks, `concurrency`, `permissions`, and the secret names, and the input `working-directory`
+selects the package. The action needs Node 22.3 or later for `node --run`, and `gh`, `curl`, and
+`jq`, which GitHub's runners have. This workflow deploys a plain Convex app:
 
 ```yaml
 on:

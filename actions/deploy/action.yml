@@ -77,7 +77,7 @@ runs:
           ${{ github.event.pull_request && inputs.preview-deploy-key || inputs.deploy-key }}
         PR: ${{ github.event.pull_request.number }}
       run: |
-        IFS=: read -r kind first second <<< "${CONVEX_DEPLOY_KEY%%|*}"
+        kind=${CONVEX_DEPLOY_KEY%%:*}
         if [ -n "$PR" ] && [ "$kind" != preview ]; then
           echo "::error::preview-deploy-key is not a preview deploy key (preview:...). Convex was not deployed: npx convex deploy with a production key ignores --preview-name and deploys the pull request to production."
           exit 1
@@ -96,27 +96,9 @@ runs:
           npx convex deploy "${args[@]}"
         fi
 
-        # The site URL. A preview's deploymentUrl, from the management API, ends in .convex.cloud,
-        # and its site is the same host with .convex.site. The API refuses a production key, so
-        # production asks the deployment for its CONVEX_SITE_URL instead.
-        if [ "$kind" = preview ]; then
-          api() {
-            local body
-            body=$(curl -sS --fail-with-body -H "Authorization: Bearer $CONVEX_DEPLOY_KEY" "https://api.convex.dev/v1/$1") ||
-              { echo "$1: $body" >&2; return 1; }
-            printf '%s' "$body"
-          }
-          id=$(api "teams/$first/projects/$second" | jq -r .id)
-          cloud=$(api "projects/$id/list_deployments?deploymentType=preview" |
-            jq -r --arg name "pr-$PR" '.[] | select(.previewIdentifier == $name) | .deploymentUrl')
-          if ! [[ $cloud =~ ^https://[a-z0-9.-]+\.convex\.cloud$ ]]; then
-            echo "::error::The Convex API lists no single preview pr-$PR: $cloud"
-            exit 1
-          fi
-          url=${cloud%.convex.cloud}.convex.site
-        else
-          url=$(npx convex run --inline-query process.env.CONVEX_SITE_URL | jq -r .)
-        fi
+        # The deployment gives its own site URL, the one that its functions read, so it is right in
+        # every region. The management API refuses a production key.
+        url=$(npx convex run --inline-query process.env.CONVEX_SITE_URL "${args[@]}" | jq -r .)
         echo "url=$url" >> "$GITHUB_OUTPUT"
 
     # A preview deploy key may read its project's deployments and delete its previews through the
