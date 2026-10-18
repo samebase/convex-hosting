@@ -95,12 +95,12 @@ function SignedInHeader() {
   const [signOutFailed, setSignOutFailed] = useState(false);
   if (!me) return null;
   return (
-    <>
+    <div>
       {`Signed in as ${me.name}`}
       <button type="button" onClick={async () => setSignOutFailed(!(await signOut()))}>
         Sign out
       </button>
       {signOutFailed && "Sign-out failed. Try again."}
-    </>
+    </div>
   );
 }
