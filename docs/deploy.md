@@ -109,18 +109,12 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
   preview key (see [The production key in an environment](#the-production-key-in-an-environment)),
   and with neither it deploys nothing and notes in the job how to get previews. A second push reuses
   the preview.
-- It shows the preview on the pull request as a deployment, which it creates through GitHub's API
-  after each deploy: transient, in the environment `preview` (the input `environment`; each app of a
-  repository with several gives its own), for the deployed commit, with the branch in its task and
-  the site URL as its link. GitHub keeps a transient deployment active when another pull request
-  deploys in the same environment, so every open pull request keeps its link, and the repository
-  gets one environment for its previews, not one per branch.
 - When the pull request closes, it deletes that preview through the Convex management API, with the
   same preview key, unless another open pull request has the same branch. A closed pull request then
-  holds no deployment of the team's quota. It also marks the branch's deployments inactive, so the
-  pull request links to no deleted preview. A preview is known by its branch name alone, so give
-  each repository its own Convex project. A branch renamed while its pull request is open deploys a
-  new preview under the new name; the old one stays until Convex deletes it.
+  holds no deployment of the team's quota. It also marks the branch's GitHub deployments inactive,
+  so the pull request links to no deleted preview. A preview is known by its branch name alone, so
+  give each repository its own Convex project. A branch renamed while its pull request is open
+  deploys a new preview under the new name; the old one stays until Convex deletes it.
 - Before a deploy, it fails when the commit is no longer the head of its branch, when the checkout
   is another commit (on a pull request, `actions/checkout` takes a merge commit by default), or when
   the pull request is closed. So a re-run of an old run never puts older code over newer code.
@@ -129,7 +123,7 @@ Its outputs (the job summary lists the first three):
 
 | Output           | Value                                                                                      |
 | ---------------- | ------------------------------------------------------------------------------------------ |
-| `url`            | The site URL (`CONVEX_SITE_URL`), where HTTP actions answer; the pull request's link       |
+| `url`            | The site URL (`CONVEX_SITE_URL`), where HTTP actions answer                                |
 | `deployment-url` | The deployment URL (`CONVEX_CLOUD_URL`), which a frontend build takes as `VITE_CONVEX_URL` |
 | `dashboard-url`  | The deployment's page in the Convex dashboard, `https://dashboard.convex.dev/d/<name>`     |
 | `preview-name`   | The preview's name, for a later `npx convex run --preview-name`; empty on production       |
@@ -147,7 +141,7 @@ install, the checks, `concurrency`, `permissions`, and the secret names, and the
 on:
   push: { branches: [main] }
   pull_request: { types: [opened, synchronize, reopened, closed] }
-permissions: { contents: read, pull-requests: read, deployments: write }
+permissions: { contents: read, pull-requests: write, deployments: write }
 jobs:
   deploy:
     if: github.event.pull_request.head.repo.full_name == github.repository || !github.head_ref
@@ -155,6 +149,10 @@ jobs:
     concurrency:
       group: deploy ${{ github.head_ref && format('preview/{0}', github.head_ref) || 'production' }}
       queue: max
+    environment:
+      name: ${{ github.head_ref && 'preview' || 'production' }}
+      url: ${{ steps.deploy.outputs.url }}
+      deployment: ${{ github.event.action != 'closed' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
@@ -168,6 +166,21 @@ jobs:
         with:
           deploy-key: ${{ secrets.CONVEX_DEPLOY_KEY }}
           preview-deploy-key: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+      - if: steps.deploy.outputs.preview-name
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: preview
+          message: |
+            Preview `${{ steps.deploy.outputs.preview-name }}`: ${{ steps.deploy.outputs.url }}
+            Deployment: ${{ steps.deploy.outputs.deployment-url }}
+            Dashboard: ${{ steps.deploy.outputs.dashboard-url }}
+      - if: github.event.action == 'closed'
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: preview
+          append: true
+          only_update: true
+          message: Preview deleted when the pull request closed.
 ```
 
 A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy` script, such as
@@ -179,22 +192,18 @@ A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy
   newest run, which would then never deploy. The group of a branch named `production` is not the
   production group.
 - The job's `if` skips a pull request from a fork, which gets no secrets.
+- The pull request gets one comment with the preview's links, which each deploy updates. On a close
+  the comment keeps them and gets a line that the preview was deleted; a pull request that had no
+  preview gets no comment. The comment needs `pull-requests: write`.
+- Pull requests share the `preview` environment, so when one deploys, GitHub marks the others'
+  deployments inactive and hides their buttons; their comments keep the links. On a close,
+  `deployment` is false, so the close run creates no deployment.
 - On a closed pull request the job skips the install: the delete needs none, and a broken install
   must not keep the preview. It skips the Node setup too: with `cache: npm` or `cache: pnpm`, the
   setup's post step fails on a run without an install, because the folder that it caches is missing.
 - GitHub runs no `pull_request` workflow for a pull request with a merge conflict, or whose head
   commit's message has a skip instruction such as `[skip ci]`, so closing such a pull request keeps
   its preview until Convex deletes it.
-- To post the URL as a comment too, add `pull-requests: write` to `permissions` and this step after
-  the deploy:
-
-  ```yaml
-  - if: steps.deploy.outputs.url
-    uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-    with:
-      message: "Preview: ${{ steps.deploy.outputs.url }}"
-  ```
-
 - The `v1` tag comes with the action's first release. Pin the action by its commit SHA, as any
   other.
 
@@ -215,17 +224,10 @@ key=$(npx convex deployment token create "<repository> deploy.yml" --prod) && pr
 ```
 
 Then store the preview key as the repository secret `CONVEX_DEPLOY_KEY` (the `curl` command above,
-ending in `gh secret set CONVEX_DEPLOY_KEY`), delete `CONVEX_PREVIEW_DEPLOY_KEY`, remove the
-`preview-deploy-key` line, and give the job the environment on a push:
-
-```yaml
-environment:
-  name: ${{ github.event_name == 'push' && 'production' || '' }}
-  url: ${{ steps.deploy.outputs.url }}
-```
-
-In that job only, the environment's secret takes the place of the repository's, so `deploy-key` is
-the production key on a push and the preview key on a pull request. To keep a workflow edit on
-another branch from naming the environment, allow only `main` in its deployment branches. The
-environment's name is the caller's choice; a repository that already has one, such as `Production`,
-keeps it (GitHub compares environment names without case).
+ending in `gh secret set CONVEX_DEPLOY_KEY`), delete `CONVEX_PREVIEW_DEPLOY_KEY`, and remove the
+`preview-deploy-key` line. The job names `production` only on a push, and there the environment's
+secret takes the place of the repository's, so `deploy-key` is the production key on a push and the
+preview key on a pull request. To keep a workflow edit on another branch from naming the
+environment, allow only `main` in its deployment branches. The environment's name is the caller's
+choice; a repository that already has one, such as `Production`, keeps it (GitHub compares
+environment names without case).
