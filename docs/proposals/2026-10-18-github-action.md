@@ -260,12 +260,12 @@ jobs:
           url: ${{ steps.deploy.outputs.url }}
 ```
 
-46 lines as formatted, 41 without blank lines and comments, against 119 and 93 today. With the environments from
-[Secrets](#secrets), the key line shortens and the job gains three lines. Two jobs, so that the
-production job has no `pull-requests: write`, cost about 20 more lines. Mail keeps its `check`
-before the deploy and its Convex Auth step between the two actions, in the same job. The examples'
-two files (165 lines) become one of about 55, with `uses: ./actions/deploy`, a matrix of three, and
-a `working-directory` and a comment `title` per example.
+46 lines as formatted, 41 without blank lines and comments, against 119 and 93 today. With the
+environments from [Secrets](#secrets), the key line shortens and the job gains three lines. Two
+jobs, so that the production job has no `pull-requests: write`, cost about 20 more lines. Mail keeps
+its `check` before the deploy and its Convex Auth step between the two actions, in the same job. The
+examples' two files (165 lines) become one of about 55, with `uses: ./actions/deploy`, a matrix of
+three, and a `working-directory` and a comment `title` per example.
 
 ### B. A reusable workflow
 
@@ -299,9 +299,9 @@ jobs:
         secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
 ```
 
-24 lines as formatted, 21 without blank lines and comments. Its strongest argument follows from the section
-above: `concurrency` with `queue: max` is needed for correctness, and only this shape can own it.
-What it costs
+24 lines as formatted, 21 without blank lines and comments. Its strongest argument follows from the
+section above: `concurrency` with `queue: max` is needed for correctness, and only this shape can
+own it. What it costs
 ([reusing workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)):
 
 - It owns install, against the line above, and every app's install differs: the package manager and
