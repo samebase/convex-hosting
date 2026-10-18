@@ -11,8 +11,8 @@ on:
 
 permissions:
   contents: read
-  # The close run lists the open pull requests of the branch, and marks the deployments of the
-  # branch's environments inactive.
+  # The close run lists the open pull requests of the branch. A pull request's run creates its
+  # preview's deployment and the close marks it inactive.
   pull-requests: read
   deployments: write
 
@@ -42,14 +42,11 @@ jobs:
         examples ${{ matrix.example }} ${{ github.head_ref && format('preview/{0}', github.head_ref)
         || 'production' }}
       queue: max
-    # The pull request shows the preview URL as a deployment, one environment per branch: in a shared
-    # environment, the newest deployment of any pull request hides the others. The close run creates
-    # no deployment, which would replace the link of a reopened pull request.
+    # A push deploys in the example's production environment, which holds its production key. A pull
+    # request's job has no environment; the action shows the preview on the pull request itself.
     environment:
-      name:
-        ${{ matrix.example }}${{ github.head_ref && format(' preview/{0}', github.head_ref) || '' }}
+      name: ${{ github.event_name == 'push' && matrix.example || '' }}
       url: ${{ steps.deploy.outputs.url }}
-      deployment: ${{ github.event.action != 'closed' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -82,10 +79,10 @@ jobs:
         uses: ./actions/deploy
         with:
           working-directory: examples/${{ matrix.example }}
-          environment: ${{ matrix.example }} preview/${{ github.head_ref }}
-          # The production key is a secret of the example's production environment, which deploys
-          # from main only, so a pull request's job never receives it.
-          deploy-key: ${{ secrets.CONVEX_DEPLOY_KEY }}
-          # An index hands the runner every repository secret; all of them are the examples'
-          # preview deploy keys.
+          environment: ${{ matrix.example }} preview
+          # Each example is its own Convex project. Its production key, CONVEX_DEPLOY_KEY_<KEY>, is a
+          # secret of the example's production environment, so a pull request's job never receives it.
+          # Its preview key, CONVEX_PREVIEW_DEPLOY_KEY_<KEY>, is a repository secret. An index hands
+          # the runner every repository secret, all of them preview keys.
+          deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
           preview-deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
