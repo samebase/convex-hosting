@@ -74,3 +74,28 @@ jobs:
       - if: always()
         env: { URL: "${{ steps.deploy.outputs.url }}", NAME: "${{ steps.deploy.outputs.preview-name }}", OUTCOME: "${{ steps.deploy.outcome }}" }
         run: echo "deploy outcome=$OUTCOME url=[$URL] preview-name=[$NAME]"
+  # Part 0 item 2: the outputs of a normal preview deploy.
+  outputs:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    concurrency: { group: "examples-hello-world-assets-only-${{ github.head_ref }}", queue: max }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with: { version: 12.10.1 }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version-file: .node-version, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - id: deploy
+        uses: ./actions/deploy
+        with:
+          working-directory: examples/hello-world-assets-only
+          deploy-key: ""
+          preview-deploy-key: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY_HELLO_WORLD_ASSETS_ONLY }}
+      - env:
+          URL: ${{ steps.deploy.outputs.url }}
+          CLOUD: ${{ steps.deploy.outputs.deployment-url }}
+          DASHBOARD: ${{ steps.deploy.outputs.dashboard-url }}
+          NAME: ${{ steps.deploy.outputs.preview-name }}
+        run: echo "url=[$URL] deployment-url=[$CLOUD] dashboard-url=[$DASHBOARD] preview-name=[$NAME]"
