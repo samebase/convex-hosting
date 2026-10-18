@@ -1,6 +1,6 @@
 {
   "name": "@samebase/convex-hosting-tanstack-start",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "Render TanStack Start pages in a Convex HTTP action.",
   "keywords": [
     "convex",

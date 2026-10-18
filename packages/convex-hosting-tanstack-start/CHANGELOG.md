@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.5
+
+- `convexSsr()` adds `convex/react` and `@convex-dev/auth/nextjs` to the dev server's
+  `optimizeDeps.include`, so the first page load no longer reloads mid-render with
+  `Invalid hook call` (#45). TanStack Start keeps the adapter out of pre-bundling, so Vite did not
+  see these imports of the `convex-auth` entry until a page used them. Without Convex Auth
+  installed, Vite warns that `@convex-dev/auth/nextjs` does not resolve when it rebuilds its
+  dependency cache.
+
 ## 0.9.4
 
 - The `queueMicrotask` definition moved to `@samebase/convex-hosting` 0.13.0, so every handler gets
