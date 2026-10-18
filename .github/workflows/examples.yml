@@ -11,7 +11,9 @@ on:
 
 permissions:
   contents: read
-  # The close run marks the deployments of the branch's environments inactive.
+  # The close run lists the open pull requests of the branch, and marks the deployments of the
+  # branch's environments inactive.
+  pull-requests: read
   deployments: write
 
 jobs:
@@ -36,7 +38,9 @@ jobs:
     # One run at a time per deployment, started in the order the runs began to wait: a re-run of an
     # old commit waits, fails the action's head check, and never replaces the newest pending run.
     concurrency:
-      group: examples-${{ matrix.example }}-${{ github.head_ref || 'production' }}
+      group:
+        examples ${{ matrix.example }} ${{ github.head_ref && format('preview/{0}', github.head_ref)
+        || 'production' }}
       queue: max
     # The pull request shows the preview URL as a deployment, one environment per branch: in a shared
     # environment, the newest deployment of any pull request hides the others. The close run creates
@@ -79,7 +83,9 @@ jobs:
         with:
           working-directory: examples/${{ matrix.example }}
           environment: ${{ matrix.example }} preview/${{ github.head_ref }}
+          # The production key is a secret of the example's production environment, which deploys
+          # from main only, so a pull request's job never receives it.
+          deploy-key: ${{ secrets.CONVEX_DEPLOY_KEY }}
           # An index hands the runner every repository secret; all of them are the examples'
-          # Convex deploy keys.
-          deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+          # preview deploy keys.
           preview-deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
