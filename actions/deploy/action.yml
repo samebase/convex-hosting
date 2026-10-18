@@ -1,8 +1,8 @@
 name: Convex deploy with previews deleted on close
 description: >-
   Deploys a Convex app to production on a push, or to the preview named after the branch of a pull
-  request, after it checks that the checkout is the head of its branch, shows the preview on the
-  pull request, and outputs the URLs. When the pull request closes, deletes that preview.
+  request, after it checks that the checkout is the head of its branch, and outputs the URLs. When
+  the pull request closes, deletes that preview.
 inputs:
   deploy-key:
     description: >-
@@ -19,11 +19,6 @@ inputs:
   working-directory:
     description: The directory of the app's package.json.
     default: .
-  environment:
-    description: >-
-      The GitHub environment of the deployments that the action creates for pull requests, one for
-      all of them. In a repository with several apps, each app gives its own.
-    default: preview
 outputs:
   url:
     description: >-
@@ -158,26 +153,9 @@ runs:
         printf 'url=%s\ndeployment-url=%s\ndashboard-url=%s\n' "$url" "$cloud" "$dashboard" >> "$GITHUB_OUTPUT"
         printf -- '- Site: %s\n- Deployment: %s\n- Dashboard: %s\n' "${url:-unknown}" "${cloud:-unknown}" "${dashboard:-unknown}" >> "$GITHUB_STEP_SUMMARY"
 
-    # The pull request's link to its preview. A transient deployment stays active when another pull
-    # request deploys in the same environment, so all pull requests share one, and no environment is
-    # created per branch. Its ref is the deployed commit, and its task names the branch, so the close
-    # finds the branch's deployments.
-    - name: Show the preview on the pull request
-      if: steps.deploy.outputs.preview-name
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-        ENVIRONMENT: ${{ inputs.environment }}
-        SHA: ${{ github.event.pull_request.head.sha }}
-        URL: ${{ steps.deploy.outputs.url }}
-      run: |
-        id=$(gh api "repos/$GITHUB_REPOSITORY/deployments" -f ref="$SHA" -f task="deploy:$GITHUB_HEAD_REF" -f environment="$ENVIRONMENT" -F transient_environment=true -F production_environment=false -F auto_merge=false -f "required_contexts[]" --jq .id) ||
-          { echo "::error::Creating a deployment needs deployments: write in the job's permissions."; exit 1; }
-        gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success -f environment_url="$URL" -F auto_inactive=false > /dev/null
-
     # A preview deploy key may read its project's deployments and delete its previews through the
-    # management API. Then the branch's deployments go inactive, so the pull request shows no link
-    # to a deleted preview; that needs deployments: write.
+    # management API. Then the GitHub deployments of the branch go inactive, so the pull request
+    # shows no link to a deleted preview; that needs deployments: write.
     - name: Delete the preview of the closed pull request
       if:
         github.event.action == 'closed' && (inputs.preview-deploy-key ||
@@ -187,7 +165,6 @@ runs:
         CONVEX_DEPLOY_KEY: ${{ inputs.preview-deploy-key || inputs.deploy-key }}
         GH_TOKEN: ${{ github.token }}
         HEAD_LABEL: ${{ github.event.pull_request.head.label }}
-        ENVIRONMENT: ${{ inputs.environment }}
       run: |
         # A re-run of an old closed run must not delete a preview that an open pull request uses: the
         # reopened one, or another one from the same branch.
@@ -218,9 +195,9 @@ runs:
           echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
         done
         # Also when Convex had already deleted the preview, and on a re-run after a failure here.
-        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f environment="$ENVIRONMENT" -f task="deploy:$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
+        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
         for deployment in $ids; do
           gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
             { echo "::error::Marking a deployment inactive needs deployments: write in the job's permissions."; exit 1; }
         done
-        echo "Marked $(wc -w <<< "$ids") deployments of $GITHUB_HEAD_REF in the environment $ENVIRONMENT inactive."
+        echo "Marked $(wc -w <<< "$ids") deployments of $GITHUB_HEAD_REF inactive."
