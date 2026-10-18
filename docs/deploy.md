@@ -101,11 +101,11 @@ Convex's 100 MiB response limit anyway.
   is another commit (on a pull request, `actions/checkout` takes a merge commit by default), or when
   the pull request is closed. So a re-run of an old run never puts older code over newer code.
 
-Its `url` output is the site URL. The job keeps the install, the checks, `concurrency`,
-`permissions`, and the secret names; the deploy flags stay in the `deploy` script, and the input
-`working-directory` selects the package. The action needs `@samebase/convex-hosting` 0.12.0 or
-later, which refuses a production key with `--preview-name`, Node 22.3 or later for `node --run`,
-and `gh`, `curl`, and `jq`, which GitHub's runners have.
+Its `url` output is the site URL, which the job's `environment` shows on the pull request. The job
+keeps the install, the checks, `concurrency`, `permissions`, and the secret names; the deploy flags
+stay in the `deploy` script, and the input `working-directory` selects the package. The action needs
+`@samebase/convex-hosting` 0.12.0 or later, which refuses a production key with `--preview-name`,
+Node 22.3 or later for `node --run`, and `gh`, `curl`, and `jq`, which GitHub's runners have.
 
 ```yaml
 on:
@@ -138,7 +138,6 @@ jobs:
 - `queue: max` keeps every pending run of the group, in order. With the default, a new pending run
   replaces the older one, so a re-run of an old commit could replace the newest run, which would
   then never deploy.
-- `environment` shows the URL on the pull request as a deployment.
 - On a closed pull request the job skips the install: the delete needs none, and a broken install
   must not keep the preview.
 - GitHub runs no `pull_request` workflow for a pull request with a merge conflict, so closing such a
