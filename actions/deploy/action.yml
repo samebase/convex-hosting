@@ -1,27 +1,29 @@
 name: Convex deploy with previews deleted on close
 description: >-
   Deploys a Convex app to production on a push, or to the preview named after the branch of a pull
-  request, after it checks that the checkout is the head of its branch, and outputs the site URL.
-  When the pull request closes, deletes that preview.
+  request, after it checks that the checkout is the head of its branch, shows the preview on the
+  pull request, and outputs the URLs. When the pull request closes, deletes that preview.
 inputs:
   deploy-key:
     description: >-
-      The production deploy key, from a secret of the production environment. A push needs it; a
-      pull request does not use it.
-    default: ""
+      The production deploy key, from a secret. When the production environment holds it as its
+      CONVEX_DEPLOY_KEY and the repository secret of that name holds the preview key, a pull
+      request's job gets the preview key here, and the action uses it for the preview.
+    required: true
   preview-deploy-key:
     description: >-
-      The project's preview deploy key, from a secret. Without it, a pull request deploys nothing
-      and the job notes how to get previews.
+      The project's preview deploy key, from a secret. A pull request uses it first. Without it or a
+      preview key in deploy-key, a pull request deploys nothing and the job notes how to get
+      previews.
     default: ""
   working-directory:
     description: The directory of the app's package.json.
     default: .
   environment:
     description: >-
-      The job's GitHub environment on a pull request, whose deployments go inactive when the pull
-      request closes.
-    default: preview/${{ github.head_ref }}
+      The GitHub environment of the deployments that the action creates for pull requests, one for
+      all of them. In a repository with several apps, each app gives its own.
+    default: preview
 outputs:
   url:
     description: >-
@@ -47,10 +49,12 @@ runs:
   using: composite
   steps:
     - name: Note the missing preview deploy key
-      if: github.event.pull_request && !inputs.preview-deploy-key
+      if:
+        github.event.pull_request && !(inputs.preview-deploy-key || startsWith(inputs.deploy-key,
+        'preview:'))
       shell: bash
       run: |
-        note="Set the CONVEX_PREVIEW_DEPLOY_KEY secret to get a preview deployment per pull request."
+        note="No preview deploy key, so no preview. Pass the project's preview deploy key as preview-deploy-key, from a CONVEX_PREVIEW_DEPLOY_KEY secret. Or keep the production key as the production environment's CONVEX_DEPLOY_KEY and the preview key as the repository's CONVEX_DEPLOY_KEY."
         echo "::notice::$note"
         echo "$note" >> "$GITHUB_STEP_SUMMARY"
 
@@ -60,7 +64,8 @@ runs:
     # checkout must be the head commit itself.
     - name: Check that the checkout is the head of its branch
       if: >-
-        github.event.action != 'closed' && (!github.event.pull_request || inputs.preview-deploy-key)
+        github.event.action != 'closed' && (!github.event.pull_request || inputs.preview-deploy-key
+        || startsWith(inputs.deploy-key, 'preview:'))
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
@@ -89,19 +94,21 @@ runs:
 
     # Runs the app's deploy script, or npx convex deploy; node --run puts the node_modules/.bin
     # folders on PATH, whatever the package manager, and appends the arguments to the script's last
-    # command. A pull request's step gets only the preview key in its environment; the job holds
-    # the production key too unless the caller keeps it in the production environment's secrets.
+    # command. A pull request's step gets only the preview key, though the job holds the production
+    # key too unless the production environment keeps it.
     # The preview's name is GITHUB_HEAD_REF as it is, which npx convex deploy also takes by default
     # in GitHub Actions; Convex keeps it as the previewIdentifier.
     - name: Deploy
       id: deploy
       if: >-
-        github.event.action != 'closed' && (!github.event.pull_request || inputs.preview-deploy-key)
+        github.event.action != 'closed' && (!github.event.pull_request || inputs.preview-deploy-key
+        || startsWith(inputs.deploy-key, 'preview:'))
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
         CONVEX_DEPLOY_KEY:
-          ${{ github.event.pull_request && inputs.preview-deploy-key || inputs.deploy-key }}
+          ${{ github.event.pull_request && (inputs.preview-deploy-key || inputs.deploy-key) ||
+          inputs.deploy-key }}
         PR: ${{ github.event.pull_request.number }}
       run: |
         kind=${CONVEX_DEPLOY_KEY%%:*}
@@ -110,7 +117,7 @@ runs:
           exit 1
         fi
         if [ -z "$PR" ] && [ "$kind" != prod ]; then
-          echo "::error::deploy-key is missing or is not a production deploy key (prod:...). Outside a pull request the action deploys only to production."
+          echo "::error::deploy-key is missing or is not a production deploy key (prod:...). Outside a pull request the action deploys only to production. Convex was not deployed."
           exit 1
         fi
         args=()
@@ -151,14 +158,31 @@ runs:
         printf 'url=%s\ndeployment-url=%s\ndashboard-url=%s\n' "$url" "$cloud" "$dashboard" >> "$GITHUB_OUTPUT"
         printf -- '- Site: %s\n- Deployment: %s\n- Dashboard: %s\n' "${url:-unknown}" "${cloud:-unknown}" "${dashboard:-unknown}" >> "$GITHUB_STEP_SUMMARY"
 
-    # A preview deploy key may read its project's deployments and delete its previews through the
-    # management API. Then the deployments of the job's GitHub environment go inactive, so the pull
-    # request shows no link to a deleted preview; that needs deployments: write.
-    - name: Delete the preview of the closed pull request
-      if: github.event.action == 'closed' && inputs.preview-deploy-key
+    # The pull request's link to its preview. A transient deployment stays active when another pull
+    # request deploys in the same environment, so all pull requests share one, and no environment is
+    # created per branch. Its ref is the branch, so the close finds the branch's deployments.
+    - name: Show the preview on the pull request
+      if: steps.deploy.outputs.preview-name
       shell: bash
       env:
-        CONVEX_DEPLOY_KEY: ${{ inputs.preview-deploy-key }}
+        GH_TOKEN: ${{ github.token }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        URL: ${{ steps.deploy.outputs.url }}
+      run: |
+        id=$(gh api "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -f environment="$ENVIRONMENT" -F transient_environment=true -F production_environment=false -F auto_merge=false -f "required_contexts[]" --jq .id) ||
+          { echo "::error::Creating a deployment needs deployments: write in the job's permissions."; exit 1; }
+        gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success -f environment_url="$URL" -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" -F auto_inactive=false > /dev/null
+
+    # A preview deploy key may read its project's deployments and delete its previews through the
+    # management API. Then the branch's deployments go inactive, so the pull request shows no link
+    # to a deleted preview; that needs deployments: write.
+    - name: Delete the preview of the closed pull request
+      if:
+        github.event.action == 'closed' && (inputs.preview-deploy-key ||
+        startsWith(inputs.deploy-key, 'preview:'))
+      shell: bash
+      env:
+        CONVEX_DEPLOY_KEY: ${{ inputs.preview-deploy-key || inputs.deploy-key }}
         GH_TOKEN: ${{ github.token }}
         HEAD_LABEL: ${{ github.event.pull_request.head.label }}
         ENVIRONMENT: ${{ inputs.environment }}
@@ -192,9 +216,9 @@ runs:
           echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
         done
         # Also when Convex had already deleted the preview, and on a re-run after a failure here.
-        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f environment="$ENVIRONMENT" -F per_page=100 --jq '.[].id')
+        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f environment="$ENVIRONMENT" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
         for deployment in $ids; do
           gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
             { echo "::error::Marking a deployment inactive needs deployments: write in the job's permissions."; exit 1; }
         done
-        echo "Marked $(wc -w <<< "$ids") deployments of the environment $ENVIRONMENT inactive."
+        echo "Marked $(wc -w <<< "$ids") deployments of $GITHUB_HEAD_REF in the environment $ENVIRONMENT inactive."
