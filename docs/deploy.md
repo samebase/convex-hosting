@@ -111,10 +111,10 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
   the preview.
 - It shows the preview on the pull request as a deployment, which it creates through GitHub's API
   after each deploy: transient, in the environment `preview` (the input `environment`; each app of a
-  repository with several gives its own), with the branch as its ref and the site URL as its link.
-  GitHub keeps a transient deployment active when another pull request deploys in the same
-  environment, so every open pull request keeps its link, and the repository gets one environment
-  for its previews, not one per branch.
+  repository with several gives its own), for the deployed commit, with the branch in its task and
+  the site URL as its link. GitHub keeps a transient deployment active when another pull request
+  deploys in the same environment, so every open pull request keeps its link, and the repository
+  gets one environment for its previews, not one per branch.
 - When the pull request closes, it deletes that preview through the Convex management API, with the
   same preview key, unless another open pull request has the same branch. A closed pull request then
   holds no deployment of the team's quota. It also marks the branch's deployments inactive, so the

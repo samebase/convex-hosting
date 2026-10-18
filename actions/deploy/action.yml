@@ -160,16 +160,18 @@ runs:
 
     # The pull request's link to its preview. A transient deployment stays active when another pull
     # request deploys in the same environment, so all pull requests share one, and no environment is
-    # created per branch. Its ref is the branch, so the close finds the branch's deployments.
+    # created per branch. Its ref is the deployed commit, and its task names the branch, so the close
+    # finds the branch's deployments.
     - name: Show the preview on the pull request
       if: steps.deploy.outputs.preview-name
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
         ENVIRONMENT: ${{ inputs.environment }}
+        SHA: ${{ github.event.pull_request.head.sha }}
         URL: ${{ steps.deploy.outputs.url }}
       run: |
-        id=$(gh api "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -f environment="$ENVIRONMENT" -F transient_environment=true -F production_environment=false -F auto_merge=false -f "required_contexts[]" --jq .id) ||
+        id=$(gh api "repos/$GITHUB_REPOSITORY/deployments" -f ref="$SHA" -f task="deploy:$GITHUB_HEAD_REF" -f environment="$ENVIRONMENT" -F transient_environment=true -F production_environment=false -F auto_merge=false -f "required_contexts[]" --jq .id) ||
           { echo "::error::Creating a deployment needs deployments: write in the job's permissions."; exit 1; }
         gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success -f environment_url="$URL" -F auto_inactive=false > /dev/null
 
@@ -216,7 +218,7 @@ runs:
           echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
         done
         # Also when Convex had already deleted the preview, and on a re-run after a failure here.
-        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f environment="$ENVIRONMENT" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
+        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f environment="$ENVIRONMENT" -f task="deploy:$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
         for deployment in $ids; do
           gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
             { echo "::error::Marking a deployment inactive needs deployments: write in the job's permissions."; exit 1; }
