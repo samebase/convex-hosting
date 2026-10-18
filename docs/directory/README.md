@@ -16,19 +16,22 @@ https://www.convex.dev/components/submit.
 | Logo                               | [docs/directory/logo.svg](./logo.svg), the Samebase mark (compact identity, `logo-v1-side-primary.svg` in samebase/samebase), transparent background   |
 | Thumbnail                          | [docs/directory/thumbnail.png](./thumbnail.png) (1536 x 864)                                                                                           |
 
-`thumbnail.html` is the source of `thumbnail.png`; its first comment has the render command.
+The thumbnail reads `hosting`, then "static files + SSR" with SSR in the accent color, then three
+small lines: "One Convex deployment.", "The Cloudflare Workers model.", and "Cloudflare's own code
+and tests." `thumbnail.html` is its source; its first comment has the render command.
 
 ## Why these values
 
 - Name: directory names are capability nouns, and "Hosting" matches `components.hosting`, the
-  repository, and the package. The Cloudflare Workers relationship goes into the tagline and the
+  repository, and the package. The Cloudflare Workers relationship goes into the thumbnail and the
   description, not the name, because in the directory "Worker" means a job runner, next to Convex's
   Workpool and Batch Worker.
 - Repository URL: the repository root, because the package folder has no tracked README. The
   package's `prepack` script copies the root README into the package.
-- Thumbnail tagline: "Frontend and backend, one deployment. Built like a Cloudflare Worker." The
-  benefit comes first, Cloudflare is the trust line, and portability is the evidence. It comes from
-  a Codex review and two cold-reader tests on 2026-10-17.
+- Thumbnail: the headline "static files + SSR" makes the difference from Static-Hosting legible at
+  the 300 px width of the directory grid. Four cold readers and a critic ranked it first on
+  2026-10-18. The three small lines are facts that the [repository README](../../README.md) proves.
+  The card has no illustration, because readers took "static files + SSR" from the headline alone.
 
 ## Announcement
 
