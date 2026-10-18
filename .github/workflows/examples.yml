@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  # The close run marks the branch's deployments inactive.
+  # The close run marks the deployments that link to a deleted preview inactive.
   deployments: write
 
 jobs:

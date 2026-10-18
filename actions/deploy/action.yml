@@ -110,8 +110,8 @@ runs:
         echo "url=$url" >> "$GITHUB_OUTPUT"
 
     # A preview deploy key may read its project's deployments and delete its previews through the
-    # management API. Then the branch's GitHub deployments go inactive, so the pull request shows no
-    # link to the deleted preview; that needs deployments: write.
+    # management API. Then the GitHub deployments that link to it go inactive, so the pull request
+    # shows no link to a deleted preview; that needs deployments: write.
     - name: Delete the preview of the closed pull request
       if: github.event.action == 'closed' && inputs.preview-deploy-key
       shell: bash
@@ -139,18 +139,28 @@ runs:
           printf '%s' "$body"
         }
         id=$(api "teams/$team/projects/$project" | jq -r .id)
-        names=$(api "projects/$id/list_deployments?deploymentType=preview" |
-          jq -r --arg name "$GITHUB_HEAD_REF" '.[] | select(.previewIdentifier == $name) | .name')
-        if [ -z "$names" ]; then
+        previews=$(api "projects/$id/list_deployments?deploymentType=preview" |
+          jq -r --arg name "$GITHUB_HEAD_REF" '.[] | select(.previewIdentifier == $name) | .name + " " + .deploymentUrl')
+        if [ -z "$previews" ]; then
           echo "No preview named $GITHUB_HEAD_REF in $project."
+          exit 0
         fi
-        for name in $names; do
+        sites=" "
+        while read -r name cloud; do
           api "deployments/$name/delete" -X POST > /dev/null
           echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
-        done
+          sites+="${cloud%.convex.cloud}.convex.site "
+        done <<< "$previews"
+        # A deployment links to the preview when its newest status has the site URL, the url output
+        # that the job gave its environment. Other apps' deployments of the branch keep their links.
         ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[].id')
+        marked=0
         for deployment in $ids; do
-          gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
-            { echo "::error::Marking the deployments of $GITHUB_HEAD_REF inactive needs deployments: write in the job's permissions."; exit 1; }
+          url=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" --jq '.[0].environment_url // ""')
+          if [ -n "$url" ] && [[ $sites == *" $url "* ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
+              { echo "::error::Marking a deployment inactive needs deployments: write in the job's permissions."; exit 1; }
+            marked=$((marked + 1))
+          fi
         done
-        echo "Marked $(wc -w <<< "$ids") GitHub deployments of $GITHUB_HEAD_REF inactive."
+        echo "Marked $marked GitHub deployments that linked to it inactive."
