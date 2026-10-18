@@ -32,12 +32,14 @@ README and source on 2026-10-18, version 0.2.1.
    `routeAll(http, components.hosting, versionId)`, and import `versionId` from
    `../.convex-hosting/version.js`. Your exact routes keep winning. A server-rendered app passes its
    server entry as the fourth argument.
-4. In the deploy scripts, replace `@convex-dev/static-hosting deploy` and `upload --prod` with
-   `convex-hosting deploy --build "<build command>" --dist <dir>`, which goes to production. An
-   `upload` without `--prod` went to development, so it becomes `convex-hosting deploy --dev`, which
-   also pushes the functions there. For static-hosting's default SPA fallback, add
-   `--not-found-handling single-page-application`. For `--no-spa`, add nothing, or
-   `--not-found-handling 404-page` to serve your `404.html`.
+4. In the deploy scripts, replace `@convex-dev/static-hosting deploy`, or the pair
+   `npx convex deploy` and `upload --prod`, with
+   `convex-hosting deploy --build "<build command>" --dist <dir>`, which builds, uploads, and pushes
+   to production. Remove any other `npx convex deploy` from the sequence, as the
+   [deploy rules](./deploy.md#rules) explain. An `upload` without `--prod` went to development, so
+   it becomes `convex-hosting deploy --dev`, which also pushes the functions there. For
+   static-hosting's default SPA fallback, add `--not-found-handling single-page-application`. For
+   `--no-spa`, add nothing, or `--not-found-handling 404-page` to serve your `404.html`.
 5. Replace `UpdateBanner` or `useDeploymentUpdates` with the query in
    [Development](./development.md#open-tabs-after-a-deploy), and delete `convex/staticHosting.ts`.
 6. Uninstall `@convex-dev/static-hosting`.
