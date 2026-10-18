@@ -1,8 +1,9 @@
 # Proposal: direct Convex queries during SSR
 
 Status: not approved, 2026-10-18. Written by an AI assistant from the code at `16bbf82` and two
-measured prototypes on the example's development deployment. Nothing is implemented. The decisions
-that only the maintainer can make are listed at the end.
+measured prototypes on the example's development deployment, then revised after one Codex design
+review (the last section). Nothing is implemented. The decisions that only the maintainer can make
+are listed at the end.
 
 ## The problem
 
@@ -62,6 +63,10 @@ What the numbers say:
 - `ctx.runQuery` takes 1.2 to 1.8 ms per query. With it, `/` renders in 3 ms more than `/signin`.
 - Queries in parallel share the timestamp, so the second one adds almost nothing. Each sequential
   dependency between queries adds a round trip.
+- The 27 ms come from two changes. The inconsistent option alone removes one round trip (reads 26.9
+  to 13.9 ms, render 35.8 to 23.2 ms), on both hosts and for signed-in renders too. The direct path
+  removes the other one (reads 13.9 to 1.2 ms, render 23.2 to 9.1 ms), on Convex only. Both give up
+  the shared snapshot; the direct path gives up nothing more.
 - The visitor gets the first byte 23 to 30 ms sooner. From 160 ms away that is 15%; for a visitor
   near the deployment it is most of the server time.
 - Signed-in renders were not measured: that needs a session, and no account was created on a cloud
@@ -81,10 +86,10 @@ Two runtime facts, measured in the same prototype:
 
 - `ctx.runQuery(query, args)` runs a public or internal query by reference
   ([`GenericActionCtx`](https://docs.convex.dev/api/interfaces/server.GenericActionCtx);
-  `convex/src/server/registration.ts` line 340). In actions it takes no options; `useStaleSnapshot`
-  and `transactionLimits` exist only for queries and mutations. The JavaScript side sends the
-  function's address, the arguments, and the request id (`src/server/impl/actions_impl.ts` lines 28
-  to 38).
+  `convex/src/server/registration.ts` line 340). In actions it takes no options; `transactionLimits`
+  exists for queries and mutations, `useStaleSnapshot` for mutations only. The JavaScript side sends
+  the function's address, the arguments, and the request id (`src/server/impl/actions_impl.ts` lines
+  28 to 38).
 - "Each `runQuery` call is a separate read transaction" (the JSDoc), and "Multiple runQuery /
   runMutations execute in separate transactions and aren't guaranteed to be consistent with each
   other" ([actions](https://docs.convex.dev/functions/actions)).
@@ -94,6 +99,12 @@ Two runtime facts, measured in the same prototype:
 - `AsyncLocalStorage` is in the Convex runtime since `convex` 1.39.0, and "stored values will not be
   threaded through calls to `ctx.runQuery`" (changelog). TanStack Start already runs every render in
   its own `AsyncLocalStorage` on Convex.
+- Nothing at runtime tells a public query from an internal one. The generated `api` object is a
+  Proxy that builds a reference for any name, and the deployment knows each function's visibility
+  (`npx convex function-spec` reports it) but a running function cannot ask. The HTTPS endpoints
+  refuse internal functions; `ctx.runQuery` runs them.
+- Every function sees its own deployment's URL as `CONVEX_CLOUD_URL`
+  ([system environment variables](https://docs.convex.dev/production/environment-variables)).
 - References resolve across copies of the `convex` package: the function name sits on
   `Symbol.for("functionName")` (`src/server/functionName.ts`), so the render bundle's `api` works
   with the action bundle's `ctx`. The prototype relied on this.
@@ -129,19 +140,28 @@ Nothing today runs a query as the identity of a token that the action holds:
 So, what is possible today:
 
 1. **Direct for renders without identity, HTTPS with the token for the rest.** Safe by construction
-   when the direct path runs only if the render has no token and `ctx.auth.getUserIdentity()`
-   resolves to `null` (it throws on a header that does not verify, which must count as "not
-   anonymous"): both paths then run the query with no identity. Signed-in renders keep today's cost.
+   when the direct path runs only if the client holds no credentials and
+   `ctx.auth.getUserIdentity()` resolves to `null` (it threw on a malformed token in the
+   measurement; any throw counts as "not anonymous"): both paths then run the query with no
+   identity. Signed-in renders keep today's cost.
 2. **Internal queries that take a verified user id.** The action would verify the access token
    itself against `AUTH_JWKS` (signature, `iss`, `aud`, `exp`), which re-implements a security check
    that Convex owns, and every authenticated query would get a second, server-only twin whose result
    must be stored under the public query's key so that the browser hydrates it. The app's code shape
    doubles. Not recommended.
+3. **One authenticated self-request per signed-in render.** The site action forwards the render to
+   its own site URL with `Authorization: Bearer <token>`; Convex verifies the token at that action's
+   entry, and every query inside it goes direct with the user's identity. No deploy key and no
+   duplicate queries, but one round trip remains (13 ms), the same count as inconsistent HTTPS with
+   parallel loaders, plus a second action per page and the request and streamed response proxied
+   through the first. It pays only for pages whose queries depend on each other in sequence. Not
+   measured; not recommended now.
 
-What would need Convex: a way to run a query as a token's identity, verified the way an HTTPS call
-is verified against `auth.config.ts`, for example `ctx.runQuery(ref, args, { auth: token })`, or
-HTTP actions that take their identity from a configured cookie. With that, the direct path covers
-signed-in renders and nothing else in this proposal changes.
+What would need Convex, for signed-in reads with no round trip: a way to run a query as a token's
+identity, verified the way an HTTPS call is verified against `auth.config.ts`, for example
+`ctx.runQuery(ref, args, { auth: token })`, or HTTP actions that take their identity from a
+configured cookie. With that, the direct path covers signed-in renders and nothing else in this
+proposal changes.
 
 ## Consistency and hydration
 
@@ -156,18 +176,23 @@ browser hydrates from it, so the first browser render matches the HTML; the subs
 replaces the values with live ones. Consistency decides only whether two results in one HTML page
 agree with each other.
 
-A consistent direct path is possible in principle (one `ctx.runQuery` of a query that runs the
-render's queries with nested `ctx.runQuery`, which queries may call in their own transaction), but
-it needs a function in the app or a component and covers only queries that start together. Not
-proposed.
+One snapshot is still possible on the direct path, through the app's data shape rather than the
+transport. A query runs in one transaction: the queries it calls with nested `ctx.runQuery`, and a
+second read whose arguments it derives from the first, share its snapshot. A page that loads its
+related data through one such query gets a consistent result, directly. What cannot share a snapshot
+is independent queries from the action, which is what TanStack loaders and components issue.
 
 ## Candidates for the transport
 
-- **(a) Swap `serverHttpClient` for a `ConvexHttpClient` subclass** whose `query` and
-  `consistentQuery` call `ctx.runQuery(func, args)` when the gates hold, and `super` otherwise.
-  Public field, public methods, no wire format. A future `@convex-dev/react-query` that calls
-  another method reaches `super`, today's HTTPS path, so a mismatch fails slow, not wrong. This is
-  what both prototypes measured.
+- **(a) Swap `serverHttpClient` for a `ConvexHttpClient` subclass** whose `query` calls
+  `ctx.runQuery(func, args)` when the gates below hold, and `super` otherwise. `consistentQuery` is
+  not overridden: the integration calls `query` only when the app chose inconsistent server reads
+  (line 362), so the consistent default and any explicit `consistentQuery` keep their snapshot over
+  HTTPS. The subclass overrides `setAuth`, `setAdminAuth`, and `clearAuth` to know its current
+  credentials, and decides on every call. Public field, public methods, no wire format. A future
+  `@convex-dev/react-query` that calls another method reaches `super`, today's HTTPS path, so a
+  mismatch fails slow, not wrong. Both prototypes measured this transport (they also overrode
+  `consistentQuery`, changed after the review).
 - **(b) A `fetch` that answers `/api/query*` in-process**, through the client's `{ fetch }` option
   or a patched global `fetch`. It emulates the undocumented `query_ts` and `query_at_ts` endpoints
   and the `convex_encoded_json` format, converts every value to JSON and back, and a global patch
@@ -177,6 +202,26 @@ proposed.
   Connection reuse is not in reach of JavaScript, and the two sequential calls each take the same 13
   ms, so there is no visible setup cost to save. The HTTP API has no batch endpoint.
 - **(d) Runtime limits** do not block (a): the measured facts and the limits above.
+
+### The gates, and what they cannot keep
+
+A query goes direct only when all four hold; otherwise it goes over HTTPS as today.
+
+1. **Method.** `query`, which the integration calls when the app chose inconsistent server reads.
+2. **Credentials.** The client holds none: nothing was set through it since it was installed, and it
+   is installed where the adapter sets the token today (`sessionBeforeLoad`), before other route
+   code runs. A server client that app code authenticates somewhere else is outside this contract.
+3. **Identity.** `ctx.auth.getUserIdentity()` resolves to `null`; a throw counts as not anonymous.
+4. **Target.** The client's URL equals the deployment's `CONVEX_CLOUD_URL`. A site whose data lives
+   on another deployment, or that reaches its own through a custom domain, keeps HTTPS.
+
+Under these, identity, consistency, and the target are the same on both paths. **Visibility is
+not.** The HTTPS path refuses internal functions; `ctx.runQuery` runs them, and nothing at runtime
+can tell them apart. If an app builds a reference from visitor input (a generic `/q/$name` route,
+say), the HTTPS path answers an error and the direct path renders an internal query's result into
+anonymous HTML. No enforcement is available today: an allowlist from `npx convex function-spec`
+reads the deployed functions, so it is one push behind and brings back a generated file that must
+exist before the first push; and `ctx.runQuery` has no option that applies the public check.
 
 ## Candidates for the interface
 
@@ -195,17 +240,20 @@ the direct client when `serverContext.convex` is there.
 - Against the repository's rule that an app-side line which exists because the package lacks
   something is a package bug. Measured in the first prototype.
 
-**(ii) Automatic.** The core runs `worker.fetch(request)` inside an `AsyncLocalStorage` that it
-exports from a subpath (the prototype used `@samebase/convex-hosting/request`). `convexSsr()` keeps
-`@samebase/convex-hosting` external in the server build (`ssr.external`, which takes priority over
-`noExternal: true`), so Convex's bundler resolves the server build's import and `convex/http.ts`'s
-to one module and one store. The adapter's server entry reads the store and adds the request's
-direct client to the context it gives Start; `sessionBeforeLoad` installs it as `serverHttpClient`.
+**(ii) Automatic.** When `convex/http.ts` turns it on with one option on `routeAll` (a Convex-only
+file, so the twin does not change; the reason for an option is the visibility boundary above), the
+core runs `worker.fetch(request)` inside an `AsyncLocalStorage` that it exports from a subpath (the
+prototype used `@samebase/convex-hosting/request`). `convexSsr()` keeps `@samebase/convex-hosting`
+external in the server build (`ssr.external`, which takes priority over `noExternal: true`), so
+Convex's bundler resolves the server build's import and `convex/http.ts`'s to one module and one
+store. The adapter's server entry reads the store and adds the request's direct client to the
+context it gives Start; `sessionBeforeLoad` installs it as `serverHttpClient`.
 
-- Core: the subpath (about 6 lines), `actionCtx.run(ctx, ...)` in `serveSite`, the export and its
-  declaration. Adapter: `ssr.external`, about 8 lines in the server entry, the subclass (about 40
-  with the gates, the fallback, and the error rethrow below), 4 in `sessionBeforeLoad`, and one
-  optional field in `RequestContext`. Apps and examples: nothing; the patch is unchanged.
+- Core: the subpath (about 6 lines), the option and `actionCtx.run(ctx, ...)` in `serveSite`, the
+  export and its declaration. Adapter: `ssr.external`, about 8 lines in the server entry, the
+  subclass (about 45 with the four gates, the credential overrides, the fallback, and the error
+  rethrow below), 4 in `sessionBeforeLoad`, and one optional field in `RequestContext`. Apps: the
+  option in `convex/http.ts`; the patch is unchanged.
 - The Worker, Vite's dev server, and the build's prerender have no store, so they use HTTPS. The
   twin never imports the adapter's server entry.
 - Measured in the second prototype: the import stayed external in `dist/server/server.js`, the
@@ -227,9 +275,7 @@ install. Rejected by the same repository rule.
 
 Risks that hold for every interface:
 
-- The HTTPS path can call only public functions; `ctx.runQuery` also runs internal ones. Only the
-  render's code chooses references, so this matters only if an app builds a reference from visitor
-  input, which is a bug on either path.
+- Visibility, above: the gates cannot keep it.
 - An error from `ctx.runQuery` is a `ConvexError` of the action bundle's copy of `convex`;
   `instanceof ConvexError` in render code tests the render bundle's copy. The subclass rethrows with
   the render bundle's class.
@@ -239,35 +285,84 @@ Risks that hold for every interface:
 
 ## Recommendation
 
-Candidate (ii) with transport (a), gated on three conditions: the render has no token, the action
-has no identity, and the app chose inconsistent server reads. Apps and the Worker twin change
-nothing, it removes the measured 27 ms (three quarters of the server render of `/`) from anonymous
-renders, and the direct path runs only where the HTTPS path would run with the same empty identity
-and the same consistency, so nothing changes but speed. Signed-in renders stay on HTTPS until Convex
-can run a query as a verified token; for them, the inconsistent option alone halves the cost (27 to
-14 ms) on both hosts.
+Candidate (ii) with transport (a) and the four gates, off by default and turned on by one option in
+`convex/http.ts`. Under the gates, a direct query runs with the same identity, consistency, and
+target as the HTTPS query it replaces, and the measured gain over HTTPS with the same consistency is
+reads 13.9 to 1.2 ms and render 23.2 to 9.1 ms on anonymous renders; the Worker twin and the app's
+`src` do not change. The option exists because visibility is the one thing the gates cannot keep:
+turning it on states that the render builds references only from `api`, never from input.
 
-If server reads must stay consistent, the direct path does not apply, and nothing should be built:
-consistent reads need HTTPS today.
+The inconsistent option is a separate choice, on both hosts: it saves 13 ms by itself, signed-in
+renders included, and it is what makes the direct path run. If server reads must stay consistent,
+the transport does not apply; a page that needs one snapshot loads its related data through one
+query, which then runs direct in one transaction. Signed-in renders get no direct path until Convex
+can run a query as a verified token.
+
+Ask Convex for two `ctx.runQuery` options, the public-visibility check and a verified token's
+identity. With both, the option and the credentials gate can go, and signed-in renders go direct.
 
 ## Decisions for the maintainer
 
 1. **Consistency.** Do the examples switch to `dangerouslyUseInconsistentQueriesDuringSSR: true`
-   (one line in both `router.tsx`, the patch unchanged)? Without it, the gated direct path never
-   runs. And is the direct path gated on that option (recommended) or used for every anonymous
-   render, which silently changes the semantics for apps on the default?
-2. **Interface.** Automatic (ii), recommended, or explicit (i), with two lines in every app's
+   (one line in both `router.tsx`, the patch unchanged)? It saves 13 ms on both hosts by itself;
+   without it, the direct path never runs.
+2. **Visibility and the default.** Off by default, on with one option in `convex/http.ts` that
+   states the render builds references only from `api` (recommended); or on by default, which
+   silently lets every app's render reach internal queries; or nothing until Convex has a public
+   check.
+3. **Ask Convex** for `ctx.runQuery` with the public check and with a verified token's identity?
+   (Recommended; either one removes a gate.)
+4. **Interface.** Automatic (ii), recommended, or explicit (i), with two lines in every app's
    `src/server.ts` and a larger patch?
-3. **Channel between the bundles** for (ii): the externalized subpath (recommended, measured) or a
+5. **Channel between the bundles** for (ii): the externalized subpath (recommended, measured) or a
    `Symbol.for` global.
-4. **What the request context carries**: the request's direct client (recommended) or the raw `ctx`,
+6. **What the request context carries**: the request's direct client (recommended) or the raw `ctx`,
    which gives loaders Convex-only powers.
-5. **Auth policy**: direct only without identity (recommended); app-verified tokens with internal
-   queries (not recommended); and whether to ask Convex for `runQuery` as a verified token.
-6. **Worker parity**: the direct path makes Convex's data reads faster than the twin's, which
+7. **Auth policy**: direct only without credentials and identity (recommended); one authenticated
+   self-request per signed-in render (not now); app-verified tokens with internal queries (not
+   recommended).
+8. **Worker parity**: the direct path makes Convex's data reads faster than the twin's, which
    already pays an internet round trip from the edge. Accept, and state it in `docs/workers.md`?
-7. **Default**: on whenever the gates hold, with no option (recommended), or an adapter option.
-8. **Scope**: queries only (recommended). The session refresh in `src/server.ts`
+9. **Scope**: queries only (recommended). The session refresh in `src/server.ts`
    (`convex.mutation(api.auth.refreshSession, ...)`, an HTTPS mutation on every page request that
    comes 50 seconds or more after the last refresh), server functions, and the `/auth` routes keep
    HTTPS for now.
+
+## Review
+
+One Codex design review of `2d0454f`, the first version of this note, asked to challenge any
+decision and any claim about Convex's runtime or auth. From the installed SDK and the backend
+source, it confirmed the streaming lifetime, the inherited action identity, the separate
+transactions, and the limits. It did not rerun the prototypes, so the measurements rest on this
+note's own runs. The revised version has not been reviewed again.
+
+Taken, and what changed:
+
+1. **P1, visibility.** The first version called a reference built from input "a bug on either path".
+   The HTTPS path refuses internal functions and the direct path does not, so the direct path widens
+   what an anonymous page can show. It is now a named boundary, and the recommendation went from on
+   by default to an option in `convex/http.ts`, plus a request to Convex.
+2. **P1, target.** The gates did not require the client to point at this deployment; a client on
+   another deployment would have rendered this one's data. Gate 4 added.
+3. **P2, credentials.** The render's token is not the client's credentials: a client authenticated
+   before the swap, or by a later `setAuth`, was not covered. The subclass now tracks `setAuth`,
+   `setAdminAuth`, and `clearAuth` and decides on every call; the install point is a stated
+   contract.
+4. **P2, explicit `consistentQuery`.** Overriding it would have dropped a snapshot that an app asked
+   for. Only `query` is overridden now, which also turns the consistency gate into structure.
+5. **P2, consistent direct reads.** A query that derives its second read from its first shares one
+   snapshot. "Consistent reads need HTTPS today" was wrong and is replaced by the data-shape route.
+6. **P2, signed-in reads without a new API.** One authenticated self-request per render is a third
+   option, now listed with its cost; not recommended now.
+7. **P2, attribution.** Against HTTPS with the same consistency, the direct path saves 13.9 to 1.2
+   ms of reads; the 27 ms figure needs the inconsistent option too. The measurements and the
+   recommendation now separate the two.
+
+Not taken: the remedy that objection 1 proposed, an enforceable public-function allowlist before the
+swap is enabled. Nothing can enforce it at runtime today, and a list from `npx convex function-spec`
+is one push behind and brings back a generated file that must exist before the first push, the
+problem the first-run study removed. The note offers an explicit opt-in and a Convex request
+instead; the objection itself stands, and decision 2 is where it lands.
+
+Corrected in the same revision, found on a re-read: which `runQuery` options exist where, and that
+the measured `getUserIdentity` throw was for a malformed token.
