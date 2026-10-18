@@ -11,5 +11,5 @@ jobs:
         with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
       - uses: ./actions/deploy
         with:
-          working-directory: examples/no-key-demo
+          working-directory: .
           deploy-key: ""
