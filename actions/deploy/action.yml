@@ -82,12 +82,8 @@ runs:
           echo "::error::preview-deploy-key is not a preview deploy key (preview:...). Convex was not deployed: npx convex deploy with a production key ignores --preview-name and deploys the pull request to production."
           exit 1
         fi
-        if [ -z "$PR" ] && [ -z "$CONVEX_DEPLOY_KEY" ]; then
-          echo "::error::deploy-key is empty. Outside a pull request the action deploys to production, with the production deploy key."
-          exit 1
-        fi
         if [ -z "$PR" ] && [ "$kind" != prod ]; then
-          echo "::error::deploy-key is not a production deploy key (prod:...). Outside a pull request the action deploys only to production."
+          echo "::error::deploy-key is missing or is not a production deploy key (prod:...). Outside a pull request the action deploys only to production."
           exit 1
         fi
         args=()
@@ -101,9 +97,8 @@ runs:
         fi
 
         # The site URL. A preview's deploymentUrl, from the management API, ends in .convex.cloud,
-        # and its site is the same host with .convex.site. A production key may not call that API
-        # (400), so production asks the deployment for CONVEX_SITE_URL, which also holds a custom
-        # domain that overrides it.
+        # and its site is the same host with .convex.site. The API refuses a production key, so
+        # production asks the deployment for its CONVEX_SITE_URL instead.
         if [ "$kind" = preview ]; then
           api() {
             local body
