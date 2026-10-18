@@ -54,6 +54,8 @@ function fake(
     installed?: () => boolean;
     /** The stored file id of each sha256 that `knownFiles` knows. */
     known?: Record<string, string>;
+    /** What the Convex CLI prints for each function name that fails. */
+    failing?: Record<string, string>;
     build?: () => Promise<number>;
     push?: (cli: Cli, args: string[]) => Promise<number>;
   } = {},
@@ -85,6 +87,8 @@ function fake(
           : { exitCode: 1, stdout: "", stderr: missing(args[args.indexOf("--component") + 1]) };
       }
       events.push(args[3]);
+      const failure = options.failing?.[args[3]];
+      if (failure !== undefined) return { exitCode: 1, stdout: "", stderr: failure };
       const fnArgs = JSON.parse(args[4]);
       switch (args[3]) {
         case "lib:generateUploadUrls":
@@ -272,6 +276,22 @@ describe("deploy keys and selectors", () => {
     });
     expect(await main([...DEPLOY, "--preview-name", "pr-7"], accepted.cli)).toBe(0);
   });
+
+  test("--preview-name without a key or a login names the preview key, before any process", async () => {
+    const refused = fake(app(site));
+    expect(await main([...DEPLOY, "--preview-name", "pr-7"], refused.cli)).toBe(1);
+    expect(refused.events).toEqual([]);
+    expect(refused.logs[refused.logs.length - 1]).toBe(
+      "--preview-name needs the project's preview deploy key in CONVEX_DEPLOY_KEY (in CI, from a " +
+        "secret such as CONVEX_PREVIEW_DEPLOY_KEY), or a login with the project in " +
+        "CONVEX_DEPLOYMENT; neither is set.",
+    );
+    // A login selects the preview through the project that `npx convex dev` wrote to .env.local.
+    const loggedIn = fake(app({ ...site, ".env.local": "CONVEX_DEPLOYMENT=dev:happy-cat-123\n" }), {
+      push: innerUpload,
+    });
+    expect(await main([...DEPLOY, "--preview-name", "pr-7"], loggedIn.cli)).toBe(0);
+  });
 });
 
 describe("deploy keys that are not keys", () => {
@@ -396,7 +416,8 @@ describe("deploy", () => {
   });
 
   test("--preview-name goes to npx convex deploy and to every run", async () => {
-    const { cli, pushes, runs } = fake(app(site), { push: innerUpload });
+    const env = { CONVEX_DEPLOY_KEY: "preview:t:p|y" };
+    const { cli, pushes, runs } = fake(app(site), { env, push: innerUpload });
     expect(await main([...DEPLOY, "--preview-name", "pr-7"], cli)).toBe(0);
     expect(pushes[0].slice(-2)).toEqual(["--preview-name", "pr-7"]);
     expect(pushes[0][2]).toContain("'--preview-name' 'pr-7'");
@@ -407,7 +428,10 @@ describe("deploy", () => {
     const cwd = app(site);
     const output = join(cwd, "github-output");
     writeFileSync(output, "earlier=1\n");
-    const { cli, runs } = fake(cwd, { env: { GITHUB_OUTPUT: output }, push: innerUpload });
+    const { cli, runs } = fake(cwd, {
+      env: { GITHUB_OUTPUT: output, CONVEX_DEPLOY_KEY: "preview:t:p|y" },
+      push: innerUpload,
+    });
     expect(await main([...DEPLOY, "--preview-name", "pr-7"], cli)).toBe(0);
     expect(readFileSync(output, "utf8")).toBe(`earlier=1\nurl=${SITE_URL}\n`);
     // The query goes to the deployment of the deploy.
@@ -420,6 +444,19 @@ describe("deploy", () => {
     const message = logs[logs.length - 1];
     expect(message).toContain('The component "hostin" is not installed after the push.');
     expect(message).toContain("This deployment has no mounted components.");
+  });
+
+  test("names an instance without createVersion, such as convex-hosting 0.3.x, before any push", async () => {
+    // What the Convex CLI prints, on a cloud and a local deployment alike.
+    const notFound =
+      `✖ Failed to run function "lib:createVersion":\nError: [Request ID: 1] Server Error\n` +
+      "Could not find function for 'lib:createVersion' in 'staticHosting'. Did you forget to run `npx convex dev`?";
+    const { cli, events, logs } = fake(app(site), { failing: { "lib:createVersion": notFound } });
+    expect(await main([...DEV, "--component", "staticHosting"], cli)).toBe(1);
+    expect(events).not.toContain("push: run");
+    expect(logs[logs.length - 1]).toContain(
+      'The component "staticHosting" has no lib:createVersion, so it is not convex-hosting 0.4 or later',
+    );
   });
 
   test("passes no selector to a self-hosted deployment", async () => {

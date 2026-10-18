@@ -194,6 +194,20 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
         : "not a preview key";
     throw new Error(`--preview-name needs a preview deploy key; the key set is ${kind}.`);
   }
+  // Without a key, only a login with the project in CONVEX_DEPLOYMENT selects a preview. With
+  // neither, `npx convex deploy` fails with "No CONVEX_DEPLOYMENT set", which does not name the key.
+  if (
+    !key &&
+    options.destination.kind === "preview" &&
+    !env.CONVEX_DEPLOYMENT &&
+    !env.CONVEX_SELF_HOSTED_URL
+  ) {
+    throw new Error(
+      "--preview-name needs the project's preview deploy key in CONVEX_DEPLOY_KEY (in CI, from a " +
+        "secret such as CONVEX_PREVIEW_DEPLOY_KEY), or a login with the project in " +
+        "CONVEX_DEPLOYMENT; neither is set.",
+    );
+  }
   const target: Target = {
     component: options.component,
     flags: deploymentSelector(cli, options.destination),
@@ -352,7 +366,24 @@ async function upload(
     "application/json",
     "the config",
   );
-  await runComponent(cli, target, internal.lib.createVersion, { versionId, configId }, z.null());
+  try {
+    await runComponent(cli, target, internal.lib.createVersion, { versionId, configId }, z.null());
+  } catch (error) {
+    // An instance of convex-hosting 0.3.x or of Convex's static-hosting has `generateUploadUrls`
+    // but no `createVersion`, and the Convex CLI's message does not say what to do.
+    if (
+      error instanceof Error &&
+      error.message.includes("Could not find function for 'lib:createVersion'")
+    ) {
+      throw new Error(
+        `The component "${options.component}" has no lib:createVersion, so it is not ` +
+          `convex-hosting 0.4 or later: it may be convex-hosting 0.3.x or Convex's ` +
+          `static-hosting, whose data this version does not read. Mount convex-hosting under a ` +
+          `new name, as https://github.com/samebase/convex-hosting/blob/main/docs/from-static-hosting.md says.`,
+      );
+    }
+    throw error;
+  }
 
   // Entries with the same bytes share one stored file.
   const groups = new Map<string, DistEntry[]>();

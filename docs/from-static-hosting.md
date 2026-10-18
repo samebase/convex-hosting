@@ -58,3 +58,17 @@ Then check three things:
 - **Old files.** The push that removes `app.use(staticHosting)` unmounts that component, and its
   files stay until you delete it in the Convex dashboard. From then on, each deploy's first request
   deletes the version that was live before it.
+
+## From convex-hosting 0.3.x
+
+Version 0.3.x of this package served files the way static-hosting does, and 0.4 and later do not
+read its data. Move as above, with two differences:
+
+- Mount the new component under its default name, `hosting`, in place of the old instance, such as
+  `app.use(hosting, { name: "staticHosting" })`, and remove `--component` from the deploy scripts. A
+  deploy to the old name fails, because the old instance has no `createVersion`; the CLI says so.
+- In `convex/http.ts`, replace `serveStaticAsset(...)` or `registerStaticRoutes(...)` with
+  `routeAll`.
+
+The first deploy installs the new instance before it uploads, so the site answers 404 until the
+upload ends. Then delete the unmounted instance in the Convex dashboard.

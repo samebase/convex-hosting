@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+/// <reference types="vite-plus/client" />
 // Cloudflare's own cases for `html_handling` and path encoding, from
 // fixtures/workers-shared-asset-config in cloudflare/workers-sdk, run through `route`. Upstream
 // runs them against its asset Worker with `exists` mocked; here the files are a version's entries.
