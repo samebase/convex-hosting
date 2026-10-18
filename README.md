@@ -24,6 +24,9 @@ with streamed pages, server functions, server routes, request middleware, and co
 is deployed here and, from the same source, as a real Worker; CI keeps the difference between the
 two to a committed patch.
 
+This package exists to run server-rendered frameworks on Convex, with Cloudflare's rules for the
+files; Convex's own static-hosting component serves files only
+([how they differ](https://github.com/samebase/convex-hosting/blob/main/docs/from-static-hosting.md)).
 Use it when the backend is Convex and a second host for the frontend is one host too many. A Worker
 has what Convex does not: the data center nearest the visitor, Node's built-in modules, an edge
 cache, and WebSockets. The list, with numbers, is in
@@ -141,15 +144,20 @@ works through every interleaving.
 - [Your own domain](https://github.com/samebase/convex-hosting/blob/main/docs/domains.md).
 - [What differs from a Worker](https://github.com/samebase/convex-hosting/blob/main/docs/workers.md),
   and the same app deployed as one.
+- [From static-hosting](https://github.com/samebase/convex-hosting/blob/main/docs/from-static-hosting.md):
+  what differs from Convex's static-hosting component, and how to move an app.
 - [Design](https://github.com/samebase/convex-hosting/blob/main/docs/design.md): why each piece is
   what it is.
 - [Changelog](https://github.com/samebase/convex-hosting/blob/main/packages/convex-hosting/CHANGELOG.md).
 
 ## Status
 
-Before 1.0: a minor release can change the API, and the changelog says what changed. The author's
-apps run on it, among them [Scout](https://github.com/samebase/scout) and
-[chessmerge.com](https://chessmerge.com).
+Before 1.0: a minor release can change the API, and the changelog says what changed. It started from
+Convex's [static-hosting](https://github.com/convex/static-hosting) component and grew into a
+different design around Cloudflare's asset Worker;
+[From static-hosting](https://github.com/samebase/convex-hosting/blob/main/docs/from-static-hosting.md)
+lists what differs and how to move. The author's apps run on it, among them
+[Scout](https://github.com/samebase/scout) and [chessmerge.com](https://chessmerge.com).
 
 ## License
 
