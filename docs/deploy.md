@@ -181,3 +181,5 @@ A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy
 
 - The `v1` tag comes with the action's first release. Pin the action by its commit SHA, as any
   other.
+
+Matrix test B, throwaway.

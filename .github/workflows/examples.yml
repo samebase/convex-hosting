@@ -6,7 +6,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, tmp/matrix-base]
     types: [opened, synchronize, reopened, closed]
 
 permissions:
