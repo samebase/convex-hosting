@@ -5,8 +5,7 @@ Status: implemented in [#89](https://github.com/samebase/convex-hosting/pull/89)
 of the comment action, and a preview deploy key may list its project's deployments after all. The
 same pull request then made it deploy any Convex app (the `deploy` script, else
 `npx convex deploy`), with the production and preview keys as two inputs and the site URL read from
-Convex instead of the CLI's output.
-Written on 2026-10-18 by an AI assistant for
+Convex instead of the CLI's output. Written on 2026-10-18 by an AI assistant for
 [#84](https://github.com/samebase/convex-hosting/issues/84), from the workflows of this repository
 at `98fd54c`, of Mail, ChessMerge, and Scout, and from the sources linked below, then revised after
 one Codex design review (the last section). The decisions that only the maintainer can make are
