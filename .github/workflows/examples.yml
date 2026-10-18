@@ -138,6 +138,8 @@ jobs:
             if [[ $prefix =~ ^prod:[a-z0-9-]+$ ]]; then
               status=$(curl -s -o "$RUNNER_TEMP/body.json" -w '%{http_code}' -H "Authorization: Bearer $key" "https://api.convex.dev/v1/deployments/${prefix#prod:}")
               code=$(jq -r '.code // "none"' "$RUNNER_TEMP/body.json" 2> /dev/null || echo "not JSON")
+              convex=$(curl -s -o "$RUNNER_TEMP/body.json" -w '%{http_code}' -H "Authorization: Convex $key" "https://api.convex.dev/v1/deployments/${prefix#prod:}")
+              code="$code; with Authorization: Convex <key>: $convex, code $(jq -r '.code // "none"' "$RUNNER_TEMP/body.json" 2> /dev/null || echo "not JSON")"
               site=$(cd examples/tanstack-spa && CONVEX_DEPLOY_KEY=$key npx convex run --inline-query process.env.CONVEX_SITE_URL)
               echo "$var: prefix is prod:<name>: yes; GET /v1/deployments/<name>: $status, code $code; CONVEX_SITE_URL from an inline query: $site"
             else
