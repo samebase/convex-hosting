@@ -166,9 +166,9 @@ pull request closes:
 ```yaml
 on:
   pull_request: { types: [opened, synchronize, reopened, closed] }
-permissions: { contents: read, pull-requests: write }
 jobs:
   preview:
+    permissions: { contents: read, pull-requests: write }
     if:
       github.event.action != 'closed' && github.event.pull_request.head.repo.full_name ==
       github.repository
@@ -185,6 +185,7 @@ jobs:
         uses: samebase/convex-hosting/actions/deploy@v1
         with: { deploy-key: "${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}" }
   cleanup:
+    permissions: { contents: read, pull-requests: write }
     if:
       github.event.action == 'closed' && github.event.pull_request.head.repo.full_name ==
       github.repository
