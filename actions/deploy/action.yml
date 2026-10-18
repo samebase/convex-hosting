@@ -1,206 +1,85 @@
 name: Convex deploy with previews deleted on close
 description: >-
   Deploys a Convex app to production on a push, or to the preview named after the branch of a pull
-  request, after it checks that the checkout is the head of its branch, and outputs the URLs. When
-  the pull request closes, deletes that preview.
+  request, and outputs its URLs. When the pull request closes, deletes that preview.
 inputs:
   deploy-key:
-    description: >-
-      The production deploy key, from a secret. When the production environment holds it as its
-      CONVEX_DEPLOY_KEY and the repository secret of that name holds the preview key, a pull
-      request's job gets the preview key here, and the action uses it for the preview.
+    description: The production deploy key on a push; the preview deploy key on a pull request.
     required: true
-  preview-deploy-key:
-    description: >-
-      The project's preview deploy key, from a secret. A pull request uses it first. Without it or a
-      preview key in deploy-key, a pull request deploys nothing and the job notes how to get
-      previews.
-    default: ""
   working-directory:
     description: The directory of the app's package.json.
     default: .
 outputs:
   url:
-    description: >-
-      The site URL, where the deployment's HTTP actions answer (CONVEX_SITE_URL). Empty when none
-      deployed or when the key cannot run an inline query.
+    description: The site URL (CONVEX_SITE_URL). Empty when none deployed or not readable.
     value: ${{ steps.deploy.outputs.url }}
   deployment-url:
-    description: >-
-      The deployment URL that clients connect to (CONVEX_CLOUD_URL), such as a frontend's
-      VITE_CONVEX_URL. Empty when none deployed or when the key cannot run an inline query.
+    description: The deployment URL (CONVEX_CLOUD_URL). Empty when none deployed or not readable.
     value: ${{ steps.deploy.outputs.deployment-url }}
   dashboard-url:
-    description: >-
-      The deployment's page in the Convex dashboard. Empty when none deployed, and for a preview
-      whose URLs are unknown.
+    description: The deployment's page in the Convex dashboard. Empty when unknown.
     value: ${{ steps.deploy.outputs.dashboard-url }}
   preview-name:
-    description: >-
-      The name of the preview deployed, the pull request's branch, for npx convex run and other
-      commands after the deploy. Empty on production and when none deployed.
+    description: The preview's name, the branch. Empty on production and when none deployed.
     value: ${{ steps.deploy.outputs.preview-name }}
 runs:
   using: composite
   steps:
-    - name: Note the missing preview deploy key
-      if:
-        github.event.pull_request && !(inputs.preview-deploy-key || startsWith(inputs.deploy-key,
-        'preview:'))
-      shell: bash
-      run: |
-        note="No preview deploy key, so no preview. Pass the project's preview deploy key as preview-deploy-key, from a CONVEX_PREVIEW_DEPLOY_KEY secret. Or keep the production key as the production environment's CONVEX_DEPLOY_KEY and the preview key as the repository's CONVEX_DEPLOY_KEY."
-        echo "::notice::$note"
-        echo "$note" >> "$GITHUB_STEP_SUMMARY"
-
-    # A re-run of an old run deploys its old commit, so its push would put older code over newer
-    # code. The caller's concurrency group orders runs; this refuses a stale one. On pull_request,
-    # actions/checkout takes a merge commit by default, which changes when the base moves, so the
-    # checkout must be the head commit itself.
-    - name: Check that the checkout is the head of its branch
-      if: >-
-        github.event.action != 'closed' && (!github.event.pull_request || inputs.preview-deploy-key
-        || startsWith(inputs.deploy-key, 'preview:'))
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        GH_TOKEN: ${{ github.token }}
-        PR: ${{ github.event.pull_request.number }}
-        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      run: |
-        if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
-          echo "::error::The checkout is not $SHA. Give actions/checkout the pull request's head commit as its ref."
-          exit 1
-        fi
-        if [ -n "$PR" ]; then
-          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '"\(.state) \(.head.sha)"')
-          if [ "${pr% *}" != open ]; then
-            echo "::error::Pull request $PR is closed, so its preview is not deployed again."
-            exit 1
-          fi
-          head=${pr#* }
-        else
-          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/${GITHUB_REF#refs/}" --jq .sha)
-        fi
-        if [ "$head" != "$SHA" ]; then
-          echo "::error::$SHA is stale: its branch now points to $head. Convex was not deployed."
-          exit 1
-        fi
-
-    # Runs the app's deploy script, or npx convex deploy; node --run puts the node_modules/.bin
-    # folders on PATH, whatever the package manager, and appends the arguments to the script's last
-    # command. A pull request's step gets only the preview key, though the job holds the production
-    # key too unless the production environment keeps it.
-    # The preview's name is GITHUB_HEAD_REF as it is, which npx convex deploy also takes by default
-    # in GitHub Actions; Convex keeps it as the previewIdentifier.
     - name: Deploy
       id: deploy
-      if: >-
-        github.event.action != 'closed' && (!github.event.pull_request || inputs.preview-deploy-key
-        || startsWith(inputs.deploy-key, 'preview:'))
+      if: github.event.action != 'closed'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        CONVEX_DEPLOY_KEY:
-          ${{ github.event.pull_request && (inputs.preview-deploy-key || inputs.deploy-key) ||
-          inputs.deploy-key }}
+        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
+        TOKEN: ${{ github.token }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
         PR: ${{ github.event.pull_request.number }}
       run: |
         kind=${CONVEX_DEPLOY_KEY%%:*}
-        if [ -n "$PR" ] && [ "$kind" != preview ]; then
-          echo "::error::preview-deploy-key is not a preview deploy key (preview:...). Convex was not deployed: npx convex deploy with a production key ignores --preview-name and deploys the pull request to production."
-          exit 1
+        if [ -n "$PR" ] && [ -z "$kind" ]; then
+          echo "::notice::No preview: set the CONVEX_PREVIEW_DEPLOY_KEY secret and pass it as deploy-key in the preview job." && exit 0
         fi
-        if [ -z "$PR" ] && [ "$kind" != prod ]; then
-          echo "::error::deploy-key is missing or is not a production deploy key (prod:...). Outside a pull request the action deploys only to production. Convex was not deployed."
-          exit 1
-        fi
+        [ -z "$PR" ] || [ "$kind" = preview ] || { echo "::error::deploy-key is not a preview deploy key (preview:...). Convex was not deployed: npx convex deploy with a production key ignores --preview-name and deploys the pull request to production."; exit 1; }
+        [ -n "$PR" ] || [ "$kind" = prod ] || { echo "::error::deploy-key is missing or is not a production deploy key (prod:...). Outside a pull request the action deploys only to production. Convex was not deployed."; exit 1; }
+        # A re-run of an old run, or a checkout of another commit, must not put older code over newer code.
+        head=$(git -c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')" ls-remote origin "refs/heads/$BRANCH" | cut -f1) && unset TOKEN
+        [ "$(git rev-parse HEAD)" = "$head" ] || { echo "::error::The checkout is not the head of $BRANCH ($head): check out the head commit. Convex was not deployed."; exit 1; }
         args=()
-        if [ -n "$PR" ]; then
-          args=(--preview-name "$GITHUB_HEAD_REF")
-          echo "preview-name=$GITHUB_HEAD_REF" >> "$GITHUB_OUTPUT"
-        fi
+        [ -z "$PR" ] || args=(--preview-name "$GITHUB_HEAD_REF")
+        # node --run puts node_modules/.bin on PATH and appends the arguments to the script's last command.
         if [ -n "$(jq -r '.scripts.deploy // empty' package.json)" ]; then
           node --run deploy -- "${args[@]}"
         else
           npx convex deploy "${args[@]}"
         fi
-
-        # The deployment gives its own URLs, the ones that its functions read, so they are right in
-        # every region; the management API refuses a production key. A key limited to some actions
-        # may lack the inline query: then the deploy has happened and only the URLs are unknown.
-        if urls=$(npx convex run --inline-query "[process.env.CONVEX_SITE_URL, process.env.CONVEX_CLOUD_URL]" "${args[@]}"); then
-          url=$(jq -r '.[0]' <<< "$urls")
-          cloud=$(jq -r '.[1]' <<< "$urls")
-        else
-          url="" cloud=""
-          echo "::warning::Convex is deployed, but the key cannot run the inline query that reads the deployment's URLs (deployment:functions:runTestQuery), so url and deployment-url are empty."
-        fi
-        # A production key names its deployment (prod:<name>|...); a preview's name is the first
-        # label of its deployment URL's host, unless that is a custom domain. The dashboard's
-        # /d/<name> opens the deployment's page.
-        name=""
-        if [ -n "$PR" ]; then
-          if [[ $cloud == https://*.convex.cloud ]]; then
-            name=${cloud#https://}
-            name=${name%%.*}
-          fi
-        else
-          name=${CONVEX_DEPLOY_KEY#prod:}
-          name=${name%%|*}
-        fi
+        # The deployment's own URLs are right in every region; a key without inline queries still deploys.
+        urls=$(npx convex run --inline-query "[process.env.CONVEX_SITE_URL, process.env.CONVEX_CLOUD_URL]" "${args[@]}") ||
+          { urls='["", ""]'; echo "::warning::Convex is deployed, but the key cannot run the inline query that reads the deployment's URLs (deployment:functions:runTestQuery), so url and deployment-url are empty."; }
+        url=$(jq -r '.[0]' <<< "$urls") cloud=$(jq -r '.[1]' <<< "$urls")
+        # A production key names its deployment; a preview's name is its .convex.cloud host's first label.
+        name=${CONVEX_DEPLOY_KEY#prod:} name=${name%%|*}
+        [ -z "$PR" ] || { name=${cloud#https://} name=${name%%.*}; [[ $cloud == https://*.convex.cloud ]] || name=""; }
         dashboard=${name:+https://dashboard.convex.dev/d/$name}
-        printf 'url=%s\ndeployment-url=%s\ndashboard-url=%s\n' "$url" "$cloud" "$dashboard" >> "$GITHUB_OUTPUT"
+        printf 'url=%s\ndeployment-url=%s\ndashboard-url=%s\npreview-name=%s\n' "$url" "$cloud" "$dashboard" "$GITHUB_HEAD_REF" >> "$GITHUB_OUTPUT"
         printf -- '- Site: %s\n- Deployment: %s\n- Dashboard: %s\n' "${url:-unknown}" "${cloud:-unknown}" "${dashboard:-unknown}" >> "$GITHUB_STEP_SUMMARY"
 
-    # A preview deploy key may read its project's deployments and delete its previews through the
-    # management API. Then the GitHub deployments of the branch go inactive, so the pull request
-    # shows no link to a deleted preview; that needs deployments: write.
     - name: Delete the preview of the closed pull request
-      if:
-        github.event.action == 'closed' && (inputs.preview-deploy-key ||
-        startsWith(inputs.deploy-key, 'preview:'))
+      if: github.event.action == 'closed' && inputs.deploy-key
       shell: bash
       env:
-        CONVEX_DEPLOY_KEY: ${{ inputs.preview-deploy-key || inputs.deploy-key }}
-        GH_TOKEN: ${{ github.token }}
-        HEAD_LABEL: ${{ github.event.pull_request.head.label }}
-        CLOSED_AT: ${{ github.event.pull_request.closed_at }}
+        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
       run: |
-        # A re-run of an old closed run must not delete a preview that an open pull request uses: the
-        # reopened one, or another one from the same branch.
-        open=$(gh api -X GET "repos/$GITHUB_REPOSITORY/pulls" -f state=open -f head="$HEAD_LABEL" --jq length)
-        if [ "$open" != 0 ]; then
-          echo "An open pull request still has the branch $GITHUB_HEAD_REF, so its preview stays."
-          exit 0
-        fi
         IFS=: read -r kind team project <<< "${CONVEX_DEPLOY_KEY%%|*}"
-        if [ "$kind" != preview ]; then
-          echo "::error::preview-deploy-key is not a preview deploy key (preview:...)."
-          exit 1
-        fi
+        [ "$kind" = preview ] || { echo "::error::deploy-key is not a preview deploy key (preview:...)."; exit 1; }
         api() {
-          local body
-          body=$(curl -sS --fail-with-body -H "Authorization: Bearer $CONVEX_DEPLOY_KEY" "https://api.convex.dev/v1/$1" "${@:2}") ||
-            { echo "$1: $body" >&2; return 1; }
+          body=$(curl -sS --fail-with-body -H "Authorization: Bearer $CONVEX_DEPLOY_KEY" "https://api.convex.dev/v1/$1" "${@:2}") || { echo "$1: $body" >&2; return 1; }
           printf '%s' "$body"
         }
         id=$(api "teams/$team/projects/$project" | jq -r .id)
-        names=$(api "projects/$id/list_deployments?deploymentType=preview" |
-          jq -r --arg name "$GITHUB_HEAD_REF" '.[] | select(.previewIdentifier == $name) | .name')
-        if [ -z "$names" ]; then
-          echo "No preview named $GITHUB_HEAD_REF in $project."
-        fi
+        names=$(api "projects/$id/list_deployments?deploymentType=preview" | jq -r --arg name "$GITHUB_HEAD_REF" '.[] | select(.previewIdentifier == $name) | .name')
+        [ -n "$names" ] || echo "No preview named $GITHUB_HEAD_REF in $project."
         for name in $names; do
           api "deployments/$name/delete" -X POST > /dev/null
           echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
         done
-        # Also when Convex had already deleted the preview, and on a re-run after a failure here. Only
-        # the deployments made before the close: another app of a reopened pull request may have
-        # deployed again already.
-        ids=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/deployments" -f ref="$GITHUB_HEAD_REF" -F per_page=100 --jq '.[] | select(.created_at <= env.CLOSED_AT) | .id')
-        for deployment in $ids; do
-          gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" -f state=inactive > /dev/null ||
-            { echo "::error::Marking a deployment inactive needs deployments: write in the job's permissions."; exit 1; }
-        done
-        echo "Marked $(wc -w <<< "$ids") deployments of $GITHUB_HEAD_REF inactive."
