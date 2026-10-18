@@ -18,9 +18,8 @@ key, and `--preview-name` accepts only a preview key, so a production key cannot
 The first deploy to a deployment pushes the component, then uploads the files. Until that upload
 ends, the site answers 404.
 
-Run one deploy at a time per deployment; the examples'
-[deploy workflow](https://github.com/samebase/convex-hosting/blob/main/.github/workflows/deploy-examples.yml)
-queues them, with one `concurrency` group per deployment.
+Run one deploy at a time per deployment; in GitHub Actions, the job's `concurrency` group queues
+them (see [GitHub Actions](#github-actions)).
 
 `convex-hosting` keeps its state in `.convex-hosting/` at the project root, next to `convex/`, like
 Wrangler's `.wrangler/`. The folder has its own `.gitignore`, so git ignores it. The package
@@ -86,10 +85,69 @@ Convex's 100 MiB response limit anyway.
   refused without it).
 - **Checks that must stop a release** run before `convex-hosting deploy`, because its push switches
   the site. Checks that need the new functions run after it.
-- **A re-run of an old workflow run** checks out its old commit, and its push puts older code over
-  newer code; a `concurrency` group orders runs but does not refuse a stale one. So the examples'
-  workflows check, right before the deploy, that the commit is still the head of `main`, or of the
-  pull request for a preview, and fail otherwise.
-- **A step that needs the site URL**, such as a preview comment, reads it from the deploy step: when
-  `GITHUB_OUTPUT` is set, `deploy` appends `url=<site URL>` to it, so give the deploy step an `id`
-  and read `steps.<id>.outputs.url`.
+- **A step that needs the site URL** reads it from the deploy step: when `GITHUB_OUTPUT` is set,
+  `deploy` appends `url=<site URL>` to it.
+
+## GitHub Actions
+
+[`actions/deploy`](../actions/deploy/action.yml) runs the app's `deploy` script in a job:
+
+- On a push, it deploys to production with the production key.
+- On a pull request, it deploys to the preview `pr-<number>` with the project's preview deploy key.
+  A second push reuses the preview.
+- When the pull request closes, it deletes that preview through the Convex management API, with the
+  same preview key. A closed pull request then holds no deployment of the team's quota.
+- Before a deploy, it fails when the commit is no longer the head of its branch, when the checkout
+  is another commit (on a pull request, `actions/checkout` takes a merge commit by default), or when
+  the pull request is closed. So a re-run of an old run never puts older code over newer code.
+
+Its `url` output is the site URL. The job keeps the install, the checks, `concurrency`,
+`permissions`, and the secret names; the deploy flags stay in the `deploy` script. The inputs
+`script` and `working-directory` select another script or package. The action needs
+`@samebase/convex-hosting` 0.12.0 or later, which refuses a production key with `--preview-name`,
+Node 22.3 or later for `node --run`, and `gh`, `curl`, and `jq`, which GitHub's runners have.
+
+```yaml
+name: Deploy
+on:
+  push: { branches: [main] }
+  pull_request: { types: [opened, synchronize, reopened, closed] }
+permissions: { contents: read, pull-requests: read }
+jobs:
+  deploy:
+    # A pull request from a fork gets no secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository || !github.head_ref
+    runs-on: ubuntu-latest
+    concurrency: { group: "deploy-${{ github.event.number || 'production' }}", queue: max }
+    environment:
+      name: ${{ github.head_ref && 'preview' || 'production' }}
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ github.event.pull_request.head.sha }}", persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 24 }
+      - run: npm ci
+      - id: deploy
+        uses: samebase/convex-hosting/actions/deploy@v1
+        with:
+          deploy-key:
+            ${{ github.head_ref && secrets.CONVEX_PREVIEW_DEPLOY_KEY || secrets.CONVEX_DEPLOY_KEY }}
+```
+
+- `queue: max` keeps every pending run of the group, in order. With the default, a new pending run
+  replaces the older one, so a re-run of an old commit could replace the newest run, which would
+  then never deploy.
+- `environment` shows the URL on the pull request as a deployment.
+- To post the URL as a comment too, add `pull-requests: write` to `permissions` and this step after
+  the deploy:
+
+  ```yaml
+  - if: steps.deploy.outputs.url
+    uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+    with:
+      message: "Preview: ${{ steps.deploy.outputs.url }}"
+  ```
+
+- The `v1` tag comes with the action's first release. Pin the action by its commit SHA, as any
+  other.
