@@ -20,6 +20,10 @@ Every asset answers with an `ETag` and, unless the request carries `Authorizatio
   Cache-Control: public, max-age=31536000, immutable
 ```
 
+The `*.convex.site` front drops `immutable` from this header and keeps the `max-age` (seen on `.js`
+and `.css` files, on a cache miss and a hit): the year applies, and a browser may still revalidate
+the file when the page reloads. A local deployment, which has no front, sends the header as written.
+
 ## Routing
 
 `routeAll(http, component, versionId, worker?)` routes the site's HTTP action for every method at
