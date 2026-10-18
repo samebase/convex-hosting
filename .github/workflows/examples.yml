@@ -1,0 +1,74 @@
+name: Examples
+
+# A push to main deploys each example to production. A pull request deploys each example to its
+# preview, pr-<number>, and deletes the previews when it closes.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # A pull request from a fork gets no secrets.
+    if:
+      github.event_name == 'push' || github.event.pull_request.head.repo.full_name ==
+      github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # Each example deploys to its own Convex project, so one failure does not stop the others.
+      fail-fast: false
+      matrix:
+        include:
+          - example: tanstack-ssr
+            key: TANSTACK_SSR
+          - example: tanstack-spa
+            key: TANSTACK_SPA
+          - example: hello-world-assets-only
+            key: HELLO_WORLD_ASSETS_ONLY
+    # One run at a time per deployment, started in the order the runs began to wait: a re-run of an
+    # old commit waits, fails the action's head check, and never replaces the newest pending run.
+    concurrency:
+      group: examples-${{ matrix.example }}-${{ github.event.number || 'production' }}
+      queue: max
+    # The pull request shows the preview URL as a deployment.
+    environment:
+      name: ${{ matrix.example }}${{ github.event_name == 'pull_request' && ' preview' || '' }}
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 12.10.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy, or delete the preview of a closed pull request
+        id: deploy
+        uses: ./actions/deploy
+        with:
+          working-directory: examples/${{ matrix.example }}
+          # An index hands the runner every repository secret; all of them are the examples'
+          # Convex deploy keys.
+          deploy-key:
+            ${{ secrets[format(github.event_name == 'push' && 'CONVEX_DEPLOY_KEY_{0}' ||
+            'CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]

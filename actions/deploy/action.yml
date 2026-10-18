@@ -1,0 +1,116 @@
+name: convex-hosting deploy
+description: >-
+  Runs the app's convex-hosting deploy script, to production or to a pull request's preview, after
+  it checks that the checkout is the head of its branch. When the pull request closes, deletes its
+  preview instead. Needs @samebase/convex-hosting 0.12.0 or later.
+inputs:
+  deploy-key:
+    description: >-
+      The Convex deploy key, from a secret: the production key, or the project's preview deploy key
+      on a pull request.
+    required: true
+  preview-name:
+    description: >-
+      The preview deployment's name. On a pull request it defaults to pr-<number>; anywhere else, an
+      empty name deploys to production.
+    default: ""
+  working-directory:
+    description: The directory of the package.json whose script runs convex-hosting deploy.
+    default: .
+  script:
+    description: The package.json script that runs convex-hosting deploy with the app's flags.
+    default: deploy
+outputs:
+  url:
+    description: The site URL that the deploy reported. Empty when a preview was deleted.
+    value: ${{ steps.deploy.outputs.url }}
+runs:
+  using: composite
+  steps:
+    # A re-run of an old run deploys its old commit, so its push would put older code over newer
+    # code. The caller's concurrency group orders runs; this refuses a stale one. On pull_request,
+    # actions/checkout takes a merge commit by default, which changes when the base moves, so the
+    # checkout must be the head commit itself.
+    - name: Check that the checkout is the head of its branch
+      if: github.event.action != 'closed'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR: ${{ github.event.pull_request.number }}
+        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+          echo "::error::The checkout is not $SHA. Give actions/checkout the pull request's head commit as its ref."
+          exit 1
+        fi
+        if [ -n "$PR" ]; then
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '"\(.state) \(.head.sha)"')
+          if [ "${pr% *}" != open ]; then
+            echo "::error::Pull request $PR is closed, so its preview is not deployed again."
+            exit 1
+          fi
+          head=${pr#* }
+        else
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/${GITHUB_REF#refs/}" --jq .sha)
+        fi
+        if [ "$head" != "$SHA" ]; then
+          echo "::error::$SHA is stale: its branch now points to $head. Convex was not deployed."
+          exit 1
+        fi
+
+    # The CLI appends url=<site URL> to $GITHUB_OUTPUT. node --run runs the script with the
+    # node_modules/.bin folders on PATH, whatever the package manager.
+    - name: Deploy
+      id: deploy
+      if: github.event.action != 'closed'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
+        PREVIEW_NAME:
+          ${{ inputs.preview-name || (github.event.pull_request.number && format('pr-{0}',
+          github.event.pull_request.number)) || '' }}
+        SCRIPT: ${{ inputs.script }}
+      run: |
+        if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+          echo "::error::deploy-key is empty. A pull request from a fork gets no secrets; skip its job."
+          exit 1
+        fi
+        if [ -n "$PREVIEW_NAME" ]; then
+          node --run "$SCRIPT" -- --preview-name "$PREVIEW_NAME"
+        else
+          node --run "$SCRIPT"
+        fi
+
+    # A preview deploy key may read its project's deployments and delete its previews through the
+    # management API. Its prefix names the team and the project: preview:<team>:<project>|...
+    - name: Delete the preview of the closed pull request
+      if: github.event.action == 'closed'
+      shell: bash
+      env:
+        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
+        PREVIEW_NAME:
+          ${{ inputs.preview-name || format('pr-{0}', github.event.pull_request.number) }}
+      run: |
+        IFS=: read -r kind team project <<< "${CONVEX_DEPLOY_KEY%%|*}"
+        if [ "$kind" != preview ]; then
+          echo "::error::deploy-key is not a preview deploy key. A pull request from a fork gets no secrets; skip its job."
+          exit 1
+        fi
+        api() {
+          local body
+          body=$(curl -sS --fail-with-body -H "Authorization: Bearer $CONVEX_DEPLOY_KEY" "https://api.convex.dev/v1/$1" "${@:2}") ||
+            { echo "$1: $body" >&2; return 1; }
+          printf '%s' "$body"
+        }
+        project_json=$(api "teams/$team/projects/$project")
+        previews=$(api "projects/$(jq -r .id <<< "$project_json")/list_deployments?deploymentType=preview")
+        names=$(jq -r --arg name "$PREVIEW_NAME" '.[] | select(.previewIdentifier == $name) | .name' <<< "$previews")
+        if [ -z "$names" ]; then
+          echo "No preview named $PREVIEW_NAME in $project."
+        fi
+        for name in $names; do
+          api "deployments/$name/delete" -X POST > /dev/null
+          echo "Deleted the preview $PREVIEW_NAME ($name) in $project."
+        done

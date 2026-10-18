@@ -10,11 +10,13 @@ on:
     paths:
       - ".github/workflows/**"
       - ".github/actions/**"
+      - "actions/**"
   pull_request:
     branches: ["**"]
     paths:
       - ".github/workflows/**"
       - ".github/actions/**"
+      - "actions/**"
 
 permissions:
   contents: read
