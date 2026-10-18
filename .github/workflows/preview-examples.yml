@@ -1,0 +1,126 @@
+name: Preview examples
+
+# A pull request deploys each example to its preview, named after the branch, and comments the
+# links. The close deletes the previews. The shape is docs/deploy.md's preview.yml.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  # The comment with the preview's links, and the cleanup's list of the branch's open pull requests.
+  pull-requests: write
+  # The cleanup marks the branch's deployments inactive.
+  deployments: write
+
+jobs:
+  preview:
+    # A pull request from a fork gets no secrets.
+    if:
+      github.event.action != 'closed' && github.event.pull_request.head.repo.full_name ==
+      github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # Each example deploys to its own Convex project, so one failure does not stop the others.
+      fail-fast: false
+      matrix:
+        include:
+          - example: tanstack-ssr
+            key: TANSTACK_SSR
+          - example: tanstack-spa
+            key: TANSTACK_SPA
+          - example: hello-world-assets-only
+            key: HELLO_WORLD_ASSETS_ONLY
+    # All pull requests share each example's preview environment.
+    environment:
+      name: ${{ matrix.example }} preview
+      url: ${{ steps.deploy.outputs.url }}
+    # One run at a time per preview, in the order the runs began to wait; the cleanup joins it.
+    concurrency:
+      group: preview ${{ matrix.example }} ${{ github.head_ref }}
+      queue: max
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 12.10.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy the preview
+        id: deploy
+        uses: ./actions/deploy
+        with:
+          working-directory: examples/${{ matrix.example }}
+          # The preview key in deploy-key: this workflow never names a production key. An index
+          # hands the runner every repository secret; all of them are the examples' Convex deploy
+          # keys.
+          deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+
+      - name: Comment the preview's links
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: ${{ matrix.example }}
+          message: |
+            ${{ matrix.example }} preview `${{ steps.deploy.outputs.preview-name }}`: ${{ steps.deploy.outputs.url }}
+            Deployment: ${{ steps.deploy.outputs.deployment-url }}
+            Dashboard: ${{ steps.deploy.outputs.dashboard-url }}
+
+  cleanup:
+    if:
+      github.event.action == 'closed' && github.event.pull_request.head.repo.full_name ==
+      github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - example: tanstack-ssr
+            key: TANSTACK_SSR
+          - example: tanstack-spa
+            key: TANSTACK_SPA
+          - example: hello-world-assets-only
+            key: HELLO_WORLD_ASSETS_ONLY
+    concurrency:
+      group: preview ${{ matrix.example }} ${{ github.head_ref }}
+      queue: max
+    steps:
+      # Only to load ./actions/deploy: the delete needs no toolchain, and a broken install must not
+      # keep the preview.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Delete the preview
+        uses: ./actions/deploy
+        with:
+          deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+
+      # The comment keeps the links and says that the preview is gone; a pull request without one gets
+      # no comment.
+      - name: Note the deleted preview in the comment
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: ${{ matrix.example }}
+          append: true
+          only_update: true
+          message: Preview deleted when the pull request closed.

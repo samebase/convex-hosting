@@ -1,0 +1,61 @@
+name: Deploy examples
+
+# A push to main deploys each example to production, through actions/deploy as docs/deploy.md
+# shows it.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # Each example deploys to its own Convex project, so one failure does not stop the others.
+      fail-fast: false
+      matrix:
+        include:
+          - example: tanstack-ssr
+            key: TANSTACK_SSR
+          - example: tanstack-spa
+            key: TANSTACK_SPA
+          - example: hello-world-assets-only
+            key: HELLO_WORLD_ASSETS_ONLY
+    environment: ${{ matrix.example }}
+    # One run at a time per deployment, in the order the runs began to wait: a re-run of an old
+    # commit waits, fails the action's head check, and never replaces the newest pending run.
+    concurrency:
+      group: production ${{ matrix.example }}
+      queue: max
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 12.10.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy
+        uses: ./actions/deploy
+        with:
+          working-directory: examples/${{ matrix.example }}
+          # Each example is its own Convex project, with its production key in the repository secret
+          # CONVEX_DEPLOY_KEY_<KEY>. An index hands the runner every repository secret; all of them
+          # are the examples' Convex deploy keys.
+          deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
