@@ -20,6 +20,10 @@ Every asset answers with an `ETag` and, unless the request carries `Authorizatio
   Cache-Control: public, max-age=31536000, immutable
 ```
 
+The `*.convex.site` front drops `immutable` from this header and keeps the `max-age` (seen on `.js`
+and `.css` files, on a cache miss and a hit): the year applies, and a browser may still revalidate
+the file when the page reloads. A local deployment, which has no front, sends the header as written.
+
 ## Routing
 
 `routeAll(http, component, versionId, worker?)` routes the site's HTTP action for every method at
@@ -71,3 +75,13 @@ routes, request middleware, and Convex Auth cookie sessions run as they do on a 
 [TanStack Start example](../examples/tanstack-ssr), live at
 [gallant-llama-40.convex.site](https://gallant-llama-40.convex.site), has a page for each:
 `/stream`, `/server`, `/todos`.
+
+A page prerendered at build time is a file of the build, and the file rules decide where it answers:
+
+- A page prerendered to `/x/index.html` answers at `/x/` under the default `auto-trailing-slash`,
+  and `/x` redirects there with 307. `--html-handling drop-trailing-slash` serves it at `/x`.
+- Under every `--html-handling` but `none`, a file `/index.html` answers `/`, so a single-page shell
+  built to `/index.html` replaces the rendered home page. With a server entry, do not build one.
+- Keep `--not-found-handling` at its default, `none`. With a server entry, the other two values
+  answer a navigation that matches no file with the shell or the 404 page, before the server entry
+  sees it.
