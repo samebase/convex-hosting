@@ -6,15 +6,26 @@
 
 header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem;
+  column-gap: 1rem;
+  padding: 0.375rem 1rem;
 }
 
-nav {
+/* `header > div` holds the signed-in name and its button, which wrap as one item. */
+nav,
+header > div {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 1rem;
+}
+
+/* Tap targets at least 44px tall. */
+header a,
+header button {
+  padding-block: 0.625rem;
 }
 
 main {
