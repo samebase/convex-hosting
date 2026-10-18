@@ -22,8 +22,20 @@ inputs:
     default: preview/${{ github.head_ref }}
 outputs:
   url:
-    description: The site URL, where the deployment's HTTP actions answer. Empty when none deployed.
+    description: >-
+      The site URL, where the deployment's HTTP actions answer (CONVEX_SITE_URL). Empty when none
+      deployed or when the key cannot run an inline query.
     value: ${{ steps.deploy.outputs.url }}
+  deployment-url:
+    description: >-
+      The deployment URL that clients connect to (CONVEX_CLOUD_URL), such as a frontend's
+      VITE_CONVEX_URL. Empty when none deployed or when the key cannot run an inline query.
+    value: ${{ steps.deploy.outputs.deployment-url }}
+  dashboard-url:
+    description: >-
+      The deployment's page in the Convex dashboard. Empty when none deployed, and for a preview
+      whose URLs are unknown.
+    value: ${{ steps.deploy.outputs.dashboard-url }}
   preview-name:
     description: >-
       The name of the preview deployed, the pull request's branch, for npx convex run and other
@@ -74,10 +86,11 @@ runs:
         fi
 
     # Runs the app's deploy script, or npx convex deploy; node --run puts the node_modules/.bin
-    # folders on PATH, whatever the package manager. A pull request's step gets only the preview
-    # key, so the app's code never holds the production key there. The preview's name is
-    # GITHUB_HEAD_REF as it is, which npx convex deploy also takes by default in GitHub Actions;
-    # Convex keeps it as the previewIdentifier.
+    # folders on PATH, whatever the package manager, and appends the arguments to the script's last
+    # command. A pull request's step gets only the preview key in its environment; the job holds
+    # the production key too unless the caller keeps it in the production environment's secrets.
+    # The preview's name is GITHUB_HEAD_REF as it is, which npx convex deploy also takes by default
+    # in GitHub Actions; Convex keeps it as the previewIdentifier.
     - name: Deploy
       id: deploy
       if: >-
@@ -109,10 +122,28 @@ runs:
           npx convex deploy "${args[@]}"
         fi
 
-        # The deployment gives its own site URL, the one that its functions read, so it is right in
-        # every region. The management API refuses a production key.
-        url=$(npx convex run --inline-query process.env.CONVEX_SITE_URL "${args[@]}" | jq -r .)
-        echo "url=$url" >> "$GITHUB_OUTPUT"
+        # The deployment gives its own URLs, the ones that its functions read, so they are right in
+        # every region; the management API refuses a production key. A key limited to some actions
+        # may lack the inline query: then the deploy has happened and only the URLs are unknown.
+        if urls=$(npx convex run --inline-query "[process.env.CONVEX_SITE_URL, process.env.CONVEX_CLOUD_URL]" "${args[@]}"); then
+          url=$(jq -r '.[0]' <<< "$urls")
+          cloud=$(jq -r '.[1]' <<< "$urls")
+        else
+          url="" cloud=""
+          echo "::warning::Convex is deployed, but the key cannot run the inline query that reads the deployment's URLs (deployment:functions:runTestQuery), so url and deployment-url are empty."
+        fi
+        # A production key names its deployment (prod:<name>|...); a preview's name is the first
+        # label of its deployment URL's host. The dashboard's /d/<name> opens the deployment's page.
+        if [ -n "$PR" ]; then
+          name=${cloud#https://}
+          name=${name%%.*}
+        else
+          name=${CONVEX_DEPLOY_KEY#prod:}
+          name=${name%%|*}
+        fi
+        dashboard=${name:+https://dashboard.convex.dev/d/$name}
+        printf 'url=%s\ndeployment-url=%s\ndashboard-url=%s\n' "$url" "$cloud" "$dashboard" >> "$GITHUB_OUTPUT"
+        printf -- '- Site: %s\n- Deployment: %s\n- Dashboard: %s\n' "${url:-unknown}" "${cloud:-unknown}" "${dashboard:-unknown}" >> "$GITHUB_STEP_SUMMARY"
 
     # A preview deploy key may read its project's deployments and delete its previews through the
     # management API. Then the deployments of the job's GitHub environment go inactive, so the pull

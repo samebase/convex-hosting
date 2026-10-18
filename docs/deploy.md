@@ -96,6 +96,7 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
 
 - It runs the `deploy` script of the app's `package.json`, or `npx convex deploy` when there is no
   such script. On a pull request it appends `--preview-name <branch>`, which both commands take.
+  `node --run` appends it to the script's last command, so the deploy command must end the script.
 - On a push, it deploys to production with `deploy-key`, which must start with `prod:`.
 - On a pull request, it deploys to the preview named after the pull request's branch
   (`GITHUB_HEAD_REF` as it is, the name that `npx convex deploy` takes by default in GitHub Actions
@@ -113,14 +114,21 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
   is another commit (on a pull request, `actions/checkout` takes a merge commit by default), or when
   the pull request is closed. So a re-run of an old run never puts older code over newer code.
 
-Its `url` output is the site URL, where the deployment's HTTP actions answer, and the job's
-`environment` shows it on the pull request. The deployment gives it, as `CONVEX_SITE_URL`, to an
-inline query with the same key, so it is right in every region. Its `preview-name` output is the
-preview's name, for a later `npx convex run --preview-name`; both outputs are empty on a close and
-when nothing deployed, and `preview-name` on production too. The job keeps the install, the checks,
-`concurrency`, `permissions`, and the secret names, and the input `working-directory` selects the
-package. The action needs Node 22.3 or later for `node --run`, and `gh`, `curl`, and `jq`, which
-GitHub's runners have. This workflow deploys a plain Convex app:
+Its outputs (the job summary lists the first three):
+
+| Output           | Value                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `url`            | The site URL (`CONVEX_SITE_URL`), where HTTP actions answer; the pull request's link       |
+| `deployment-url` | The deployment URL (`CONVEX_CLOUD_URL`), which a frontend build takes as `VITE_CONVEX_URL` |
+| `dashboard-url`  | The deployment's page in the Convex dashboard, `https://dashboard.convex.dev/d/<name>`     |
+| `preview-name`   | The preview's name, for a later `npx convex run --preview-name`; empty on production       |
+
+The deployment gives both URLs to an inline query with the same key, so they are right in every
+region. A key that may not run inline queries still deploys; then the two URLs are empty, with a
+warning. Every output is empty on a close and when nothing deployed. The job keeps the install, the
+checks, `concurrency`, `permissions`, and the secret names, and the input `working-directory`
+selects the package. The action needs Node 22.3 or later for `node --run`, and `gh`, `curl`, and
+`jq`, which GitHub's runners have. This workflow deploys a plain Convex app:
 
 ```yaml
 on:
