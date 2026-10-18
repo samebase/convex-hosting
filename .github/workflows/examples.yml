@@ -11,9 +11,10 @@ on:
 
 permissions:
   contents: read
-  # The close run lists the open pull requests of the branch. A pull request's run creates its
-  # preview's deployment and the close marks it inactive.
-  pull-requests: read
+  # The comment with the preview's links, and the close run's list of the branch's open pull
+  # requests.
+  pull-requests: write
+  # The close run marks the branch's deployments inactive.
   deployments: write
 
 jobs:
@@ -42,11 +43,13 @@ jobs:
         examples ${{ matrix.example }} ${{ github.head_ref && format('preview/{0}', github.head_ref)
         || 'production' }}
       queue: max
-    # A push deploys in the example's production environment, which holds its production key. A pull
-    # request's job has no environment; the action shows the preview on the pull request itself.
+    # A push deploys in the example's production environment, which holds its production key, and a
+    # pull request in the example's preview environment, which all pull requests share. The close run
+    # creates no deployment, which would hide the link of another pull request.
     environment:
-      name: ${{ github.event_name == 'push' && matrix.example || '' }}
+      name: ${{ github.head_ref && format('{0} preview', matrix.example) || matrix.example }}
       url: ${{ steps.deploy.outputs.url }}
+      deployment: ${{ github.event.action != 'closed' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -79,10 +82,30 @@ jobs:
         uses: ./actions/deploy
         with:
           working-directory: examples/${{ matrix.example }}
-          environment: ${{ matrix.example }} preview
           # Each example is its own Convex project. Its production key, CONVEX_DEPLOY_KEY_<KEY>, is a
           # secret of the example's production environment, so a pull request's job never receives it.
           # Its preview key, CONVEX_PREVIEW_DEPLOY_KEY_<KEY>, is a repository secret. An index hands
           # the runner every repository secret, all of them preview keys.
           deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
           preview-deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+
+      - name: Comment the preview's links
+        if: steps.deploy.outputs.preview-name
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: ${{ matrix.example }}
+          message: |
+            ${{ matrix.example }} preview `${{ steps.deploy.outputs.preview-name }}`: ${{ steps.deploy.outputs.url }}
+            Deployment: ${{ steps.deploy.outputs.deployment-url }}
+            Dashboard: ${{ steps.deploy.outputs.dashboard-url }}
+
+      # The comment keeps the links and says that the preview is gone; a pull request without one gets
+      # no comment.
+      - name: Note the deleted preview in the comment
+        if: github.event.action == 'closed'
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: ${{ matrix.example }}
+          append: true
+          only_update: true
+          message: Preview deleted when the pull request closed.
