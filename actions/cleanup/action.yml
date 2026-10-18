@@ -1,0 +1,32 @@
+name: Convex preview cleanup
+description: >-
+  Deletes the Convex preview named after the branch of a closed pull request, and notes it in the
+  preview's pull request comment.
+inputs:
+  deploy-key:
+    description:
+      The project's preview deploy key, which must start with preview:. Empty deletes nothing.
+    required: true
+  working-directory:
+    description: The preview's working-directory, which names its comment.
+    default: .
+  comment:
+    description: Note the delete in the preview's pull request comment; needs pull-requests write.
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Delete the preview
+      shell: bash
+      env:
+        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
+      run: node "$GITHUB_ACTION_PATH/../lib/convex-deploy.ts" cleanup
+
+    - name: Note the deleted preview in the comment
+      if: inputs.comment == 'true' && inputs.deploy-key
+      uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+      with:
+        header: preview ${{ inputs.working-directory }}
+        append: true
+        only_update: true
+        message: Preview deleted when the pull request closed.

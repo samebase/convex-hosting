@@ -1,0 +1,50 @@
+name: Convex preview of a pull request
+description: >-
+  Deploys a pull request's Convex app to the preview named after its branch, outputs its URLs, and
+  keeps a pull request comment with its links.
+inputs:
+  deploy-key:
+    description:
+      The project's preview deploy key, which must start with preview:. Empty deploys nothing.
+    required: true
+  working-directory:
+    description: The directory of the app's package.json.
+    default: .
+  comment:
+    description: Keep a pull request comment with the preview's links; needs pull-requests write.
+    default: "true"
+outputs:
+  url:
+    description: The site URL (CONVEX_SITE_URL). Empty when nothing deployed or not readable.
+    value: ${{ steps.deploy.outputs.url }}
+  deployment-url:
+    description: The deployment URL (CONVEX_CLOUD_URL). Empty when nothing deployed or not readable.
+    value: ${{ steps.deploy.outputs.deployment-url }}
+  dashboard-url:
+    description: The deployment's page in the Convex dashboard. Empty when unknown.
+    value: ${{ steps.deploy.outputs.dashboard-url }}
+  preview-name:
+    description: The preview's name, the branch. Empty when nothing deployed.
+    value: ${{ steps.deploy.outputs.preview-name }}
+runs:
+  using: composite
+  steps:
+    - name: Deploy the preview
+      id: deploy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: node "$GITHUB_ACTION_PATH/../lib/convex-deploy.ts" preview
+
+    # One comment per app and pull request: the header names the app's directory.
+    - name: Comment the preview's links
+      if: inputs.comment == 'true' && github.event.pull_request.number && steps.deploy.outputs.url
+      uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+      with:
+        header: preview ${{ inputs.working-directory }}
+        message: |
+          Preview `${{ steps.deploy.outputs.preview-name }}`${{ inputs.working-directory != '.' && format(' of {0}', inputs.working-directory) || '' }}: ${{ steps.deploy.outputs.url }}
+          Deployment: ${{ steps.deploy.outputs.deployment-url }}
+          Dashboard: ${{ steps.deploy.outputs.dashboard-url }}
