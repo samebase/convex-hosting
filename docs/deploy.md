@@ -101,7 +101,8 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
 
 - It runs the `deploy` script of the app's `package.json`, or `npx convex deploy` when there is no
   such script. On a pull request it appends `--preview-name <branch>`, which both commands take.
-  `node --run` appends it to the script's last command, so the deploy command must end the script.
+  `node --run` appends it to the script's last command, so the deploy command must end the script,
+  and it runs no `predeploy` or `postdeploy` script.
 - On a push, it deploys to production with `deploy-key`, which must start with `prod:`.
 - On a pull request, it deploys to the preview named after the pull request's branch
   (`GITHUB_HEAD_REF` as it is, the name that `npx convex deploy` takes by default in GitHub Actions
@@ -113,7 +114,8 @@ production key in `deploy-key` and the project's preview deploy key in `preview-
   same preview key, unless another open pull request has the same branch. A closed pull request then
   holds no deployment of the team's quota. It also marks the deployments of the job's GitHub
   environment inactive (the input `environment`, `preview/<branch>` by default), so the pull request
-  links to no deleted preview. A branch renamed while its pull request is open deploys a new preview
+  links to no deleted preview. A preview is known by its branch name alone, so give each repository
+  its own Convex project. A branch renamed while its pull request is open deploys a new preview
   under the new name; the old one stays until Convex deletes it.
 - Before a deploy, it fails when the commit is no longer the head of its branch, when the checkout
   is another commit (on a pull request, `actions/checkout` takes a merge commit by default), or when
@@ -129,11 +131,13 @@ Its outputs (the job summary lists the first three):
 | `preview-name`   | The preview's name, for a later `npx convex run --preview-name`; empty on production       |
 
 The deployment gives both URLs to an inline query with the same key, so they are right in every
-region. A key that may not run inline queries still deploys; then the two URLs are empty, with a
-warning. Every output is empty on a close and when nothing deployed. The job keeps the install, the
-checks, `concurrency`, `permissions`, and the secret names, and the input `working-directory`
-selects the package. The action needs Node 22.3 or later for `node --run`, and `gh`, `curl`, and
-`jq`, which GitHub's runners have. This workflow deploys a plain Convex app:
+region. A plain Convex app whose key may not run inline queries still deploys; then the two URLs are
+empty, with a warning, so a step that must follow every deploy checks the event or `preview-name`,
+not `url`. (`convex-hosting deploy` needs inline queries for its upload; see the deploy key
+permissions above.) Every output is empty on a close and when nothing deployed. The job keeps the
+install, the checks, `concurrency`, `permissions`, and the secret names, and the input
+`working-directory` selects the package. The action needs Node 22.3 or later for `node --run`, and
+`gh`, `curl`, and `jq`, which GitHub's runners have. This workflow deploys a plain Convex app:
 
 ```yaml
 on:
@@ -144,7 +148,9 @@ jobs:
   deploy:
     if: github.event.pull_request.head.repo.full_name == github.repository || !github.head_ref
     runs-on: ubuntu-latest
-    concurrency: { group: "deploy-${{ github.head_ref || 'production' }}", queue: max }
+    concurrency:
+      group: deploy ${{ github.head_ref && format('preview/{0}', github.head_ref) || 'production' }}
+      queue: max
     environment:
       name: ${{ github.head_ref && format('preview/{0}', github.head_ref) || 'production' }}
       url: ${{ steps.deploy.outputs.url }}
@@ -168,9 +174,10 @@ A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy
 `convex-hosting deploy --build "vite build" --dist dist`; without that script, the plain
 `npx convex deploy` leaves its site answering 404 (see [Rules](#rules)).
 
-- `queue: max` keeps every pending run of the group, in order. With the default, a new pending run
-  replaces the older one, so a re-run of an old commit could replace the newest run, which would
-  then never deploy.
+- `queue: max` keeps up to 100 pending runs of the group, in the order each began to wait. With the
+  default, a new pending run replaces the older one, so a re-run of an old commit could replace the
+  newest run, which would then never deploy. The group of a branch named `production` is not the
+  production group.
 - Each branch has its own environment, `preview/<branch>`: in an environment that all pull requests
   share, the newest deployment hides the link of every other pull request. On a close, `deployment`
   is false, so the close run creates no deployment, which would hide the link of a reopened pull
@@ -180,8 +187,9 @@ A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy
 - On a closed pull request the job skips the install: the delete needs none, and a broken install
   must not keep the preview. It skips the Node setup too: with `cache: npm` or `cache: pnpm`, the
   setup's post step fails on a run without an install, because the folder that it caches is missing.
-- GitHub runs no `pull_request` workflow for a pull request with a merge conflict, so closing such a
-  pull request keeps its preview until Convex deletes it.
+- GitHub runs no `pull_request` workflow for a pull request with a merge conflict, or whose head
+  commit's message has a skip instruction such as `[skip ci]`, so closing such a pull request keeps
+  its preview until Convex deletes it.
 - To post the URL as a comment too, add `pull-requests: write` to `permissions` and this step after
   the deploy:
 
