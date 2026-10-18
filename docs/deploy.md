@@ -55,13 +55,18 @@ Convex's 100 MiB response limit anyway.
 
 ## Deploy tools and CI
 
-- **The deploy keys** go into repository secrets. Create the production key with the Convex CLI and
-  hand it to `gh secret set` on standard input, which keeps it off the screen and out of process
-  arguments:
+- **The deploy keys** go into GitHub secrets. The production key goes into the secrets of the
+  `production` environment, not the repository's: a job receives every secret that it names, and on
+  a pull request the job runs the pull request's install, build, and deploy script. Create the
+  environment, then the key with the Convex CLI, and hand the key to `gh secret set` on standard
+  input, which keeps it off the screen and out of process arguments:
 
   ```sh
-  key=$(npx convex deployment token create "<repository> deploy.yml" --prod) && printf '%s' "$key" | gh secret set CONVEX_DEPLOY_KEY
+  gh api -X PUT "repos/{owner}/{repo}/environments/production" > /dev/null && key=$(npx convex deployment token create "<repository> deploy.yml" --prod) && printf '%s' "$key" | gh secret set CONVEX_DEPLOY_KEY --env production
   ```
+
+  To keep a workflow edit on another branch from naming that environment too, allow only `main` in
+  its deployment branches (Settings, Environments, `production`).
 
   The CLI cannot create a project's preview deploy key, so use the management API, with a personal
   or team access token from the Convex dashboard in `CONVEX_TOKEN`:
