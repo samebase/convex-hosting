@@ -74,6 +74,5 @@ jobs:
           working-directory: examples/${{ matrix.example }}
           # An index hands the runner every repository secret; all of them are the examples'
           # Convex deploy keys.
-          deploy-key:
-            ${{ secrets[format(github.event_name == 'push' && 'CONVEX_DEPLOY_KEY_{0}' ||
-            'CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+          deploy-key: ${{ secrets[format('CONVEX_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
+          preview-deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]

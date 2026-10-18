@@ -1,32 +1,42 @@
 name: Convex deploy with previews deleted on close
 description: >-
-  Deploys a Convex app to production, or to the preview pr-<number> of a pull request, after it
-  checks that the checkout is the head of its branch, and reads the site URL from the Convex API.
-  When the pull request closes, deletes that preview instead.
+  Deploys a Convex app to production on a push, or to the preview pr-<number> of a pull request,
+  after it checks that the checkout is the head of its branch, and outputs the site URL. When the
+  pull request closes, deletes that preview.
 inputs:
   deploy-key:
-    description: >-
-      The Convex deploy key, from a secret: the production key, or the project's preview deploy key
-      on a pull request.
+    description: The production deploy key, from a secret.
     required: true
+  preview-deploy-key:
+    description: >-
+      The project's preview deploy key, from a secret. Without it, a pull request deploys nothing
+      and the job notes how to get previews.
+    default: ""
   working-directory:
     description: The directory of the app's package.json.
     default: .
 outputs:
   url:
-    description: >-
-      The site URL, https://<deployment>.convex.site, from the Convex API. Empty when a preview was
-      deleted.
-    value: ${{ steps.url.outputs.url }}
+    description: The site URL, where the deployment's HTTP actions answer. Empty when none deployed.
+    value: ${{ steps.deploy.outputs.url }}
 runs:
   using: composite
   steps:
+    - name: Note the missing preview deploy key
+      if: github.event.pull_request && !inputs.preview-deploy-key
+      shell: bash
+      run: |
+        note="Set the CONVEX_PREVIEW_DEPLOY_KEY secret to get a preview deployment per pull request."
+        echo "::notice::$note"
+        echo "$note" >> "$GITHUB_STEP_SUMMARY"
+
     # A re-run of an old run deploys its old commit, so its push would put older code over newer
     # code. The caller's concurrency group orders runs; this refuses a stale one. On pull_request,
     # actions/checkout takes a merge commit by default, which changes when the base moves, so the
     # checkout must be the head commit itself.
     - name: Check that the checkout is the head of its branch
-      if: github.event.action != 'closed'
+      if: >-
+        github.event.action != 'closed' && (!github.event.pull_request || inputs.preview-deploy-key)
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
@@ -53,24 +63,31 @@ runs:
           exit 1
         fi
 
-    # npx convex deploy sends --preview-name with a production key to production, so the key's
-    # prefix (prod:<deployment> or preview:<team>:<project>) must match the event. node --run runs
-    # the deploy script with the node_modules/.bin folders on PATH, whatever the package manager.
+    # Runs the app's deploy script, or npx convex deploy; node --run puts the node_modules/.bin
+    # folders on PATH, whatever the package manager. A pull request's step gets only the preview
+    # key, so the app's code never holds the production key there.
     - name: Deploy
-      if: github.event.action != 'closed'
+      id: deploy
+      if: >-
+        github.event.action != 'closed' && (!github.event.pull_request || inputs.preview-deploy-key)
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
+        CONVEX_DEPLOY_KEY:
+          ${{ github.event.pull_request && inputs.preview-deploy-key || inputs.deploy-key }}
         PR: ${{ github.event.pull_request.number }}
       run: |
-        kind=${CONVEX_DEPLOY_KEY%%:*}
+        IFS=: read -r kind first second <<< "${CONVEX_DEPLOY_KEY%%|*}"
         if [ -n "$PR" ] && [ "$kind" != preview ]; then
-          echo "::error::On a pull request, deploy-key must be the project's preview deploy key. A pull request from a fork gets no secrets; skip its job."
+          echo "::error::preview-deploy-key is not a preview deploy key (preview:...). Convex was not deployed: npx convex deploy with a production key ignores --preview-name and deploys the pull request to production."
+          exit 1
+        fi
+        if [ -z "$PR" ] && [ -z "$CONVEX_DEPLOY_KEY" ]; then
+          echo "::error::deploy-key is empty. Outside a pull request the action deploys to production, with the production deploy key."
           exit 1
         fi
         if [ -z "$PR" ] && [ "$kind" != prod ]; then
-          echo "::error::Outside a pull request, deploy-key must be a production deploy key."
+          echo "::error::deploy-key is not a production deploy key (prod:...). Outside a pull request the action deploys only to production."
           exit 1
         fi
         args=()
@@ -83,43 +100,37 @@ runs:
           npx convex deploy "${args[@]}"
         fi
 
-    # The management API gives each deployment's deploymentUrl, which ends in .convex.cloud; the
-    # site, where its HTTP actions answer, is the same host with .convex.site.
-    - name: Read the site URL from the Convex API
-      id: url
-      if: github.event.action != 'closed'
-      shell: bash
-      env:
-        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
-        PR: ${{ github.event.pull_request.number }}
-      run: |
-        api() {
-          local body
-          body=$(curl -sS --fail-with-body -H "Authorization: Bearer $CONVEX_DEPLOY_KEY" "https://api.convex.dev/v1/$1" "${@:2}") ||
-            { echo "$1: $body" >&2; return 1; }
-          printf '%s' "$body"
-        }
-        IFS=: read -r kind first second <<< "${CONVEX_DEPLOY_KEY%%|*}"
+        # The site URL. A preview's deploymentUrl, from the management API, ends in .convex.cloud,
+        # and its site is the same host with .convex.site. A production key may not call that API
+        # (400), so production asks the deployment for CONVEX_SITE_URL, which also holds a custom
+        # domain that overrides it.
         if [ "$kind" = preview ]; then
+          api() {
+            local body
+            body=$(curl -sS --fail-with-body -H "Authorization: Bearer $CONVEX_DEPLOY_KEY" "https://api.convex.dev/v1/$1") ||
+              { echo "$1: $body" >&2; return 1; }
+            printf '%s' "$body"
+          }
           id=$(api "teams/$first/projects/$second" | jq -r .id)
           cloud=$(api "projects/$id/list_deployments?deploymentType=preview" |
             jq -r --arg name "pr-$PR" '.[] | select(.previewIdentifier == $name) | .deploymentUrl')
+          if ! [[ $cloud =~ ^https://[a-z0-9.-]+\.convex\.cloud$ ]]; then
+            echo "::error::The Convex API lists no single preview pr-$PR: $cloud"
+            exit 1
+          fi
+          url=${cloud%.convex.cloud}.convex.site
         else
-          cloud=$(api "deployments/$first" | jq -r .deploymentUrl)
+          url=$(npx convex run --inline-query process.env.CONVEX_SITE_URL | jq -r .)
         fi
-        if ! [[ $cloud =~ ^https://[a-z0-9.-]+\.convex\.cloud$ ]]; then
-          echo "::error::The Convex API returned no single deployment URL: $cloud"
-          exit 1
-        fi
-        echo "url=${cloud%.convex.cloud}.convex.site" >> "$GITHUB_OUTPUT"
+        echo "url=$url" >> "$GITHUB_OUTPUT"
 
     # A preview deploy key may read its project's deployments and delete its previews through the
     # management API.
     - name: Delete the preview of the closed pull request
-      if: github.event.action == 'closed'
+      if: github.event.action == 'closed' && inputs.preview-deploy-key
       shell: bash
       env:
-        CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
+        CONVEX_DEPLOY_KEY: ${{ inputs.preview-deploy-key }}
         GH_TOKEN: ${{ github.token }}
         PR: ${{ github.event.pull_request.number }}
       run: |
@@ -131,7 +142,7 @@ runs:
         fi
         IFS=: read -r kind team project <<< "${CONVEX_DEPLOY_KEY%%|*}"
         if [ "$kind" != preview ]; then
-          echo "::error::deploy-key is not a preview deploy key. A pull request from a fork gets no secrets; skip its job."
+          echo "::error::preview-deploy-key is not a preview deploy key (preview:...)."
           exit 1
         fi
         api() {

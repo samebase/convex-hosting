@@ -91,23 +91,26 @@ Convex's 100 MiB response limit anyway.
 ## GitHub Actions
 
 [`actions/deploy`](../actions/deploy/action.yml) is a Convex deploy action whose pull request
-previews are deleted when the pull request closes. It works for any Convex app:
+previews are deleted when the pull request closes. It works for any Convex app, and takes the
+production key in `deploy-key` and the project's preview deploy key in `preview-deploy-key`:
 
 - It runs the `deploy` script of the app's `package.json`, or `npx convex deploy` when there is no
   such script. On a pull request it appends `--preview-name pr-<number>`, which both commands take.
-- On a push, it deploys to production with the production key.
-- On a pull request, it deploys to the preview `pr-<number>` with the project's preview deploy key.
-  A second push reuses the preview. A key whose kind does not match the event fails before the
-  deploy: `npx convex deploy` would send `--preview-name` with a production key to production.
+- On a push, it deploys to production with `deploy-key`, which must start with `prod:`.
+- On a pull request, it deploys to the preview `pr-<number>` with `preview-deploy-key`, which must
+  start with `preview:`: `npx convex deploy` with a production key ignores `--preview-name` and
+  deploys the pull request to production. A second push reuses the preview. Without
+  `preview-deploy-key`, it deploys nothing and notes in the job how to get previews.
 - When the pull request closes, it deletes that preview through the Convex management API, with the
   same preview key. A closed pull request then holds no deployment of the team's quota.
 - Before a deploy, it fails when the commit is no longer the head of its branch, when the checkout
   is another commit (on a pull request, `actions/checkout` takes a merge commit by default), or when
   the pull request is closed. So a re-run of an old run never puts older code over newer code.
 
-Its `url` output is the site URL, where the deployment's HTTP actions answer, which it reads from
-the management API with the same key; the job's `environment` shows it on the pull request. The job
-keeps the install, the checks, `concurrency`, `permissions`, and the secret names, and the input
+Its `url` output is the site URL, where the deployment's HTTP actions answer, and the job's
+`environment` shows it on the pull request. A preview's comes from the management API; a production
+key may not call that API, so production's comes from the deployment's own `CONVEX_SITE_URL`. The
+job keeps the install, the checks, `concurrency`, `permissions`, and the secret names, and the input
 `working-directory` selects the package. The action needs Node 22.3 or later for `node --run`, and
 `gh`, `curl`, and `jq`, which GitHub's runners have. This workflow deploys a plain Convex app:
 
@@ -135,8 +138,8 @@ jobs:
       - id: deploy
         uses: samebase/convex-hosting/actions/deploy@v1
         with:
-          deploy-key:
-            ${{ github.head_ref && secrets.CONVEX_PREVIEW_DEPLOY_KEY || secrets.CONVEX_DEPLOY_KEY }}
+          deploy-key: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          preview-deploy-key: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
 ```
 
 A `convex-hosting` app uses the same workflow and keeps its flags in its `deploy` script, such as
