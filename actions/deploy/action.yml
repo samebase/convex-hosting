@@ -26,5 +26,50 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
-        GITHUB_TOKEN: ${{ github.token }}
-      run: node "$GITHUB_ACTION_PATH/main.ts"
+        TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        if [[ $CONVEX_DEPLOY_KEY != prod:* ]]; then
+          echo "::error::deploy-key is missing or is not a production deploy key (prod:...). Convex was not deployed."
+          exit 1
+        fi
+
+        # A re-run of an old run, or a checkout of another commit, must not put older code over newer
+        # code. The job token lets git read a private repository; the deploy script does not get it.
+        auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
+        head=$(git -c "http.extraheader=AUTHORIZATION: basic $auth" ls-remote origin "refs/heads/$GITHUB_REF_NAME" | cut -f1)
+        unset TOKEN auth
+        if [ "$(git rev-parse HEAD)" != "$head" ]; then
+          echo "::error::The checkout is not the head of $GITHUB_REF_NAME ($head): check out the head commit. Convex was not deployed."
+          exit 1
+        fi
+
+        # node --run puts node_modules/.bin on PATH.
+        if [ -n "$(jq -r '.scripts.deploy // empty' package.json)" ]; then
+          node --run deploy
+        else
+          npx convex deploy
+        fi
+
+        # The deployment's own URLs are right in every region.
+        if ! urls=$(npx convex run --inline-query "[process.env.CONVEX_SITE_URL, process.env.CONVEX_CLOUD_URL]"); then
+          echo "::warning::Convex is deployed, but the key cannot run the inline query that reads the deployment's URLs (deployment:functions:runTestQuery), so url and deployment-url are empty."
+          urls='["", ""]'
+        fi
+        url=$(jq -r '.[0]' <<< "$urls")
+        deployment_url=$(jq -r '.[1]' <<< "$urls")
+        # A production key names its deployment: prod:<name>|<secret>.
+        name=${CONVEX_DEPLOY_KEY#prod:}
+        dashboard_url=https://dashboard.convex.dev/d/${name%%|*}
+
+        {
+          echo "url=$url"
+          echo "deployment-url=$deployment_url"
+          echo "dashboard-url=$dashboard_url"
+        } >> "$GITHUB_OUTPUT"
+        {
+          echo "- Site: ${url:-unknown}"
+          echo "- Deployment: ${deployment_url:-unknown}"
+          echo "- Dashboard: $dashboard_url"
+        } >> "$GITHUB_STEP_SUMMARY"

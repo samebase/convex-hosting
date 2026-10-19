@@ -111,10 +111,10 @@ Three actions work for any Convex app, and each takes one key, `deploy-key`:
 
 `actions/deploy` and `actions/preview`:
 
-- Run the `deploy` script of the app's `package.json`, or `convex deploy` with the app's installed
-  Convex CLI when there is no such script. `actions/preview` appends `--preview-name <branch>`,
-  which both commands take. `node --run` appends it to the script's last command, so the deploy
-  command must end the script, and it runs no `predeploy` or `postdeploy` script.
+- Run the `deploy` script of the app's `package.json`, or `npx convex deploy` when there is no such
+  script. `actions/preview` appends `--preview-name <branch>`, which both commands take.
+  `node --run` appends it to the script's last command, so the deploy command must end the script,
+  and it runs no `predeploy` or `postdeploy` script.
 - Fail before the deploy when the checkout is not the head of its branch (the pushed branch, or the
   pull request's), as `git ls-remote` reads it: a re-run of an old commit, or a merge commit, which
   `actions/checkout` takes by default on a pull request. So a re-run of an old run never puts older
@@ -136,8 +136,8 @@ empty, with a warning, so a step that must follow every preview deploy checks `p
 `url`. (`convex-hosting deploy` needs inline queries for its upload; see the deploy key permissions
 above.) Every output is empty when nothing deployed. The workflows keep the install, the checks,
 `concurrency`, `permissions`, and the secret names, and the input `working-directory` selects the
-package. Each action runs its `main.ts` with `node`, with the shared steps in
-`actions/lib/steps.ts`; they need Node 22.18 or later and `git`, which GitHub's runners have.
+package. The actions need Node 22.3 or later for `node --run`, and `git`, `curl`, and `jq`, which
+GitHub's runners have.
 
 Two workflows deploy a plain Convex app. Two files keep each one a straight list of steps, and the
 pull request's jobs never name the production key, so they never receive it.
@@ -217,8 +217,8 @@ A `convex-hosting` app uses the same workflows and keeps its flags in its `deplo
   deployments inactive and hides their buttons; their comments keep the links.
 - A re-run of an old cleanup deletes the preview even after a reopen; the next push deploys it
   again.
-- The cleanup has no checkout, Node setup, or install: the delete runs on the runner's Node, and a
-  broken install must not keep the preview.
+- The cleanup has no checkout, Node setup, or install: the delete needs none, and a broken install
+  must not keep the preview.
 - GitHub runs no `pull_request` workflow for a pull request with a merge conflict, or whose head
   commit's message has a skip instruction such as `[skip ci]`, so closing such a pull request keeps
   its preview until Convex deletes it.

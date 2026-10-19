@@ -20,7 +20,39 @@ runs:
       shell: bash
       env:
         CONVEX_DEPLOY_KEY: ${{ inputs.deploy-key }}
-      run: node "$GITHUB_ACTION_PATH/main.ts"
+      run: |
+        set -euo pipefail
+
+        if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+          echo "No preview deleted: deploy-key is empty."
+          exit 0
+        fi
+        # A preview deploy key names its team and project: preview:<team>:<project>|<secret>.
+        IFS=: read -r kind team project <<< "${CONVEX_DEPLOY_KEY%%|*}"
+        if [ "$kind" != preview ]; then
+          echo "::error::deploy-key is not a preview deploy key (preview:...)."
+          exit 1
+        fi
+
+        # Prints the response of the Convex management API, or fails with it.
+        api() {
+          local body
+          if ! body=$(curl -sS --fail-with-body -X "$1" -H "Authorization: Bearer $CONVEX_DEPLOY_KEY" "https://api.convex.dev/v1/$2"); then
+            echo "$1 $2: $body" >&2
+            return 1
+          fi
+          printf '%s' "$body"
+        }
+
+        project_id=$(api GET "teams/$team/projects/$project" | jq -r .id)
+        names=$(api GET "projects/$project_id/list_deployments?deploymentType=preview" | jq -r --arg name "$GITHUB_HEAD_REF" '.[] | select(.previewIdentifier == $name) | .name')
+        if [ -z "$names" ]; then
+          echo "No preview named $GITHUB_HEAD_REF in $project."
+        fi
+        for name in $names; do
+          api POST "deployments/$name/delete" > /dev/null
+          echo "Deleted the preview $GITHUB_HEAD_REF ($name) in $project."
+        done
 
     - name: Note the deleted preview in the comment
       if: inputs.comment == 'true' && inputs.deploy-key
