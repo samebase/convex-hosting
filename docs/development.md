@@ -20,6 +20,10 @@ requests find nothing; cloud development deployments do not have this constraint
 mode: a build, an upload, and a push per change is not an inner loop, and Cloudflare's own tooling
 works the same way, with a local dev server and a push on demand.
 
+`deploy --dev` is also how to see the built site with the real serving rules: the development
+deployment applies `_headers`, `_redirects`, and the handling options as production does, and the
+deploy takes seconds. A preview server such as `vite preview` serves the build without these rules.
+
 Two cases are transient:
 
 - A server-rendered app imports its server build in `convex/http.ts`, so a running `npx convex dev`
