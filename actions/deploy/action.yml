@@ -30,8 +30,12 @@ runs:
       run: |
         set -euo pipefail
 
+        if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+          echo "::notice::No deploy: set the CONVEX_DEPLOY_KEY secret to the production deploy key and pass it as deploy-key."
+          exit 0
+        fi
         if [[ $CONVEX_DEPLOY_KEY != prod:* ]]; then
-          echo "::error::deploy-key is missing or is not a production deploy key (prod:...). Convex was not deployed."
+          echo "::error::deploy-key is not a production deploy key (prod:...). Convex was not deployed."
           exit 1
         fi
 
