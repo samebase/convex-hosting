@@ -1,6 +1,8 @@
 # Convex Hosting
 
-A [Convex component](https://docs.convex.dev/components) that serves a web app's built files and
+[![Convex Component](https://www.convex.dev/components/badge/samebase/convex-hosting)](https://www.convex.dev/components/samebase/convex-hosting)
+
+A [Convex component](https://www.convex.dev/components/samebase/convex-hosting) that serves a web app's built files and
 server-rendered pages from the deployment that runs its backend, at
 `https://<deployment>.convex.site`.
 
