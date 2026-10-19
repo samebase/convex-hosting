@@ -52,7 +52,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Deploy
-        uses: ./actions/deploy
+        uses: $/actions/deploy
         with:
           working-directory: examples/${{ matrix.example }}
           # Each example is its own Convex project, with its production key in the repository secret
