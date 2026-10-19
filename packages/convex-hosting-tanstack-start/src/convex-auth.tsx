@@ -3,14 +3,16 @@
 // it, the provider starts from it, and the gate and the header follow it.
 //
 // Nothing here is about hosting. This is the TanStack Start integration that Convex Auth does not
-// ship (it ships `@convex-dev/auth/nextjs`), and every line of it runs unchanged on a Cloudflare
+// ship (it ships `@convex-dev/auth/ssr/nextjs`), and every line of it runs unchanged on a Cloudflare
 // Worker: `examples/tanstack-ssr-workers` uses this entry byte for byte, with the diff between the
 // two examples as the proof. It lives in this package because it was written here, next to its
 // first user, and a package of its own is not worth its release plumbing for three apps. The
 // intended home is upstream, as `@convex-dev/auth/tanstack-start`; this file goes away when that
 // exists.
 
-import { ConvexAuthNextjsProvider, useAuthActions } from "@convex-dev/auth/nextjs";
+import { useAuthActions } from "@convex-dev/auth/react";
+// The `convexAuth()` Vite plugin resolves this specifier to the file that holds the provider.
+import { ConvexAuthNextjsProvider } from "@convex-dev/auth/ssr/nextjs/client";
 import type { ConvexQueryClient } from "@convex-dev/react-query";
 import {
   redirect,

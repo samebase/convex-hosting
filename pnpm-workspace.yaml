@@ -3,7 +3,7 @@ packages:
   - "examples/*"
 
 catalog:
-  "@convex-dev/auth": 2.0.0-alpha.2
+  "@convex-dev/auth": 2.0.0-beta.0
   "@convex-dev/react-query": 0.1.0
   "@edge-runtime/vm": 5.0.0
   "@tanstack/react-query": 5.103.1
@@ -41,6 +41,9 @@ peerDependencyRules:
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 minimumReleaseAgeIgnoreMissingTime: false
+minimumReleaseAgeExclude:
+  # 2.0.0-beta.0 of 2026-10-15; remove after 2026-10-22.
+  - "@convex-dev/auth"
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
 trustPolicyExclude:

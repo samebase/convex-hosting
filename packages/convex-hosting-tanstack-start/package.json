@@ -1,6 +1,6 @@
 {
   "name": "@samebase/convex-hosting-tanstack-start",
-  "version": "0.9.5",
+  "version": "0.10.0",
   "description": "Render TanStack Start pages in a Convex HTTP action.",
   "keywords": [
     "convex",
@@ -59,7 +59,7 @@
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "@convex-dev/auth": "*",
+    "@convex-dev/auth": "2.0.0-beta.0",
     "@convex-dev/react-query": "^0.1.0",
     "@samebase/convex-hosting": ">=0.13.0",
     "@tanstack/react-router": "^1.170.38",

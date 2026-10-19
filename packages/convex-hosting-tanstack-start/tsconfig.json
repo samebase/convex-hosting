@@ -10,7 +10,13 @@
     "verbatimModuleSyntax": true,
     "declaration": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "paths": {
+      // The `convexAuth()` Vite plugin aliases this specifier for apps; tsc needs the same file.
+      "@convex-dev/auth/ssr/nextjs/client": [
+        "./node_modules/@convex-dev/auth/dist/ssr/nextjs/client.d.ts"
+      ]
+    }
   },
   "include": ["src"]
 }
