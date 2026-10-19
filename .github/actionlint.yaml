@@ -1,9 +1,14 @@
 # actionlint 1.7.12 does not know concurrency's queue key, which GitHub documents for workflows and
 # jobs: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency
+# Nor GitHub's self-repository syntax $/ for this repository's actions
+# (https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/,
+# https://github.com/rhysd/actionlint/issues/711).
 paths:
   .github/workflows/deploy-examples.yml:
     ignore:
       - 'unexpected key "queue" for "concurrency" section'
+      - 'specifying action "\$/actions/[a-z]+" in invalid format'
   .github/workflows/preview-examples.yml:
     ignore:
       - 'unexpected key "queue" for "concurrency" section'
+      - 'specifying action "\$/actions/[a-z]+" in invalid format'
