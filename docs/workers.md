@@ -37,7 +37,8 @@ it differs from the committed file; `pnpm run examples:diff` refreshes it. The p
   default on the Worker.
 - `convex/convex.config.ts`: `app.use(hosting)` on Convex only. The generated `convex/_generated`
   files follow it and are left out of the patch.
-- `vite.config.ts`: `convexSsr()` on Convex; Cloudflare's Vite plugin on the Worker.
+- `vite.config.ts`: `convexSsr()` on Convex; `convexAuth()` and Cloudflare's Vite plugin on the
+  Worker.
 - `package.json`: `@samebase/convex-hosting` and `convex-hosting deploy` on Convex; `wrangler`,
   `@cloudflare/vite-plugin`, and the Workers Builds scripts on the Worker.
 - `wrangler.jsonc`: on the Worker only.
