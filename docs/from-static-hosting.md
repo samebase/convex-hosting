@@ -27,8 +27,9 @@ and source on 2026-10-18, version 0.2.1.
 
 1. Install `@samebase/convex-hosting`.
 2. In `convex/convex.config.ts`, replace the `app.use(staticHosting)` line with `app.use(hosting)`,
-   as in [Use](../README.md#use). If the component owned `/`, also remove `httpPrefix: "/api"` from
-   `defineApp`, and add `/api` to the paths of your own routes whose URLs must stay.
+   as in [Quick start](../README.md#quick-start). If the component owned `/`, also remove
+   `httpPrefix: "/api"` from `defineApp`, and add `/api` to the paths of your own routes whose URLs
+   must stay.
 3. In `convex/http.ts`, replace `registerStaticRoutes(...)` with
    `routeAll(http, components.hosting, versionId)`, and import `versionId` from
    `../.convex-hosting/version.js`. Your exact routes keep winning. A server-rendered app passes its
@@ -44,9 +45,9 @@ and source on 2026-10-18, version 0.2.1.
 5. Replace `UpdateBanner` or `useDeploymentUpdates` with the query in
    [Development](./development.md#open-tabs-after-a-deploy), and delete `convex/staticHosting.ts`.
 6. Uninstall `@convex-dev/static-hosting`.
-7. Deploy development with the two-terminal first run in [Use](../README.md#use), then production
-   with `convex-hosting deploy`. The first deploy to a deployment installs the component before it
-   uploads, so the site answers 404 until the upload ends.
+7. Deploy development with the two-terminal first run in [Quick start](../README.md#quick-start),
+   then production with `convex-hosting deploy`. The first deploy to a deployment installs the
+   component before it uploads, so the site answers 404 until the upload ends.
 
 Then check three things:
 

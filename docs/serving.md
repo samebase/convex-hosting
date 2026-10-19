@@ -66,7 +66,7 @@ over an asset at the same path. The other differences are in
 entry exports, and calls it when no file matches. `convex/http.ts` imports the server build
 directly, such as `../dist/server/server.js` for TanStack Start, so `npx convex dev` bundles it only
 after a build: on a fresh clone, the first `deploy --dev` builds before the first push (see
-[Use](../README.md#use)).
+[Quick start](../README.md#quick-start)).
 
 [`@samebase/convex-hosting-tanstack-start`](../packages/convex-hosting-tanstack-start) runs TanStack
 Start's own server handler in that `fetch`. Pages stream: the document goes out as it renders, and
