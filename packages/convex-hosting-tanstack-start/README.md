@@ -49,7 +49,7 @@ entry name declares its own path with one wildcard line, such as
 `declare module "*/build/server/entry.js"` with the same default export. Leave `allowJs` out of
 `convex/tsconfig.json`: with it, tsc reads the build instead of the type. `npx convex dev` bundles
 `convex/http.ts` only after a build, so a fresh clone runs `convex-hosting deploy --dev` before its
-first push, as the [README](https://github.com/samebase/convex-hosting#use) says.
+first push, as the [README](https://github.com/samebase/convex-hosting#quick-start) says.
 
 To give the pages data of the request, `src/server.ts` wraps this package's entry and passes it as
 `context`: `handler.fetch(request, { context })`. Start gives it to each route's `beforeLoad` and
