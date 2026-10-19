@@ -65,7 +65,7 @@ jobs:
 
       - name: Deploy the preview
         id: deploy
-        uses: ./actions/deploy
+        uses: $/actions/preview
         with:
           working-directory: examples/${{ matrix.example }}
           # The preview key in deploy-key: this workflow never names a production key. An index
@@ -96,17 +96,9 @@ jobs:
       group: preview ${{ matrix.example }} ${{ github.head_ref }}
       queue: max
     steps:
-      # Only to load ./actions/deploy: the delete needs no toolchain, and a broken install must not
-      # keep the preview.
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-
       # The same working-directory as the preview job: the comment's header names it.
       - name: Delete the preview
-        uses: ./actions/deploy
+        uses: $/actions/cleanup
         with:
           working-directory: examples/${{ matrix.example }}
           deploy-key: ${{ secrets[format('CONVEX_PREVIEW_DEPLOY_KEY_{0}', matrix.key)] }} # zizmor: ignore[overprovisioned-secrets]
