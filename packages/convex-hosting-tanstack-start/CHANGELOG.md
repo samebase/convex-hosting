@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.10.0
+
+- The `convex-auth` entry targets Convex Auth 2.0.0-beta.0 exactly, and the optional
+  `@convex-dev/auth` peer is pinned to it. beta.0 removed the `./nextjs` subpath. The entry imports
+  `useAuthActions` from `@convex-dev/auth/react` and `ConvexAuthNextjsProvider` from
+  `@convex-dev/auth/ssr/nextjs/client`, a specifier that the new `convexAuth()` Vite plugin resolves
+  to `dist/ssr/nextjs/client.js`: the file that holds the provider, which imports no Next.js code
+  and which beta.0's exports map does not expose. The upstream fix is an export
+  (convex/convex-auth#350 and #126). `convexSsr()` includes `convexAuth()`; an app on another host,
+  as the Workers twin, adds `convexAuth()` to its plugins. `convexAuth()` also inlines
+  `@convex-dev/auth` in the dev server's render and pre-bundles the aliased file's imports, so the
+  provider and the hooks share one copy of Convex Auth's React contexts and the first page load does
+  not reload.
+- What an app on 2.0.0-alpha.2 renames, as the examples do: `src/server.ts` imports `httpCookies`,
+  `ServerAuthSession`, and `setupConvexAuthServer` from `@convex-dev/auth/ssr` (was
+  `@convex-dev/auth/server`). `convex/convex.config.ts` imports `@convex-dev/auth/convex.config` and
+  `@convex-dev/auth/components/anonymous/convex.config` (were `core/convex.config.js` and
+  `providers/anonymous/convex.config.js`). `convex/auth.ts` calls `setupConvexAuth` from
+  `@convex-dev/auth/server` (was `setupCore` from `core/setup`) and `setupAnonymous` from
+  `@convex-dev/auth/methods/anonymous/server`, and exports `signInAnonymously` (was
+  `signInAnonymous`). `getAuthUserId` comes from `@convex-dev/auth/server` (was `core`). The sign-in
+  page calls `useSignInAnonymously(api.auth)` from `@convex-dev/auth/methods/anonymous/react` (was
+  `useAnonymousAuth(api.auth.signInAnonymous)`). beta.0 changes the schema of the `auth/sessions`
+  table: clear it before the first push, which signs every user out.
+- OAuth sign-in under this entry is untested. After an OAuth code, the provider cleans the URL with
+  code written for Next's router, which calls `history.replaceState(null, ...)` and can drop
+  TanStack Router's history state.
+- An app on Convex Auth 0.0.x stays on 0.9.x.
+
 ## 0.9.5
 
 - `convexSsr()` adds `convex/react` and `@convex-dev/auth/nextjs` to the dev server's

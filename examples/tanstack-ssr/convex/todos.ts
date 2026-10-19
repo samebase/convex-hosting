@@ -1,4 +1,4 @@
-import { getAuthUserId } from "@convex-dev/auth/core";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel.js";
 import { mutation, query } from "./_generated/server.js";

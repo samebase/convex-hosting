@@ -190,8 +190,8 @@ settings:
 catalogs:
   default:
     '@convex-dev/auth':
-      specifier: 2.0.0-alpha.2
-      version: 2.0.0-alpha.2
+      specifier: 2.0.0-beta.0
+      version: 2.0.0-beta.0
     '@convex-dev/react-query':
       specifier: 0.1.0
       version: 0.1.0
@@ -343,7 +343,7 @@ importers:
     dependencies:
       '@convex-dev/auth':
         specifier: 'catalog:'
-        version: 2.0.0-alpha.2(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)
+        version: 2.0.0-beta.0(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)
       '@convex-dev/react-query':
         specifier: 'catalog:'
         version: 0.1.0(@tanstack/react-query@5.103.1(react@19.3.0))(convex@1.46.0(react@19.3.0))
@@ -395,7 +395,7 @@ importers:
     dependencies:
       '@convex-dev/auth':
         specifier: 'catalog:'
-        version: 2.0.0-alpha.2(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)
+        version: 2.0.0-beta.0(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)
       '@convex-dev/react-query':
         specifier: 'catalog:'
         version: 0.1.0(@tanstack/react-query@5.103.1(react@19.3.0))(convex@1.46.0(react@19.3.0))
@@ -485,7 +485,7 @@ importers:
     devDependencies:
       '@convex-dev/auth':
         specifier: 'catalog:'
-        version: 2.0.0-alpha.2(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)
+        version: 2.0.0-beta.0(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)
       '@convex-dev/react-query':
         specifier: 'catalog:'
         version: 0.1.0(@tanstack/react-query@5.103.1(react@19.3.0))(convex@1.46.0(react@19.3.0))
@@ -649,14 +649,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@convex-dev/auth@2.0.0-alpha.2':
-    resolution: {integrity: sha512-p71NPdDaQsvfEKvmNx6UfF2BhuYc4HJ3qVZzvwNOpkAukX4drQ8Leh9FbeykwFavHiZeEJEp/nJyo9HT1wHPzw==}
+  '@convex-dev/auth@2.0.0-beta.0':
+    resolution: {integrity: sha512-GNIYITbRvLg8Ev5YW3j/rJ71Dft/fGYO5kkTJigVwuYCcn3WOeVY9+1IpKDntzMOZou1uDZwlPnR0BcWZWGaKg==}
     hasBin: true
     peerDependencies:
-      convex: ^1.43.0
+      '@convex-dev/resend': ^0.2.8
+      convex: ^1.46.0
       next: ^16.0.0
       react: ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
+      '@convex-dev/resend':
+        optional: true
       next:
         optional: true
       react:
@@ -3525,7 +3528,7 @@ snapshots:
   '@cloudflare/workerd-windows-64@1.20261006.1':
     optional: true
 
-  '@convex-dev/auth@2.0.0-alpha.2(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)':
+  '@convex-dev/auth@2.0.0-beta.0(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)':
     dependencies:
       '@babel/code-frame': 7.29.7
       '@convex-dev/batch-worker': 0.3.5(convex@1.46.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)

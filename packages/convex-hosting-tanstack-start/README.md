@@ -103,7 +103,14 @@ the data; the loader adds the parallel fetch and the preload.
 
 This entry is interim: the session lines are Convex Auth's own API, and their home is a TanStack
 Start integration in Convex Auth itself, which is being discussed with Convex. Until then they live
-here, and they need Convex Auth 2.
+here, and they need Convex Auth 2.0.0-beta.0 exactly (`@convex-dev/auth@2.0.0-beta.0`, npm tag
+`beta`). That beta signs in with email and password, with sign-up verification and password recovery
+by email link, sent through Resend only; it has no magic links and no email codes (OTP) yet.
+
+The entry imports Convex Auth's SSR provider from a file that beta.0's exports map does not expose.
+`convexSsr()` includes `convexAuth()`, the Vite plugin that resolves it; an app on another host,
+such as a Cloudflare Worker, adds `convexAuth()` from `@samebase/convex-hosting-tanstack-start/vite`
+to its plugins.
 
 With [Convex Auth](https://github.com/get-convex/convex-auth) sessions in httpOnly cookies,
 `src/server.ts` answers the `/auth` routes, reads the session of the request's cookies, and passes
@@ -212,11 +219,12 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   Convex Auth's `signOut()` resolves even when the route failed, so a reload after it alone signs
   the user back in from the cookie.
 
-`@convex-dev/auth` is an optional peer dependency with no version range: only the `convex-auth`
-entry uses it, and that entry needs Convex Auth 2. An app with another auth provider, or on Convex
-Auth 0.0.x, installs the adapter as is and does not import the entry. The server entry needs
-`@samebase/convex-hosting` 0.13.0 or later, which defines `queueMicrotask`; the peer is optional
-because the `convex-auth` entry alone, as on a Worker, does not need the core.
+`@convex-dev/auth` is an optional peer dependency pinned to 2.0.0-beta.0: only the `convex-auth`
+entry uses it, and `convexAuth()` resolves a file inside that version. An app with another auth
+provider installs the adapter as is and does not import the entry; an app on Convex Auth 0.0.x stays
+on adapter 0.9.x. The server entry needs `@samebase/convex-hosting` 0.13.0 or later, which defines
+`queueMicrotask`; the peer is optional because the `convex-auth` entry alone, as on a Worker, does
+not need the core.
 
 The entry declares Start's `Register.server` with a request context that holds only the token, so an
 app that uses the entry cannot add its own fields to `serverContext` today; an app that needs that
@@ -236,4 +244,12 @@ is the signal to make the context a type the app registers itself.
   its own chunk. A client that TanStack takes for a bot, by its user agent, gets the whole document.
 
 These settings apply to builds. Development and Node-based tests keep their normal dependency
-resolution.
+resolution, except for `convexAuth()`, which applies to both:
+
+- `@convex-dev/auth/ssr/nextjs/client` resolves to the file of Convex Auth 2.0.0-beta.0 that holds
+  `ConvexAuthNextjsProvider`. The file imports no Next.js code; only beta.0's exports map hides it.
+- `@convex-dev/auth` is inlined in the server render, so the dev server does not load the aliased
+  file through Vite and the rest of Convex Auth through Node, each with its own copy of the React
+  contexts that the provider sets and the hooks read.
+- The dev server pre-bundles the entry's browser imports and those of the aliased file, so the first
+  page load does not find them late and reload.
