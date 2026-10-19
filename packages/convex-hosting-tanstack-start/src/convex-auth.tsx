@@ -60,7 +60,7 @@ export function sessionBeforeLoad({
   serverContext,
 }: {
   context: { convexQueryClient: ConvexQueryClient };
-  serverContext?: RequestContext;
+  serverContext?: RequestContext | undefined;
 }) {
   const token = serverContext?.token;
   if (token) context.convexQueryClient.serverHttpClient?.setAuth(token);

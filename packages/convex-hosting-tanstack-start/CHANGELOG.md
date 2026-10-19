@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.1
+
+- `sessionBeforeLoad` accepts `serverContext: undefined`, which TanStack Start passes for a browser
+  navigation, under `exactOptionalPropertyTypes`.
+
 ## 0.10.0
 
 - The `convex-auth` entry targets Convex Auth 2.0.0-beta.0 exactly, and the optional
