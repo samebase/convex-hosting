@@ -1,4 +1,4 @@
-import { httpCookies, ServerAuthSession, setupConvexAuthServer } from "@convex-dev/auth/server";
+import { httpCookies, ServerAuthSession, setupConvexAuthServer } from "@convex-dev/auth/ssr";
 import handler from "@samebase/convex-hosting-tanstack-start/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api.js";
@@ -22,7 +22,7 @@ const server = {
         convexUrl,
         refreshSession: api.auth.refreshSession,
         signOut: api.auth.signOut,
-        signIn: [api.auth.signInAnonymous],
+        signIn: [api.auth.signInAnonymously],
         cookieOptions,
       });
       switch (url.pathname) {
