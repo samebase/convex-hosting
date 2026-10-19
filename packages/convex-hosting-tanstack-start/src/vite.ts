@@ -32,15 +32,22 @@ export function convexAuth(): Plugin {
             },
           ],
         },
+        // The dev server renders the aliased file through Vite and would load the rest of Convex
+        // Auth through Node, each with its own copy of the React contexts that the provider sets
+        // and the hooks read.
+        ssr: { noExternal: ["@convex-dev/auth"] },
         // TanStack Start keeps this package out of pre-bundling (it lists `@tanstack/react-start`
         // as a peer), so Vite finds the entry's browser imports only on the first page load, and
-        // reloads the page.
+        // reloads the page. The same holds for the imports of the aliased file, which Vite reads
+        // from source when it collects the page's styles.
         optimizeDeps:
           command === "build"
             ? undefined
             : {
                 include: [
+                  "convex/browser",
                   "convex/react",
+                  "convex/values",
                   "@convex-dev/auth/react",
                   "@convex-dev/auth/ssr/nextjs/client",
                 ],
