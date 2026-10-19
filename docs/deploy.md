@@ -95,7 +95,7 @@ Convex's 100 MiB response limit anyway.
 Three actions work for any Convex app, and each takes one key, `deploy-key`:
 
 - [`actions/deploy`](../actions/deploy/action.yml) deploys to production. The key must start with
-  `prod:`.
+  `prod:`. Without a key, it deploys nothing and ends the step with a notice.
 - [`actions/preview`](../actions/preview/action.yml) deploys a pull request to the preview named
   after its branch (`GITHUB_HEAD_REF` as it is, the name that `npx convex deploy` takes by default
   in GitHub Actions and that a Worker's Workers Builds preview uses). The key is the project's

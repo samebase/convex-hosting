@@ -2,7 +2,9 @@ name: Convex deploy to production
 description: Deploys a Convex app to production and outputs its URLs.
 inputs:
   deploy-key:
-    description: The production deploy key, which must start with prod:.
+    description:
+      The production deploy key, which must start with prod:. Empty deploys nothing and ends the
+      step with a notice.
     required: true
   working-directory:
     description: The directory of the app's package.json.

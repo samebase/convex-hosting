@@ -64,9 +64,10 @@ none. `expectAuth` holds queries only before the first authentication, so sign-o
 The cookies are `Secure` when the request came over HTTPS, and not in `pnpm run dev`, which serves
 plain HTTP.
 
-The example signs in anonymously: each sign-in creates a user. Password or OAuth sign-in changes the
-provider in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in
-`src/server.ts`, and the button on `/signin`. The other routes stay the same.
+The example signs in anonymously: each sign-in creates a user. Password sign-in changes the provider
+in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in `src/server.ts`, and
+the button on `/signin`. The other routes stay the same. OAuth is not wired in the adapter's
+`convex-auth` entry yet.
 
 ## Where code goes
 

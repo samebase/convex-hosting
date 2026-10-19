@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.2
+
+- `SessionProvider` passes `ambientSignIns={[]}` to `ConvexAuthNextjsProvider`. The provider's
+  default ambient sign-in is Convex Auth's OAuth client, whose URL cleanup after `?convexAuthCode`
+  or `?convexAuthError` calls `history.replaceState(null, ...)` on the next tick, written for Next's
+  router; under TanStack Router that drops the router's history state, and it runs in every app that
+  uses this entry, not only apps with OAuth. With no ambient sign-ins, OAuth code exchange is off in
+  this entry until a TanStack-safe variant exists; anonymous and password sign-in are unchanged.
+
 ## 0.10.1
 
 - `sessionBeforeLoad` accepts `serverContext: undefined`, which TanStack Start passes for a browser
@@ -28,7 +37,8 @@
   `signInAnonymous`). `getAuthUserId` comes from `@convex-dev/auth/server` (was `core`). The sign-in
   page calls `useSignInAnonymously(api.auth)` from `@convex-dev/auth/methods/anonymous/react` (was
   `useAnonymousAuth(api.auth.signInAnonymous)`). beta.0 changes the schema of the `auth/sessions`
-  table: clear it before the first push, which signs every user out.
+  table: clear it before the first push, which signs every user out. Anonymous users lose their
+  accounts when the table is cleared, because their identity is the session.
 - OAuth sign-in under this entry is untested. After an OAuth code, the provider cleans the URL with
   code written for Next's router, which calls `history.replaceState(null, ...)` and can drop
   TanStack Router's history state.

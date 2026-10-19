@@ -87,7 +87,17 @@ export function SessionProvider({
 }) {
   return (
     <SessionToken value={token}>
-      <ConvexAuthNextjsProvider client={client} initialToken={token}>
+      <ConvexAuthNextjsProvider
+        client={client}
+        initialToken={token}
+        // The default ambient sign-in is Convex Auth's OAuth client. Its URL cleanup after
+        // `?convexAuthCode` or `?convexAuthError` calls `history.replaceState(null, ...)` on the next
+        // tick, written for Next's router; under TanStack Router that drops the router's history
+        // state, and it runs in every app that uses this entry, not only apps with OAuth. With none,
+        // OAuth code exchange is off here until a TanStack-safe variant exists; anonymous and
+        // password sign-in are unchanged.
+        ambientSignIns={[]}
+      >
         <ReleaseWhenSignedOut client={client} />
         {children}
       </ConvexAuthNextjsProvider>
