@@ -4,11 +4,11 @@
 //
 // Nothing here is about hosting. This is the TanStack Start integration that Convex Auth does not
 // ship (it ships `@convex-dev/auth/ssr/nextjs`), and every line of it runs unchanged on a Cloudflare
-// Worker: `examples/tanstack-ssr-workers` uses this entry byte for byte, with the diff between the
-// two examples as the proof. It lives in this package because it was written here, next to its
-// first user, and a package of its own is not worth its release plumbing for three apps. The
-// intended home is upstream, as `@convex-dev/auth/tanstack-start`; this file goes away when that
-// exists.
+// Worker: `examples/tanstack-ssr-workers` uses this package byte for byte, with the diff between
+// the two examples as the proof. It is a package of its own, apart from the hosting adapter, because
+// it has other users (TanStack Start apps with Convex Auth on any host) and follows Convex Auth's
+// releases. The intended home is upstream, as `@convex-dev/auth/tanstack-start`; this package goes
+// away when that exists.
 
 import { useAuthActions } from "@convex-dev/auth/react";
 // The `convexAuth()` Vite plugin resolves this specifier to the file that holds the provider.
@@ -32,6 +32,7 @@ import {
 import type {} from "@tanstack/react-start";
 import { useConvexAuth, type ConvexReactClient } from "convex/react";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { oauthKeepingHistoryState } from "./oauth.js";
 
 /**
  * The request context of a page render: the session's access token, `null` without one, or
@@ -90,13 +91,9 @@ export function SessionProvider({
       <ConvexAuthNextjsProvider
         client={client}
         initialToken={token}
-        // The default ambient sign-in is Convex Auth's OAuth client. Its URL cleanup after
-        // `?convexAuthCode` or `?convexAuthError` calls `history.replaceState(null, ...)` on the next
-        // tick, written for Next's router; under TanStack Router that drops the router's history
-        // state, and it runs in every app that uses this entry, not only apps with OAuth. With none,
-        // OAuth code exchange is off here until a TanStack-safe variant exists; anonymous and
-        // password sign-in are unchanged.
-        ambientSignIns={[]}
+        // Convex Auth's OAuth client, the default, with a URL cleanup that keeps TanStack Router's
+        // history state in place of the provider's cleanup for Next's router.
+        ambientSignIns={[oauthKeepingHistoryState()]}
       >
         <ReleaseWhenSignedOut client={client} />
         {children}

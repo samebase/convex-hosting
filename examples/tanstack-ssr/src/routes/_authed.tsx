@@ -2,7 +2,7 @@ import { createFileRoute, Outlet } from "@tanstack/react-router";
 import {
   RedirectWithoutSession,
   redirectWithoutSession,
-} from "@samebase/convex-hosting-tanstack-start/convex-auth";
+} from "@samebase/convex-auth-tanstack-start";
 
 export const Route = createFileRoute("/_authed")({
   beforeLoad: ({ serverContext }) => redirectWithoutSession(serverContext, { to: "/signin" }),

@@ -79,7 +79,10 @@ An app that renders pages passes its server entry as the fourth argument of `rou
 takes the place of a Worker script: an object with `fetch(request)` that answers what no file
 answers. TanStack Start has
 [an adapter](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting-tanstack-start),
-with streamed pages, server functions, server routes, request middleware, and cookie sessions.
+with streamed pages, server functions, server routes, and request middleware, and Convex Auth cookie
+sessions come from
+[`@samebase/convex-auth-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-auth-tanstack-start),
+which runs on any host.
 
 ## Examples
 

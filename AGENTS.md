@@ -15,7 +15,9 @@ design around Cloudflare's asset Worker.
     copied from cloudflare/workers-sdk at their upstream paths by `scripts/sync-workers-sdk.ts`.
     Never edit it by hand. `pnpm run test:fixtures` runs the fixtures against local deployments.
 - `packages/convex-hosting-tanstack-start`: the Vite plugin and server entry that render TanStack
-  Start pages in a Convex HTTP action, and the `convex-auth` session helpers.
+  Start pages in a Convex HTTP action.
+- `packages/convex-auth-tanstack-start`: Convex Auth cookie sessions for TanStack Start on any host,
+  and its `convexAuth()` Vite plugin. Nothing in it is about hosting.
 - `examples/tanstack-spa`: TanStack Start in SPA mode, served with the single-page-application
   fallback.
 - `examples/tanstack-ssr`: TanStack Start pages rendered in a Convex HTTP action.

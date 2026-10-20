@@ -44,10 +44,10 @@ index 2bd08d55546dfacc4e31f84614c81a5625beee4e..00000000000000000000000000000000
 -
 -export default http;
 diff --git a/package.json b/package.json
-index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f248bdb32 100644
+index 011481b677588aa747f29f9a0945abe4b382e3bd..8eb172e64d333d2718fca213710cf8eabf9b1d0b 100644
 --- a/package.json
 +++ b/package.json
-@@ -1,18 +1,17 @@
+@@ -1,20 +1,18 @@
  {
 -  "name": "example-tanstack-ssr",
 +  "name": "example-tanstack-ssr-workers",
@@ -66,11 +66,13 @@ index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f
    "dependencies": {
      "@convex-dev/auth": "catalog:",
      "@convex-dev/react-query": "catalog:",
+     "@samebase/convex-auth-tanstack-start": "workspace:*",
 -    "@samebase/convex-hosting": "workspace:*",
-     "@samebase/convex-hosting-tanstack-start": "workspace:*",
+-    "@samebase/convex-hosting-tanstack-start": "workspace:*",
      "@tanstack/react-query": "catalog:",
      "@tanstack/react-router": "catalog:",
-@@ -23,10 +22,12 @@
+     "@tanstack/react-router-ssr-query": "1.167.3",
+@@ -24,10 +22,12 @@
      "react-dom": "catalog:"
    },
    "devDependencies": {
@@ -96,22 +98,22 @@ index c4c4df479192d2a3feb175659b9de1420d5a8b8f..a6c3d84c461c20ddc45b4eaeb577c5e9
  import { api } from "../convex/_generated/api.js";
  
 diff --git a/vite.config.ts b/vite.config.ts
-index 8e68d2fff175c09d037e869b6661cae7188aaa51..c17f53af29bb33645c65e757a6f0118191a52349 100644
+index 4c87452f03c99b134f721f51abd416b89093f478..4dad8290ce0144e6870fdad55f6733a3a6a98561 100644
 --- a/vite.config.ts
 +++ b/vite.config.ts
-@@ -1,12 +1,14 @@
+@@ -1,14 +1,14 @@
  import { defineConfig } from "vite-plus";
  import { tanstackStart } from "@tanstack/react-start/plugin/vite";
  import react from "@vitejs/plugin-react";
 -import { convexSsr } from "@samebase/convex-hosting-tanstack-start/vite";
 +import { cloudflare } from "@cloudflare/vite-plugin";
-+import { convexAuth } from "@samebase/convex-hosting-tanstack-start/vite";
+ import { convexAuth } from "@samebase/convex-auth-tanstack-start/vite";
  
  export default defineConfig({
    root: import.meta.dirname,
    plugins: [
 -    convexSsr(),
-+    convexAuth(),
+     convexAuth(),
 +    cloudflare({ viteEnvironment: { name: "ssr" } }),
      // Prerenders /about only. `prerender: { enabled: true }` would also prerender every static
      // route, and crawling would follow /about's links. The header marks the prerender's requests

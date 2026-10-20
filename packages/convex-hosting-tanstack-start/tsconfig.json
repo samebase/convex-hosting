@@ -5,18 +5,11 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
-    "jsx": "react-jsx",
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "declaration": true,
     "rootDir": "src",
-    "outDir": "dist",
-    "paths": {
-      // The `convexAuth()` Vite plugin aliases this specifier for apps; tsc needs the same file.
-      "@convex-dev/auth/ssr/nextjs/client": [
-        "./node_modules/@convex-dev/auth/dist/ssr/nextjs/client.d.ts"
-      ]
-    }
+    "outDir": "dist"
   },
   "include": ["src"]
 }
