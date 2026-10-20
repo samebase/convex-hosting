@@ -255,9 +255,7 @@ A sign-in with GitHub under cookie sessions:
    `/auth/signin` route, which keeps the refresh token in its httpOnly cookie and gives the browser
    the access token. `SignedIn` renders, and the next request renders as the user.
 
-The app wires each provider in four places, as the
-[TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
-does with GitHub:
+The app wires each provider in four places, here GitHub:
 
 - `convex/convex.config.ts` installs the provider's component with an `httpPrefix`, which makes its
   callback URL `<CONVEX_SITE_URL><httpPrefix>/callback`:
@@ -272,9 +270,9 @@ does with GitHub:
   });
   ```
 
-  Google goes under `/auth/google` the same way. Convex Auth's docs use `/oauth/github`; the
-  examples put the providers next to the core's `/auth`, and any prefix works that no route of the
-  app uses. The component's variables are required, and Convex refuses a push that binds them to
+  Google goes under `/auth/google` the same way. Convex Auth's docs use `/oauth/github`; any prefix
+  works that no route of the app uses, and `/auth/github` keeps the providers next to the core's
+  `/auth`. The component's variables are required, and Convex refuses a push that binds them to
   optional variables of the app, so every deployment needs them, previews included.
 
 - `convex/auth.ts` exports the provider's two functions, with the origin of the site in
@@ -286,6 +284,11 @@ does with GitHub:
     allowedRedirectOrigins: [env.CONVEX_SITE_URL],
   }).attachUserCallbacks({ createUser: internal.users.createUserGithub });
   ```
+
+  `createUserGithub` is an internal mutation that takes
+  `provider: v.object({ name: v.literal("github"), accountId: v.string(), profile: vGithubProfile })`,
+  with `vGithubProfile` from `@convex-dev/auth/methods/github/server`, and returns the new user's
+  id.
 
 - `src/server.ts` adds each `completeSignIn*` function to the `signIn` list of
   `setupConvexAuthServer`. The `startSignIn*` functions stay out: they mint no session, and the

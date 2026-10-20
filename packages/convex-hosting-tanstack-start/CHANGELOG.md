@@ -11,12 +11,11 @@
   `/auth/signin` route, so the session lands in the cookies. Convex Auth's hooks work as documented:
   `useSignInWithGithub`, `useSignInWithGoogle`, `useOauthSignIn`, and `useOauth()`, whose
   `flowError` is `ACCESS_DENIED`, `EXPIRED`, `INVALID_FLOW`, `REJECTED`, or `OTHER_ERROR`.
-- What an app adds for a provider, as the SSR examples do with GitHub: the component under a prefix
-  of `/auth` (`httpPrefix: "/auth/github"`), its two variables on every deployment (Convex refuses
-  to bind the component's required variables to optional ones), `allowedRedirectOrigins` with the
-  site's origin, and the `completeSignIn*` function in the `signIn` list of `src/server.ts`. The
-  README's "OAuth sign-in" section has the flow, the order in `convex/http.ts`, and what the app
-  must not do.
+- What an app adds for a provider, such as GitHub: the component with an `httpPrefix`
+  (`"/auth/github"`), its two variables on every deployment (Convex refuses to bind the component's
+  required variables to optional ones), `allowedRedirectOrigins` with the site's origin, and the
+  `completeSignIn*` function in the `signIn` list of `src/server.ts`. The README's "OAuth sign-in"
+  section has the flow, the order in `convex/http.ts`, and what the app must not do.
 - `convexAuth()` pre-bundles `@convex-dev/auth/methods/oauth/react` for the dev server, which the
   entry now imports, so the first page load does not reload.
 

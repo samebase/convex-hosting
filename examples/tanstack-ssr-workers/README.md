@@ -66,8 +66,9 @@ plain HTTP.
 
 The example signs in anonymously: each sign-in creates a user. Password sign-in changes the provider
 in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in `src/server.ts`, and
-the button on `/signin`. The other routes stay the same. OAuth is not wired in the adapter's
-`convex-auth` entry yet.
+the button on `/signin`. The other routes stay the same. OAuth sign-in adds a provider's component,
+its functions, its `completeSignIn*` function in the `signIn` list, and a button, as the adapter's
+[OAuth sign-in](../../packages/convex-hosting-tanstack-start/README.md#oauth-sign-in) says.
 
 ## Where code goes
 
