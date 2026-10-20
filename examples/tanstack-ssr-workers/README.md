@@ -48,15 +48,15 @@ The refresh token lives in an httpOnly cookie; browser code holds only the acces
 expires after 60 seconds. For each page, `src/server.ts` reads the cookies, refreshes the access
 token when it expires within 10 seconds (the refresh rotates both cookies), renders the page with
 `handler.fetch(request, { context: { token } })`, and returns the page with the rotated cookies. The
-rest comes from the adapter's `convex-auth` entry. The root route's `beforeLoad`,
-`sessionBeforeLoad`, gives the token to the Convex HTTP client of the server render, so the page's
-queries run as the user. In the browser, `SessionProvider` wraps Convex Auth's
-`ConvexAuthNextjsProvider` (it contains no Next.js code), which starts from the token of the server
-render and calls `POST /auth/signin` and `/auth/refresh` in `src/server.ts`. The sign-out button
-calls `/auth/signout` through the adapter's `useSignOutSession`, which clears the session and
-reloads only when the route succeeded, and otherwise shows that sign-out failed. `expectAuth` makes
-the browser's Convex client wait for a token before its first subscription, so a page rendered as
-the user gets the user's live answer, and it never releases for a visitor without a session.
+rest comes from [`@samebase/convex-auth-tanstack-start`](../../packages/convex-auth-tanstack-start).
+The root route's `beforeLoad`, `sessionBeforeLoad`, gives the token to the Convex HTTP client of the
+server render, so the page's queries run as the user. In the browser, `SessionProvider` wraps Convex
+Auth's `ConvexAuthNextjsProvider` (it contains no Next.js code), which starts from the token of the
+server render and calls `POST /auth/signin` and `/auth/refresh` in `src/server.ts`. The sign-out
+button calls `/auth/signout` through that package's `useSignOutSession`, which clears the session
+and reloads only when the route succeeded, and otherwise shows that sign-out failed. `expectAuth`
+makes the browser's Convex client wait for a token before its first subscription, so a page rendered
+as the user gets the user's live answer, and it never releases for a visitor without a session.
 Convex's AuthKit template decides `expectAuth` on the server per request; TanStack creates the
 client before the page knows the session, so `SessionProvider` releases it when the provider reports
 none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
@@ -67,8 +67,8 @@ plain HTTP.
 The example signs in anonymously: each sign-in creates a user. Password sign-in changes the provider
 in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in `src/server.ts`, and
 the button on `/signin`. The other routes stay the same. OAuth sign-in adds a provider's component,
-its functions, its `completeSignIn*` function in the `signIn` list, and a button, as the adapter's
-[OAuth sign-in](../../packages/convex-hosting-tanstack-start/README.md#oauth-sign-in) says.
+its functions, its `completeSignIn*` function in the `signIn` list, and a button, as that package's
+[OAuth sign-in](../../packages/convex-auth-tanstack-start/README.md#oauth-sign-in) says.
 
 ## Where code goes
 
