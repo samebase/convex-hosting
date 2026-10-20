@@ -39,9 +39,8 @@ site needs caps on text length and todos per user.
   middleware in `src/start.ts` puts `Cache-Control: no-store` on every answer Start gives, pages and
   these included.
 - The header on every page: the root route's loader queries `users.me`, so the first HTML response
-  of a rendered page shows `Signed in as <name>` with a sign-out button, or a link to `/signin` and
-  a button that signs in with GitHub. The build has no session, so on `/about` the header fills in
-  after React hydrates.
+  of a rendered page shows `Signed in as <name>` with a sign-out button, or a link to `/signin`. The
+  build has no session, so on `/about` the header fills in after React hydrates.
 
 ## Sessions
 
@@ -62,14 +61,10 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
 client before the page knows the session, so `SessionProvider` releases it when the provider reports
 none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
 
-The example signs in anonymously, where each sign-in creates a user, and with GitHub, where each
-GitHub account keeps its user. GitHub's flow returns to the page where it started, which the server
-renders without a session. The browser then redeems GitHub's one-time code through `/auth/signin`,
-which sets the cookies, and the header shows the user; a flow that fails shows its error code, such
-as `ACCESS_DENIED`, next to the button. The adapter's README has the flow and the error codes, in
-[OAuth sign-in](../../packages/convex-hosting-tanstack-start/README.md#oauth-sign-in). Password
-sign-in changes the provider in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]`
-list in `src/server.ts`, and the button on `/signin`. The other routes stay the same.
+The example signs in anonymously: each sign-in creates a user. Password sign-in changes the provider
+in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in `src/server.ts`, and
+the button on `/signin`. The other routes stay the same. OAuth is not wired in the adapter's
+`convex-auth` entry yet.
 
 ## Where code goes
 
@@ -105,18 +100,8 @@ In another:
 
 ```sh
 npx @convex-dev/auth              # new deployment only: sets AUTH_PRIVATE_KEY and AUTH_JWKS on it
-npx convex env set AUTH_GITHUB_CLIENT_ID <client ID>          # of your GitHub OAuth app
-npx convex env set AUTH_GITHUB_CLIENT_SECRET <client secret>
 pnpm run deploy:dev               # builds, uploads, writes .convex-hosting/version.js, pushes
 ```
-
-A push fails while one of the four variables is missing: the GitHub component's variables are
-required. The GitHub OAuth app's callback URL is the deployment's site URL, `VITE_CONVEX_SITE_URL`
-in `.env.local`, followed by `/auth/github/callback`. GitHub compares it exactly, so each deployment
-needs its own callback URL in an OAuth app. The flow returns only to the site's own origin
-(`allowedRedirectOrigins` in `convex/auth.ts`), so GitHub sign-in from `pnpm run dev` needs the dev
-server's origin there too. Without an OAuth app, any two values let the push through, and the button
-fails at GitHub.
 
 The example commits `convex/_generated`, as Convex recommends, so a fresh clone can build:
 `npx convex dev` does not write it before its first push, and `npx convex codegen` bundles
@@ -130,8 +115,7 @@ URL when it ends.
 Local deployment (anonymous or `--local`): the backend runs inside `npx convex dev`, so the first
 terminal must stay open while `deploy:dev` uploads, else the upload fails with `fetch failed`.
 
-Production needs its own key pair and the GitHub variables on the production deployment before the
-first `pnpm run deploy`.
+Production needs its own key pair on the production deployment before the first `pnpm run deploy`.
 
 ## Previews
 
@@ -145,11 +129,10 @@ files go with it. The workflow needs two things once per project:
 - A preview deploy key, as the repository secret `CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SSR`. The
   dashboard creates one under Project Settings, and so does the platform API
   (`POST /v1/projects/<id>/create_preview_deploy_key`).
-- The signing keys and the GitHub variables as the project's defaults for preview deployments, which
-  Convex copies into each new preview before the first push:
-  `npx convex env default set --type preview AUTH_PRIVATE_KEY ...` and the same for `AUTH_JWKS`,
-  `AUTH_GITHUB_CLIENT_ID`, and `AUTH_GITHUB_CLIENT_SECRET`. Use a key pair of their own, not the
-  production pair. GitHub sign-in on a preview needs the preview's callback URL in the OAuth app.
+- The signing keys as the project's defaults for preview deployments, which Convex copies into each
+  new preview before the first push:
+  `npx convex env default set --type preview AUTH_PRIVATE_KEY ...` and the same for `AUTH_JWKS`. Use
+  a pair of their own, not the production pair.
 
 ## Commands
 

@@ -1,5 +1,4 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { vGithubProfile } from "@convex-dev/auth/methods/github/server";
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server.js";
 
@@ -19,19 +18,6 @@ export const createUserAnonymous = internalMutation({
     const name = `${NAMES[Math.floor(Math.random() * NAMES.length)]} ${Math.floor(Math.random() * 900) + 100}`;
     return await ctx.db.insert("users", { name });
   },
-});
-
-export const createUserGithub = internalMutation({
-  args: {
-    provider: v.object({
-      name: v.literal("github"),
-      accountId: v.string(),
-      profile: vGithubProfile,
-    }),
-  },
-  returns: v.id("users"),
-  handler: async (ctx, { provider }) =>
-    await ctx.db.insert("users", { name: provider.profile.name ?? provider.profile.login }),
 });
 
 export const me = query({
