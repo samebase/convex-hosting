@@ -55,8 +55,8 @@ when a listed test passes or an unlisted test fails.
 
 1. In a PR, bump `version` in the package's `package.json` and add a `CHANGELOG.md` entry for
    `@samebase/convex-hosting`.
-2. Merge it. The `Release` workflow runs CI for that commit, publishes every package version that
-   is not on npm yet with provenance, and tags it as `<package name>@<version>`. No approval step:
-   the merge is the release.
+2. Merge it. The `Release` workflow runs CI for that commit, publishes every package version that is
+   not on npm yet with provenance, and tags it as `<package name>@<version>`. No approval step: the
+   merge is the release.
 
 Before a release, test a PR build from its pkg.pr.new preview link, which CI posts on the PR.
