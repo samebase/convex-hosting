@@ -1,6 +1,6 @@
 # Publishes each public package whose package.json version is not on npm yet, with provenance
 # through npm trusted publishing. CI runs first for the same commit. The npm trusted publishers for
-# both packages name this file. The tag <name>@<version> records a published version.
+# the packages name this file. The tag <name>@<version> records a published version.
 name: Release
 
 on:
@@ -35,7 +35,12 @@ jobs:
       # Each package publishes and tags on its own, so a failed package can be re-run alone.
       fail-fast: false
       matrix:
-        package: [packages/convex-hosting, packages/convex-hosting-tanstack-start]
+        package:
+          [
+            packages/convex-hosting,
+            packages/convex-hosting-tanstack-start,
+            packages/convex-auth-tanstack-start,
+          ]
 
     steps:
       - name: Checkout code

@@ -13,7 +13,7 @@ import {
   SignedOut,
   sessionBeforeLoad,
   useSignOutSession,
-} from "@samebase/convex-hosting-tanstack-start/convex-auth";
+} from "@samebase/convex-auth-tanstack-start";
 import { useState } from "react";
 import { api } from "../../convex/_generated/api.js";
 import styleUrl from "../style.css?url";

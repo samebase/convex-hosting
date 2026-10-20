@@ -12,6 +12,7 @@
   "dependencies": {
     "@convex-dev/auth": "catalog:",
     "@convex-dev/react-query": "catalog:",
+    "@samebase/convex-auth-tanstack-start": "workspace:*",
     "@samebase/convex-hosting": "workspace:*",
     "@samebase/convex-hosting-tanstack-start": "workspace:*",
     "@tanstack/react-query": "catalog:",

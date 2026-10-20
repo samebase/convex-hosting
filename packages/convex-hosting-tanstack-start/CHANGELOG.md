@@ -2,22 +2,20 @@
 
 ## 0.11.0
 
-- OAuth sign-in works under the `convex-auth` entry. `SessionProvider` registers Convex Auth's
-  `oauth()` ambient sign-in again, with one change: its URL cleanup replaces the URL once and keeps
-  `history.state`, where `ConvexAuthNextjsProvider`'s cleanup for Next's router replaces it again
-  with a `null` state on the next tick, which drops the `__TSR_key` and `__TSR_index` that TanStack
-  Router keeps there. The code exchange is Convex Auth's own: after the provider's callback, the
-  browser redeems `?convexAuthCode` with the provider's `completeSignIn*` mutation through the app's
-  `/auth/signin` route, so the session lands in the cookies. Convex Auth's hooks work as documented:
-  `useSignInWithGithub`, `useSignInWithGoogle`, `useOauthSignIn`, and `useOauth()`, whose
-  `flowError` is `ACCESS_DENIED`, `EXPIRED`, `INVALID_FLOW`, `REJECTED`, or `OTHER_ERROR`.
-- What an app adds for a provider, such as GitHub: the component with an `httpPrefix`
-  (`"/auth/github"`), its two variables on every deployment (Convex refuses to bind the component's
-  required variables to optional ones), `allowedRedirectOrigins` with the site's origin, and the
-  `completeSignIn*` function in the `signIn` list of `src/server.ts`. The README's "OAuth sign-in"
-  section has the flow, the order in `convex/http.ts`, and what the app must not do.
-- `convexAuth()` pre-bundles `@convex-dev/auth/methods/oauth/react` for the dev server, which the
-  entry now imports, so the first page load does not reload.
+- The Convex Auth parts move to their own package,
+  [`@samebase/convex-auth-tanstack-start`](https://github.com/samebase/convex-hosting/tree/main/packages/convex-auth-tanstack-start)
+  0.1.0, so this package is about hosting only. They have other users (TanStack Start apps with
+  Convex Auth on any host, such as the Workers twin, which no longer installs this package) and
+  follow Convex Auth's releases. That package adds OAuth sign-in, which 0.10.2 turned off here.
+- The `convex-auth` entry is gone: import `SessionProvider`, `sessionBeforeLoad`, `SignedIn`,
+  `SignedOut`, `redirectWithoutSession`, `RedirectWithoutSession`, and `useSignOutSession` from
+  `@samebase/convex-auth-tanstack-start`.
+- `convexSsr()` no longer includes `convexAuth()`, and `./vite` no longer exports it. An app with
+  Convex Auth adds `convexAuth()` from `@samebase/convex-auth-tanstack-start/vite` next to it:
+  `plugins: [convexSsr(), convexAuth(), tanstackStart(), react()]`. `convexSsr()` returns one
+  plugin.
+- The peers that only the entry used are gone: `@convex-dev/auth`, `@convex-dev/react-query`,
+  `@tanstack/react-router`, and `convex`.
 
 ## 0.10.2
 

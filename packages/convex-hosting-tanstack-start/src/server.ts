@@ -14,7 +14,8 @@ import {
 // document sent as it renders, each Suspense boundary and deferred loader value in a later chunk.
 // Apps call only `fetch(request, { context })`. Start gives `context` to each route's `beforeLoad`
 // and loader on the server as `serverContext`. `context` follows the app's `Register`: with a
-// registered `requestContext`, such as the `convex-auth` entry's, it is required and has that type.
+// registered `requestContext`, such as `@samebase/convex-auth-tanstack-start`'s, it is required and
+// has that type.
 // The explicit annotation is what the declaration emits, so it names only public entries.
 const server: { fetch: RequestHandler<Register> } = {
   fetch: createStartHandler(defaultStreamHandler),

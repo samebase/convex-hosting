@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
 import { cloudflare } from "@cloudflare/vite-plugin";
-import { convexAuth } from "@samebase/convex-hosting-tanstack-start/vite";
+import { convexAuth } from "@samebase/convex-auth-tanstack-start/vite";
 
 export default defineConfig({
   root: import.meta.dirname,

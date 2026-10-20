@@ -1,0 +1,72 @@
+{
+  "name": "@samebase/convex-auth-tanstack-start",
+  "version": "0.1.0",
+  "description": "Convex Auth cookie sessions in TanStack Start, on any host.",
+  "keywords": [
+    "auth",
+    "convex",
+    "convex-auth",
+    "ssr",
+    "tanstack-start"
+  ],
+  "homepage": "https://github.com/samebase/convex-hosting/tree/main/packages/convex-auth-tanstack-start#readme",
+  "bugs": {
+    "url": "https://github.com/samebase/convex-hosting/issues"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samebase/convex-hosting.git",
+    "directory": "packages/convex-auth-tanstack-start"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "pnpm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@convex-dev/auth": "catalog:",
+    "@convex-dev/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@tanstack/react-start": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "convex": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@convex-dev/auth": "2.0.0-beta.0",
+    "@convex-dev/react-query": "^0.1.0",
+    "@tanstack/react-router": "^1.170.38",
+    "@tanstack/react-start": "^1.168.60",
+    "convex": "^1.46.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "vite": "*"
+  },
+  "peerDependenciesMeta": {
+    "@convex-dev/react-query": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -12,7 +12,7 @@
   "dependencies": {
     "@convex-dev/auth": "catalog:",
     "@convex-dev/react-query": "catalog:",
-    "@samebase/convex-hosting-tanstack-start": "workspace:*",
+    "@samebase/convex-auth-tanstack-start": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-router-ssr-query": "1.167.3",

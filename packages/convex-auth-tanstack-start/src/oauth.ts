@@ -1,4 +1,4 @@
-// The OAuth ambient sign-in of the `convex-auth` entry: Convex Auth's own, with a URL cleanup that
+// The OAuth ambient sign-in of `SessionProvider`: Convex Auth's own, with a URL cleanup that
 // TanStack Router survives.
 
 import { oauth } from "@convex-dev/auth/methods/oauth/react";
