@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0
+
+- The README, which this package ships, starts with what the component is, who it is for, and the
+  quick start; the Cloudflare rules, the tests, and the comparisons with Workers and with
+  static-hosting have their own sections. It links the directory listing and carries its badge.
+- Releases publish on merge with provenance; no staged approval.
+
 ## 0.13.1
 
 - `deploy --preview-name` without a deploy key, and without a login whose project is in
