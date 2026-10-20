@@ -55,12 +55,8 @@ when a listed test passes or an unlisted test fails.
 
 1. In a PR, bump `version` in the package's `package.json` and add a `CHANGELOG.md` entry for
    `@samebase/convex-hosting`.
-2. Merge it. The `Release` workflow runs CI for that commit, stages every package version that is
-   not on npm yet, and tags it as `<package name>@<version>`.
-3. Approve each staged version with 2FA on npmjs.com, in the Staged Packages tab. Until then npm
-   does not serve it, and later runs skip it because its tag exists.
-
-To replace a staged version that you rejected, delete its `<package name>@<version>` tag on GitHub,
-fix the problem, and merge again. The next run stages the same version from the new commit.
+2. Merge it. The `Release` workflow runs CI for that commit, publishes every package version that
+   is not on npm yet with provenance, and tags it as `<package name>@<version>`. No approval step:
+   the merge is the release.
 
 Before a release, test a PR build from its pkg.pr.new preview link, which CI posts on the PR.

@@ -1,8 +1,6 @@
-# Stages a release of each public package whose package.json version is not on npm yet. CI runs
-# first for the same commit. The npm trusted publishers for both packages name this file and allow
-# only staged publishing, so a maintainer approves each staged version with 2FA on npmjs.com
-# (Staged Packages) before it becomes installable. The tag <name>@<version> records that a version
-# was staged, so later runs skip it while it waits for approval.
+# Publishes each public package whose package.json version is not on npm yet, with provenance
+# through npm trusted publishing. CI runs first for the same commit. The npm trusted publishers for
+# both packages name this file. The tag <name>@<version> records a published version.
 name: Release
 
 on:
@@ -23,8 +21,8 @@ jobs:
     permissions:
       contents: read
 
-  stage:
-    name: stage ${{ matrix.package }}
+  publish:
+    name: publish ${{ matrix.package }}
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -34,7 +32,7 @@ jobs:
       # npm trusted publishing.
       id-token: write
     strategy:
-      # Each package stages and tags on its own, so a failed package can be re-run alone.
+      # Each package publishes and tags on its own, so a failed package can be re-run alone.
       fail-fast: false
       matrix:
         package: [packages/convex-hosting, packages/convex-hosting-tanstack-start]
@@ -67,31 +65,27 @@ jobs:
           tag="$name@$version"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if npm view "$tag" version >/dev/null 2>&1; then
-            echo "stage=false" >> "$GITHUB_OUTPUT"
-            echo "$tag is already on npm; nothing to stage"
-          elif git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
-            echo "stage=false" >> "$GITHUB_OUTPUT"
-            echo "$tag is already staged and waits for approval on npmjs.com"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "$tag is already on npm; nothing to publish"
           else
-            echo "stage=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install dependencies
-        if: steps.version.outputs.stage == 'true'
+        if: steps.version.outputs.publish == 'true'
         run: pnpm install --frozen-lockfile
 
-      # pnpm pack replaces catalog: and workspace: versions with real ones. Staging needs npm 11.15
-      # or later.
-      - name: Stage the release
-        if: steps.version.outputs.stage == 'true'
+      # pnpm pack replaces catalog: and workspace: versions with real ones.
+      - name: Publish the release
+        if: steps.version.outputs.publish == 'true'
         env:
           PACKAGE_DIR: ${{ matrix.package }}
         run: |
           tarball=$(cd "$PACKAGE_DIR" && pnpm pack --pack-destination "$RUNNER_TEMP" | tail -n 1)
-          npx --yes npm@11.21.0 stage publish "$tarball" --access public --provenance
+          npx --yes npm@11.21.0 publish "$tarball" --access public --provenance
 
       - name: Tag the release
-        if: steps.version.outputs.stage == 'true'
+        if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
