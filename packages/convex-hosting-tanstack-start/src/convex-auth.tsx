@@ -32,6 +32,7 @@ import {
 import type {} from "@tanstack/react-start";
 import { useConvexAuth, type ConvexReactClient } from "convex/react";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { oauthKeepingHistoryState } from "./oauth.js";
 
 /**
  * The request context of a page render: the session's access token, `null` without one, or
@@ -90,13 +91,9 @@ export function SessionProvider({
       <ConvexAuthNextjsProvider
         client={client}
         initialToken={token}
-        // The default ambient sign-in is Convex Auth's OAuth client. Its URL cleanup after
-        // `?convexAuthCode` or `?convexAuthError` calls `history.replaceState(null, ...)` on the next
-        // tick, written for Next's router; under TanStack Router that drops the router's history
-        // state, and it runs in every app that uses this entry, not only apps with OAuth. With none,
-        // OAuth code exchange is off here until a TanStack-safe variant exists; anonymous and
-        // password sign-in are unchanged.
-        ambientSignIns={[]}
+        // Convex Auth's OAuth client, the default, with a URL cleanup that keeps TanStack Router's
+        // history state in place of the provider's cleanup for Next's router.
+        ambientSignIns={[oauthKeepingHistoryState()]}
       >
         <ReleaseWhenSignedOut client={client} />
         {children}

@@ -104,8 +104,9 @@ the data; the loader adds the parallel fetch and the preload.
 This entry is interim: the session lines are Convex Auth's own API, and their home is a TanStack
 Start integration in Convex Auth itself, which is being discussed with Convex. Until then they live
 here, and they need Convex Auth 2.0.0-beta.0 exactly (`@convex-dev/auth@2.0.0-beta.0`, npm tag
-`beta`). That beta signs in with email and password, with sign-up verification and password recovery
-by email link, sent through Resend only; it has no magic links and no email codes (OTP) yet.
+`beta`). That beta signs in with OAuth providers ([OAuth sign-in](#oauth-sign-in)), and with email
+and password, with sign-up verification and password recovery by email link, sent through Resend
+only; it has no magic links and no email codes (OTP) yet.
 
 The entry imports Convex Auth's SSR provider from a file that beta.0's exports map does not expose.
 `convexSsr()` includes `convexAuth()`, the Vite plugin that resolves it; an app on another host,
@@ -201,7 +202,8 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
 - `sessionBeforeLoad`: on the server, the render's Convex HTTP client queries with the token, so
   loaders run as the user. It puts `token` in the route context.
 - `SessionProvider`: Convex Auth's provider, started from the token of the server render. It also
-  releases `expectAuth` for a visitor without a session, which Convex's provider never does.
+  releases `expectAuth` for a visitor without a session, which Convex's provider never does, and it
+  finishes OAuth flows, as [OAuth sign-in](#oauth-sign-in) says.
 - `redirectWithoutSession`: a server render without a session throws `redirect(options)`, with the
   options of TanStack's `redirect()`. Only the server render has the cookie; a browser navigation
   has no `serverContext`.
@@ -229,6 +231,100 @@ not need the core.
 The entry declares Start's `Register.server` with a request context that holds only the token, so an
 app that uses the entry cannot add its own fields to `serverContext` today; an app that needs that
 is the signal to make the context a type the app registers itself.
+
+## OAuth sign-in
+
+`SessionProvider` registers Convex Auth's OAuth client, so Convex Auth's own hooks work as its docs
+say: `useSignInWithGithub(api.auth)` from `@convex-dev/auth/methods/github/react`,
+`useSignInWithGoogle`, `useOauthSignIn` for another provider, and `useOauth()` for the error of a
+flow. Only the URL cleanup differs. `ConvexAuthNextjsProvider` cleans the URL for Next's router: on
+the next tick it replaces the URL again with a `null` history state, which drops the key and the
+index that TanStack Router keeps there for scroll restoration and back and forward. The entry
+replaces the URL once and keeps the state.
+
+A sign-in with GitHub under cookie sessions:
+
+1. `signIn()` calls `startSignInWithGithub` on the deployment, which mints no session, saves the
+   flow's state in `localStorage`, and leaves for GitHub. The flow returns to the current page,
+   unless `signIn({ redirectTo })` names another one.
+2. GitHub sends the browser to the component's callback, `<CONVEX_SITE_URL>/auth/github/callback`.
+   The component exchanges GitHub's code and redirects to the return page with a one-time
+   `?convexAuthCode`, or with `?convexAuthError`.
+3. The server renders the return page without a session. After hydration, the provider removes the
+   parameter from the URL and redeems the code with `completeSignInWithGithub` through the app's
+   `/auth/signin` route, which keeps the refresh token in its httpOnly cookie and gives the browser
+   the access token. `SignedIn` renders, and the next request renders as the user.
+
+The app wires each provider in four places, as the
+[TanStack Start SSR example](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-ssr)
+does with GitHub:
+
+- `convex/convex.config.ts` installs the provider's component with an `httpPrefix`, which makes its
+  callback URL `<CONVEX_SITE_URL><httpPrefix>/callback`:
+
+  ```ts
+  app.use(github, {
+    httpPrefix: "/auth/github",
+    env: {
+      CLIENT_ID: app.env.AUTH_GITHUB_CLIENT_ID,
+      CLIENT_SECRET: app.env.AUTH_GITHUB_CLIENT_SECRET,
+    },
+  });
+  ```
+
+  Google goes under `/auth/google` the same way. Convex Auth's docs use `/oauth/github`; the
+  examples put the providers next to the core's `/auth`, and any prefix works that no route of the
+  app uses. The component's variables are required, and Convex refuses a push that binds them to
+  optional variables of the app, so every deployment needs them, previews included.
+
+- `convex/auth.ts` exports the provider's two functions, with the origin of the site in
+  `allowedRedirectOrigins`:
+
+  ```ts
+  export const { startSignInWithGithub, completeSignInWithGithub } = setupGithub(core, {
+    component: components.authGithub,
+    allowedRedirectOrigins: [env.CONVEX_SITE_URL],
+  }).attachUserCallbacks({ createUser: internal.users.createUserGithub });
+  ```
+
+- `src/server.ts` adds each `completeSignIn*` function to the `signIn` list of
+  `setupConvexAuthServer`. The `startSignIn*` functions stay out: they mint no session, and the
+  client calls them on the deployment.
+- A button calls the hook's `signIn()`, and the page shows `useOauth().flowError`.
+
+`convex/http.ts` keeps its order: `routeAll(...)` first, which returns the handler, then the exact
+`POST` routes for `/auth/signin`, `/auth/refresh`, and `/auth/signout` on that handler. The
+components' prefixes come from `convex/convex.config.ts`, not from `http.ts`. For each request,
+Convex takes an exact route of the app first, then the longest prefix among the app's prefixes and
+the components' `httpPrefix`: `/auth/github/callback` goes to the GitHub component, the key set
+under `/auth` to the core, the three exact routes to the app's server, and every other path to the
+catch-all of `routeAll`.
+
+`useOauth().flowError` says why the last flow failed after the provider sent the browser back, or is
+`null`. The app switches on `error` and supplies its own text:
+
+- `ACCESS_DENIED`: the user cancelled at the provider.
+- `EXPIRED`: the flow took too long, or its code was redeemed already or does not match the flow
+  that this browser saved.
+- `INVALID_FLOW`: this browser has no saved flow: another browser started it, or it finished.
+- `REJECTED`: the app's `createUser` or `onSignIn` threw a `ConvexError`; `data` is its data.
+- `OTHER_ERROR`: anything else, such as a failed exchange with the provider or a redemption that
+  threw; `cause` holds it.
+
+A start that fails before the provider, such as a `redirectTo` whose origin is not in
+`allowedRedirectOrigins`, comes back from `signIn()` as
+`{ status: "error", userError: { error: "OTHER_ERROR", cause } }` instead.
+
+What the app must not do:
+
+- Return the flow to a page that redirects on the server, such as a gated page. The server has no
+  session yet, so `redirectWithoutSession` sends the browser to the sign-in page without the code,
+  and the flow never finishes. Return to a page that renders without a session, and move on once
+  `SignedIn` renders; a document load, `location.assign(...)`, renders the next page as the user.
+- Route a path under a component's prefix in `convex/http.ts`: an exact route, or a longer prefix,
+  wins over the component's prefix and can take its callback.
+- Leave a `completeSignIn*` function out of `signIn`: the route answers 403, and the flow ends in
+  `OTHER_ERROR`.
 
 ## Why these settings exist
 

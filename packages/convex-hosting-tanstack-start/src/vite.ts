@@ -48,6 +48,7 @@ export function convexAuth(): Plugin {
                   "convex/browser",
                   "convex/react",
                   "convex/values",
+                  "@convex-dev/auth/methods/oauth/react",
                   "@convex-dev/auth/react",
                   "@convex-dev/auth/ssr/nextjs/client",
                 ],
