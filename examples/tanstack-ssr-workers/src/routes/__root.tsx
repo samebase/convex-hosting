@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { convexQuery, type ConvexQueryClient } from "@convex-dev/react-query";
+import { useOauth, useSignInWithGithub } from "@convex-dev/auth/methods/github/react";
 import {
   SessionProvider,
   SignedIn,
@@ -78,11 +79,37 @@ function SessionHeader() {
     <>
       <SignedOut>
         <Link to="/signin">Sign in</Link>
+        <GithubSignIn />
       </SignedOut>
       <SignedIn>
         <SignedInHeader />
       </SignedIn>
     </>
+  );
+}
+
+function GithubSignIn() {
+  const { signIn } = useSignInWithGithub(api.auth);
+  // Why the last flow failed after GitHub sent the visitor back to this page, such as
+  // `ACCESS_DENIED`; a start that fails, before GitHub, comes back from `signIn()`.
+  const { flowError } = useOauth();
+  const [startError, setStartError] = useState<string>();
+  const error = startError ?? flowError?.error;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={async () => {
+          // The flow returns to this page, which the server renders without a session; the
+          // session arrives once the browser has redeemed GitHub's code through /auth/signin.
+          const result = await signIn();
+          if (result.status === "error") setStartError(result.userError.error);
+        }}
+      >
+        Sign in with GitHub
+      </button>
+      {error && `GitHub sign-in failed: ${error}.`}
+    </div>
   );
 }
 

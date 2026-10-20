@@ -22,7 +22,9 @@ const server = {
         convexUrl,
         refreshSession: api.auth.refreshSession,
         signOut: api.auth.signOut,
-        signIn: [api.auth.signInAnonymously],
+        // Every function that mints a session. GitHub's `startSignInWithGithub` mints none and
+        // goes to the deployment directly.
+        signIn: [api.auth.signInAnonymously, api.auth.completeSignInWithGithub],
         cookieOptions,
       });
       switch (url.pathname) {

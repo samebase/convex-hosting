@@ -12,8 +12,10 @@ const http = httpRouter();
 // answers 405), the app's server (src/server.ts) for every other path, as a Cloudflare Worker with
 // static assets does.
 const handler = routeAll(http, components.hosting, versionId, server);
-// Exact routes for the three auth paths: the Convex Auth component holds the /auth prefix, where it
-// serves the key set, and the longest prefix wins, so the catch-all above never sees them.
+// Exact routes for the three auth paths. The Convex Auth components hold the prefixes of their
+// `httpPrefix`: the core /auth, where it serves the key set, and GitHub's /auth/github, where it
+// serves the callback. An exact route wins over every prefix and the longest prefix wins over the
+// catch-all above, so without these routes the core would answer the three paths.
 for (const path of ["/auth/signin", "/auth/refresh", "/auth/signout"]) {
   http.route({ path, method: "POST", handler });
 }
