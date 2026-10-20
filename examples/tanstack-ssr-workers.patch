@@ -1,27 +1,50 @@
+diff --git a/convex/auth.ts b/convex/auth.ts
+index 73da8334bbf1ccfa30c5021881d13613554c39b2..8d906bd839a24c6c29dbe63bc6f68c2f6c569cd6 100644
+--- a/convex/auth.ts
++++ b/convex/auth.ts
+@@ -2,7 +2,6 @@ import { setupConvexAuth } from "@convex-dev/auth/server";
+ import { setupAnonymous } from "@convex-dev/auth/methods/anonymous/server";
+ import { setupGithub } from "@convex-dev/auth/methods/github/server";
+ import { components, internal } from "./_generated/api.js";
+-import { env } from "./_generated/server.js";
+ 
+ const core = setupConvexAuth({ component: components.auth });
+ export const { signOut, refreshSession } = core;
+@@ -11,8 +10,8 @@ export const { signInAnonymously } = setupAnonymous(core, {
+   component: components.authAnonymous,
+ }).attachUserCallbacks({ createUser: internal.users.createUserAnonymous });
+ 
+-// A flow returns to the page where it started, on the site that this deployment serves.
++// A flow returns to the page where it started, on the Worker's site.
+ export const { startSignInWithGithub, completeSignInWithGithub } = setupGithub(core, {
+   component: components.authGithub,
+-  allowedRedirectOrigins: [env.CONVEX_SITE_URL],
++  allowedRedirectOrigins: ["https://convex-hosting-tanstack-ssr-workers.pfp.workers.dev"],
+ }).attachUserCallbacks({ createUser: internal.users.createUserGithub });
 diff --git a/convex/convex.config.ts b/convex/convex.config.ts
-index 1831f4b4fa5703fe1332d9cf45fb2308a57be703..dcc4d5f09735722e1164710651a0c69d58a01869 100644
+index 983b9adf227651c0e415293a03beda9a0432afff..bafbd2092dda592dc61fba8e8a8bb0b4906b405d 100644
 --- a/convex/convex.config.ts
 +++ b/convex/convex.config.ts
-@@ -2,7 +2,6 @@ import { defineApp } from "convex/server";
- import { v } from "convex/values";
+@@ -3,7 +3,6 @@ import { v } from "convex/values";
  import auth from "@convex-dev/auth/convex.config";
  import anonymous from "@convex-dev/auth/components/anonymous/convex.config";
+ import github from "@convex-dev/auth/components/github/convex.config";
 -import hosting from "@samebase/convex-hosting/convex.config";
  
- // A push fails while either variable is missing on the deployment.
- const app = defineApp({
-@@ -13,5 +12,4 @@ app.use(auth, {
-   env: { AUTH_PRIVATE_KEY: app.env.AUTH_PRIVATE_KEY, AUTH_JWKS: app.env.AUTH_JWKS },
+ // A push fails while any of these variables is missing on the deployment. The GitHub component's
+ // own variables are required, and Convex refuses to bind them to optional ones.
+@@ -28,5 +27,4 @@ app.use(github, {
+     CLIENT_SECRET: app.env.AUTH_GITHUB_CLIENT_SECRET,
+   },
  });
- app.use(anonymous);
 -app.use(hosting);
  export default app;
 diff --git a/convex/http.ts b/convex/http.ts
 deleted file mode 100644
-index 2bd08d55546dfacc4e31f84614c81a5625beee4e..0000000000000000000000000000000000000000
+index efca60fad2e946d9c3050c90b4d81c678d258f20..0000000000000000000000000000000000000000
 --- a/convex/http.ts
 +++ /dev/null
-@@ -1,21 +0,0 @@
+@@ -1,23 +0,0 @@
 -import { httpRouter } from "convex/server";
 -import { routeAll } from "@samebase/convex-hosting";
 -import { components } from "./_generated/api.js";
@@ -36,8 +59,10 @@ index 2bd08d55546dfacc4e31f84614c81a5625beee4e..00000000000000000000000000000000
 -// answers 405), the app's server (src/server.ts) for every other path, as a Cloudflare Worker with
 -// static assets does.
 -const handler = routeAll(http, components.hosting, versionId, server);
--// Exact routes for the three auth paths: the Convex Auth component holds the /auth prefix, where it
--// serves the key set, and the longest prefix wins, so the catch-all above never sees them.
+-// Exact routes for the three auth paths. The Convex Auth components hold the prefixes of their
+-// `httpPrefix`: the core /auth, where it serves the key set, and GitHub's /auth/github, where it
+-// serves the callback. An exact route wins over every prefix and the longest prefix wins over the
+-// catch-all above, so without these routes the core would answer the three paths.
 -for (const path of ["/auth/signin", "/auth/refresh", "/auth/signout"]) {
 -  http.route({ path, method: "POST", handler });
 -}
@@ -85,7 +110,7 @@ index f712af5c5a73e65f8a9e64cd486a68078218b4ea..7bbec71850aefea2dd2b0d87cfd9ca6f
    }
  }
 diff --git a/src/server.ts b/src/server.ts
-index c4c4df479192d2a3feb175659b9de1420d5a8b8f..a6c3d84c461c20ddc45b4eaeb577c5e92abdad29 100644
+index 3c820a4ebb2a13df6297505deeec4f2e31f0ecc4..17a1404fdff196e933c8e895f20f460b1734adcd 100644
 --- a/src/server.ts
 +++ b/src/server.ts
 @@ -1,5 +1,5 @@
