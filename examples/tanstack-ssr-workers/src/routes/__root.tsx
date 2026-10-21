@@ -91,7 +91,7 @@ function SignedInHeader() {
   // cache; `useQuery` does not fetch on the server, so a prerendered page shows it when the browser
   // has it.
   const { data: me } = useQuery(convexQuery(api.users.me, {}));
-  const signOut = useSignOutSession("/auth/signout");
+  const signOut = useSignOutSession("/auth/signout", "/");
   const [signOutFailed, setSignOutFailed] = useState(false);
   if (!me) return null;
   return (

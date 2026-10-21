@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- `useSignOutSession(url, landingUrl)` loads `landingUrl` after the sign-out instead of reloading
+  the page. A reload asked the server for the private page the visitor signed out on, and the app's
+  gate answered with its sign-in redirect, so the visitor landed on `/?next=/settings`.
+
 ## 0.1.0
 
 - The `convex-auth` entry of `@samebase/convex-hosting-tanstack-start` 0.10.2, as a package of its
