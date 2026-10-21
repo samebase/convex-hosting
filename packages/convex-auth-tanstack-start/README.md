@@ -130,9 +130,11 @@ Without `next`, the gate is `redirectWithoutSession(serverContext, { to: "/signi
   Convex's provider reports loading during the server render and the hydration, so the token that
   `SessionProvider` was given decides until it settles, and both renders agree, where Convex's
   `Authenticated` and `Unauthenticated` render nothing on the server.
-- `useSignOutSession(url)`: returns a function that posts to the app's sign-out route, such as
-  `/auth/signout`, and only after a 2xx calls Convex Auth's `signOut()`, which clears the stored
-  token in every tab, and reloads the page; otherwise it returns `false` and the session stays.
+- `useSignOutSession(url, landingUrl)`: returns a function that posts to the app's sign-out route,
+  such as `/auth/signout`, and only after a 2xx calls Convex Auth's `signOut()`, which clears the
+  stored token in every tab, and loads `landingUrl`, such as `/`; otherwise it returns `false` and
+  the session stays. A reload of the page the visitor signed out on would ask the server for a
+  private page without a session, and a gate would answer with its sign-in redirect and `next`.
   Convex Auth's `signOut()` resolves even when the route failed, so a reload after it alone signs
   the user back in from the cookie.
 

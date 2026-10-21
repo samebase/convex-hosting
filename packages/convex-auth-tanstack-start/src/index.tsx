@@ -140,16 +140,18 @@ export function SignedOut({ children }: { children: ReactNode }) {
  * to the route; when it fails or cannot be reached, it returns `false` and changes nothing, because
  * the cookie and the session stay. Convex Auth's `signOut()` resolves even when the route failed, so
  * the route's answer decides. After a 2xx, `signOut()` clears the stored access token and tells the
- * other tabs (its own call to the route is then redundant), and the page reloads, because
- * `expectAuth` holds queries only before the first authentication.
+ * other tabs (its own call to the route is then redundant), and the browser loads `landingUrl`,
+ * such as `/`, with a full load, because `expectAuth` holds queries only before the first
+ * authentication. Not a reload: the page the visitor signed out on is usually private, and a
+ * request for it without a session gets the gate's sign-in redirect with `next`.
  */
-export function useSignOutSession(url: string): () => Promise<boolean> {
+export function useSignOutSession(url: string, landingUrl: string): () => Promise<boolean> {
   const { signOut } = useAuthActions();
   return async () => {
     const response = await fetch(url, { method: "POST", credentials: "include" }).catch(() => null);
     if (!response?.ok) return false;
     await signOut();
-    location.reload();
+    location.assign(landingUrl);
     return true;
   };
 }
