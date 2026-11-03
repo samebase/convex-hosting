@@ -51,8 +51,8 @@ Run from the repository root with pnpm 11 and the Node version in `.node-version
   `internalMutation`, and `internalAction` for functions that apps must not call directly; an app
   can call only a component's public functions.
 - Shared dependency versions live in the `catalog` in `pnpm-workspace.yaml`.
-- Releases: a version bump on `main` makes `release.yml` stage the package on npm; a maintainer
-  approves it with 2FA. See `CONTRIBUTING.md`.
+- Releases: a version bump on `main` makes `release.yml` publish the package to npm, with no
+  approval step. See `CONTRIBUTING.md`.
 - An app-side script, build step, type file, or wrapper in an example or a consuming app that exists
   because a package or the adapter lacks something is a package bug. Fix it in the package in the
   same cycle; do not keep the workaround in the app.
