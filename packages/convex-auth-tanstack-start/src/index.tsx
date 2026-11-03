@@ -143,7 +143,8 @@ export function SignedOut({ children }: { children: ReactNode }) {
  * other tabs (its own call to the route is then redundant), and the browser loads `landingUrl`,
  * such as `/`, with a full load, because `expectAuth` holds queries only before the first
  * authentication. Not a reload: the page the visitor signed out on is usually private, and a
- * request for it without a session gets the gate's sign-in redirect with `next`.
+ * request for it without a session gets the gate's sign-in redirect with `next`. The load replaces
+ * the current history entry: Back after a sign-out skips the page of the session that ended.
  */
 export function useSignOutSession(url: string, landingUrl: string): () => Promise<boolean> {
   const { signOut } = useAuthActions();
@@ -151,7 +152,7 @@ export function useSignOutSession(url: string, landingUrl: string): () => Promis
     const response = await fetch(url, { method: "POST", credentials: "include" }).catch(() => null);
     if (!response?.ok) return false;
     await signOut();
-    location.assign(landingUrl);
+    location.replace(landingUrl);
     return true;
   };
 }

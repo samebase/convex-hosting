@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- `useSignOutSession` loads `landingUrl` with `location.replace`, so Back after a sign-out no longer
+  returns to the page of the session that ended.
+
 ## 0.1.1
 
 - `useSignOutSession(url, landingUrl)` loads `landingUrl` after the sign-out instead of reloading
