@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -11,7 +12,16 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
+import {
+  buildSiteFiles,
+  MARK_HEADER,
+  MARK_PATH,
+  SITE_FORMAT,
+  type Site,
+  type SiteFiles,
+} from "../client/manifest.js";
 import { internal } from "../component/_generated/api.js";
+import type { Config } from "../component/lib.js";
 import type { Id } from "../component/_generated/dataModel.js";
 import { AssetConfigSchema } from "../workers-sdk/packages/workers-shared/utils/types.js";
 import {
@@ -19,12 +29,14 @@ import {
   probeComponent,
   readConvexEnv,
   runComponent,
+  runComponentQuery,
   siteUrl,
   type Cli,
   type Destination,
   type Target,
 } from "./convex.js";
 import { readDist, type DistEntry, type HandlingOptions } from "./files.js";
+import { siteConfig } from "./site-config.js";
 
 const USAGE = `Usage:
   convex-hosting deploy --dist <dir> [options]
@@ -56,6 +68,12 @@ export const VERSION_FILE = join(STATE_DIR, "version.js");
  * `deploy` then uploads after the push.
  */
 const FIRST_INSTALL_MARKER = join(STATE_DIR, "first-install");
+
+/**
+ * Entries per inline query that reads the storage URLs: 2,000 entries and their `_storage`
+ * documents are 4,000 of the 32,000 documents a query may read, and about 300 KB of result.
+ */
+const URL_PAGE = 2000;
 
 /** Files that the upload sends to storage at once. */
 const UPLOAD_CONCURRENCY = 4;
@@ -167,9 +185,9 @@ function quote(arg: string): string {
 }
 
 /**
- * Builds, uploads, writes the version file, and pushes. The push is the switch: the first request
- * that the new code serves marks its version live. Then it reports the site URL, for a person and,
- * through `$GITHUB_OUTPUT`, for the next step of a GitHub Actions job.
+ * Builds, uploads, writes the version file, and pushes. The push is the switch. Then it asks the
+ * served code to mark its version live, and reports the site URL, for a person and, through
+ * `$GITHUB_OUTPUT`, for the next step of a GitHub Actions job.
  */
 async function deploy(cli: Cli, options: Options, build: string | undefined) {
   // A deploy key wins over every selector in the Convex CLI, so a production key in the environment
@@ -226,6 +244,7 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Deployed version ${versionId}, but reading the site URL failed: ${message}`);
   }
+  await markServedVersion(cli, url, readVersionFile(cli));
   cli.log(`Deployed version ${versionId} to ${url}.`);
   if (cli.env.GITHUB_OUTPUT) appendFileSync(cli.env.GITHUB_OUTPUT, `url=${url}\n`);
 }
@@ -236,7 +255,7 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
  * reads `VITE_CONVEX_URL`). Then the upload runs here, and `npx convex run --push` pushes, with an inline
  * query at the app's root, which exists before the push installs the component. It works whether
  * or not `npx convex dev` runs; `npx convex dev --once` refuses while it runs a local deployment's
- * backend.
+ * backend. A first install pushes, uploads, and pushes again.
  */
 async function deployDev(
   cli: Cli,
@@ -251,12 +270,22 @@ async function deployDev(
   }
   const missing = await upload(cli, options, target, versionId);
   if (missing !== undefined) cli.log(notInstalledYet(options.component));
-  const exitCode = await cli.convexInherited(["run", "--push", "--inline-query", "null"]);
-  if (exitCode !== 0) throw new Error(`npx convex run --push failed with exit code ${exitCode}.`);
-  if (missing !== undefined) await uploadAfterPush(cli, options, target, versionId);
+  await pushDev(cli);
+  if (missing !== undefined) {
+    await uploadAfterPush(cli, options, target, versionId);
+    await pushDev(cli);
+  }
 }
 
-/** Production or a preview: the build, if any, and the upload run inside `npx convex deploy --cmd`. */
+async function pushDev(cli: Cli) {
+  const exitCode = await cli.convexInherited(["run", "--push", "--inline-query", "null"]);
+  if (exitCode !== 0) throw new Error(`npx convex run --push failed with exit code ${exitCode}.`);
+}
+
+/**
+ * Production or a preview: the build, if any, and the upload run inside `npx convex deploy --cmd`.
+ * A first install uploads after that push and pushes again with `npx convex deploy`.
+ */
 async function deployWithConvexDeploy(
   cli: Cli,
   options: Options,
@@ -299,7 +328,11 @@ async function deployWithConvexDeploy(
   const firstInstall = existsSync(marker);
   rmSync(marker, { force: true });
   if (exitCode !== 0) throw new Error(`npx convex deploy failed with exit code ${exitCode}.`);
-  if (firstInstall) await uploadAfterPush(cli, options, target, versionId);
+  if (firstInstall) {
+    await uploadAfterPush(cli, options, target, versionId);
+    const again = await cli.convexInherited(["deploy", ...deployFlags]);
+    if (again !== 0) throw new Error(`npx convex deploy failed with exit code ${again}.`);
+  }
 }
 
 /** The upload inside `npx convex deploy --cmd`. On a first install, `deploy` uploads after the push. */
@@ -315,7 +348,7 @@ async function uploadInsideDeploy(cli: Cli, options: Options, versionId: string)
 }
 
 function notInstalledYet(component: string) {
-  return `The component "${component}" is not installed yet. The push installs it, and the upload runs after the push.`;
+  return `The component "${component}" is not installed yet. The push installs it, the upload runs after the push, and a second push serves the site.`;
 }
 
 /** The upload of a first install, after the push. The probe's output shows a mistyped `--component`. */
@@ -330,9 +363,9 @@ async function uploadAfterPush(cli: Cli, options: Options, target: Target, versi
 }
 
 /**
- * Uploads `--dist` as version `versionId` and writes the version file. When the component is not
- * installed yet, it writes only the version file, so that the push that follows installs the
- * component, and returns the probe's output.
+ * Uploads `--dist` as version `versionId` and writes the version file with the site's files. When
+ * the component is not installed yet, it writes a version file without files, which serves
+ * nothing, so that the push that follows installs the component, and returns the probe's output.
  */
 async function upload(
   cli: Cli,
@@ -351,9 +384,11 @@ async function upload(
       z.array(z.string()).length(count),
     );
 
+  // The CLI sends it after the push; see `MARK_HEADER`.
+  const markToken = randomUUID();
   const missing = await probeComponent(cli, target);
   if (missing !== undefined) {
-    writeVersionFile(cli, versionId);
+    writeVersionFile(cli, { format: SITE_FORMAT, versionId, markToken, files: null });
     return missing;
   }
 
@@ -442,23 +477,142 @@ async function upload(
     await record(uploaded);
   }
   await runComponent(cli, target, internal.lib.finishVersion, { versionId }, z.null());
-  writeVersionFile(cli, versionId);
+  const files = await siteFiles(cli, target, versionId, config, entries);
+  writeVersionFile(cli, { format: SITE_FORMAT, versionId, markToken, files });
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
   return undefined;
 }
 
-function writeVersionFile(cli: Cli, versionId: string) {
-  writeStateFile(cli, VERSION_FILE, `export const versionId = ${JSON.stringify(versionId)};\n`);
+/**
+ * The files of the site that serving reads: the storage URL of each entry, which only the
+ * component can make, read with inline queries in the component, which work whatever release of
+ * this package its functions are, and the deployment's `CONVEX_CLOUD_URL`, their origin.
+ */
+async function siteFiles(
+  cli: Cli,
+  target: Target,
+  versionId: string,
+  config: Config,
+  entries: DistEntry[],
+): Promise<SiteFiles> {
+  const urls = new Map<string, string>();
+  let cloudUrl = "";
+  let after = "";
+  for (;;) {
+    const page = await runComponentQuery(
+      cli,
+      target,
+      `const rows = await ctx.db.query("entries").withIndex("by_version_path", (q) => ` +
+        `q.eq("versionId", ${JSON.stringify(versionId)}).gt("path", ${JSON.stringify(after)}))` +
+        `.take(${URL_PAGE}); return { cloudUrl: process.env.CONVEX_CLOUD_URL, files: await ` +
+        `Promise.all(rows.map(async (row) => [row.path, await ctx.storage.getUrl(row.storageId)])) };`,
+      z.object({
+        cloudUrl: z.string(),
+        files: z.array(z.tuple([z.string(), z.string().nullable()])),
+      }),
+    );
+    cloudUrl = page.cloudUrl;
+    for (const [path, url] of page.files) {
+      if (url === null) {
+        throw new Error(
+          `The stored file of ${path} is gone, deleted by the age rule; run the deploy again.`,
+        );
+      }
+      urls.set(path, url);
+    }
+    if (page.files.length < URL_PAGE) break;
+    after = page.files[page.files.length - 1][0];
+  }
+  return await buildSiteFiles(
+    cloudUrl,
+    siteConfig(config),
+    entries.map(({ path, sha256, contentType }) => {
+      const url = urls.get(path);
+      if (url === undefined) throw new Error(`Version ${versionId} has no entry for ${path}.`);
+      return { path, sha256, contentType, url };
+    }),
+  );
 }
 
-/** Writes a file of the state folder, and the folder's `.gitignore` when it is absent. */
+/** The line of the version file that holds the site. */
+const SITE_LINE = "export const site = ";
+
+/**
+ * Writes the version file. `versionId` is its own export too, for the app query that reloads
+ * pages on a new version.
+ */
+function writeVersionFile(cli: Cli, site: Site) {
+  writeStateFile(
+    cli,
+    VERSION_FILE,
+    `export const versionId = ${JSON.stringify(site.versionId)};\n${SITE_LINE}${JSON.stringify(site)};\n`,
+  );
+}
+
+/** The id and the mark token of the site in the version file that the upload wrote. */
+function readVersionFile(cli: Cli): Pick<Site, "versionId" | "markToken"> {
+  const line = readFileSync(join(cli.cwd, VERSION_FILE), "utf8")
+    .split("\n")
+    .find((text) => text.startsWith(SITE_LINE));
+  if (line === undefined) throw new Error(`${VERSION_FILE} has no site.`);
+  return z
+    .object({ versionId: z.string(), markToken: z.string() })
+    .parse(JSON.parse(line.slice(SITE_LINE.length, -1)));
+}
+
+/**
+ * Asks the code that the deployment serves to mark its version live, with the site's mark token,
+ * which only the code of this deploy has. A failure deletes nothing: the versions live before stay
+ * until a later deploy marks its own, so it is reported, and the deploy succeeds.
+ */
+async function markServedVersion(
+  cli: Cli,
+  url: string,
+  site: Pick<Site, "versionId" | "markToken">,
+) {
+  const later = `Version ${site.versionId} serves, and the next deploy deletes the files of the versions before it.`;
+  let answer: unknown;
+  try {
+    const response = await cli.fetch(url + MARK_PATH, {
+      method: "POST",
+      headers: { [MARK_HEADER]: site.markToken },
+    });
+    // Other code answers the path with a page or a 404, which is no mark.
+    answer = response.ok ? await response.json().catch(() => null) : null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    cli.log(`Asking the site to mark version ${site.versionId} live failed: ${message}. ${later}`);
+    return;
+  }
+  const parsed = z.object({ versionId: z.string(), result: z.string() }).safeParse(answer);
+  if (!parsed.success || parsed.data.versionId !== site.versionId) {
+    cli.log(
+      `The site did not answer as version ${site.versionId}, so its code is not this deploy's.`,
+    );
+    return;
+  }
+  const { result } = parsed.data;
+  if (result === "superseded") {
+    cli.log(
+      `A version created after ${site.versionId} is live, so a deploy overlapped this one; ${later}`,
+    );
+  } else if (result !== "marked" && result !== "live") {
+    cli.log(`Version ${site.versionId} could not be marked live: it is ${result}.`);
+  }
+}
+
+/**
+ * Writes a file of the state folder, and the folder's `.gitignore` when it is absent. It writes a
+ * temporary file and renames it, so a running `npx convex dev` never reads half a file.
+ */
 function writeStateFile(cli: Cli, path: string, body: string) {
   const gitignore = join(cli.cwd, STATE_DIR, ".gitignore");
   if (!existsSync(gitignore)) {
     mkdirSync(join(cli.cwd, STATE_DIR), { recursive: true });
     writeFileSync(gitignore, "*\n");
   }
-  writeFileSync(join(cli.cwd, path), body);
+  writeFileSync(join(cli.cwd, `${path}.tmp`), body);
+  renameSync(join(cli.cwd, `${path}.tmp`), join(cli.cwd, path));
 }
 
 /** Stores one file through an upload URL and returns its storage id; `what` names it in errors. */

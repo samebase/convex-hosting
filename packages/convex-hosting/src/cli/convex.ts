@@ -151,6 +151,33 @@ export async function siteUrl(cli: Cli, flags: string[]): Promise<string> {
 }
 
 /**
+ * Evaluates `code` as an inline query in the component and validates its result. An inline query
+ * runs whatever release of this package the component's functions are, so the upload of a new
+ * release reads with it before the push has installed the new functions.
+ */
+export async function runComponentQuery<T>(
+  cli: Cli,
+  target: Target,
+  code: string,
+  result: z.ZodType<T>,
+): Promise<T> {
+  const { exitCode, stdout, stderr } = await cli.convex([
+    "run",
+    "--component",
+    target.component,
+    "--inline-query",
+    code,
+    ...target.flags,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(
+      stderr.trim() || stdout.trim() || `npx convex run --inline-query exited with ${exitCode}.`,
+    );
+  }
+  return result.parse(JSON.parse(stdout));
+}
+
+/**
  * Runs a function of the component with `npx convex run` and validates its result. The Convex CLI
  * prints the result as JSON from another process, so `result` checks it at runtime; its type makes
  * the schema agree with the function's declared return. The CLI prints nothing for `null`.

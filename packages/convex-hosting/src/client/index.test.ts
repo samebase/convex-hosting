@@ -2,50 +2,74 @@
 import { convexTest } from "convex-test";
 import { anyApi, httpRouter, ROUTABLE_HTTP_METHODS } from "convex/server";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { siteConfig } from "../cli/site-config.js";
+import type { Config } from "../component/lib.js";
 import { internal } from "../component/_generated/api.js";
 import schema from "../component/schema.js";
 import { routeAll } from "./index.js";
+import { buildSiteFiles, MARK_HEADER, type Site } from "./manifest.js";
 
 const modules = import.meta.glob(["../component/**/*.ts", "!../component/**/*.test.ts"]);
 
 /** The component's public functions, as an app reaches them through `components.hosting`. */
-const component = { lib: { route: anyApi.lib.route, markLive: anyApi.lib.markLive } };
+const component = { lib: { markLive: anyApi.lib.markLive } };
 
-/** Version `v1` with `/index.html` and `config`, and version `v2`, still uploading. */
-async function setup(config = "{}") {
+const CLOUD_URL = "https://example.convex.cloud";
+
+/**
+ * Version `v1` with `/index.html` and `config`, ready, and its site as the upload writes it. The
+ * site's action runs in an HTTP action, an action context where `fetch` is allowed; convex-test
+ * refuses `fetch` in `t.run`, which is a mutation. The response comes back as its parts, with the
+ * number of functions that the action called.
+ */
+async function setup(config: Config = {}) {
   // `markLive` schedules `collect`; the tests run it with `finish`.
   vi.useFakeTimers();
+  vi.stubEnv("CONVEX_CLOUD_URL", CLOUD_URL);
   const t = convexTest(schema, modules);
-  const entry = { path: "/index.html", body: "<h1>Home</h1>" };
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(entry.body));
+  const body = "<h1>Home</h1>";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
   const sha256 = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join(
     "",
   );
-  const createVersion = async (versionId: string) => {
-    const configId = await t.run((ctx) => ctx.storage.store(new Blob([config])));
-    await t.action(internal.lib.createVersion, { versionId, configId });
-  };
-  await createVersion("v1");
-  const storageId = await t.run((ctx) => ctx.storage.store(new Blob([entry.body])));
+  const configId = await t.run((ctx) => ctx.storage.store(new Blob([JSON.stringify(config)])));
+  await t.action(internal.lib.createVersion, { versionId: "v1", configId });
+  const storageId = await t.run((ctx) => ctx.storage.store(new Blob([body])));
+  const entry = { path: "/index.html", sha256, contentType: "text/html" };
   await t.mutation(internal.lib.recordFiles, {
     versionId: "v1",
-    entries: [{ path: entry.path, sha256, contentType: "text/html", storageId }],
+    entries: [{ ...entry, storageId }],
   });
   await t.mutation(internal.lib.finishVersion, { versionId: "v1" });
-  await createVersion("v2");
-  // The site's action runs in an HTTP action, an action context where `fetch` is allowed;
-  // convex-test refuses `fetch` in `t.run`, which is a mutation. The response comes back as its
-  // parts, with the number of mutations that the action called.
-  const serve = (path: string, versionId = "v1", render?: () => Promise<Response>) =>
+  const site: Site = {
+    format: 1,
+    versionId: "v1",
+    markToken: "token-1",
+    files: await buildSiteFiles(CLOUD_URL, siteConfig(config), [
+      { ...entry, url: `${CLOUD_URL}/api/storage/${storageId}` },
+    ]),
+  };
+
+  const serve = (
+    path: string,
+    options: {
+      site?: Site;
+      render?: () => Promise<Response>;
+      headers?: Record<string, string>;
+      method?: string;
+    } = {},
+  ) =>
     t.action(async (ctx) => {
       const runMutation = vi.spyOn(ctx, "runMutation");
+      const runQuery = vi.spyOn(ctx, "runQuery");
       const url = `https://example.convex.site${path}`;
-      const worker = render === undefined ? undefined : { fetch: render };
-      const site = routeAll(httpRouter(), component, versionId, worker);
+      const worker = options.render === undefined ? undefined : { fetch: options.render };
+      const action = routeAll(httpRouter(), component, options.site ?? site, worker);
+      const request = new Request(url, { method: options.method, headers: options.headers });
       // @ts-expect-error httpActionGeneric keeps the function as _handler; PublicHttpAction does not declare it.
-      const response: Response = await site._handler(ctx, new Request(url));
+      const response: Response = await action._handler(ctx, request);
       return {
-        mutations: runMutation.mock.calls.length,
+        calls: runMutation.mock.calls.length + runQuery.mock.calls.length,
         status: response.status,
         contentType: response.headers.get("content-type"),
         cacheControl: response.headers.get("cache-control"),
@@ -53,37 +77,39 @@ async function setup(config = "{}") {
         body: await response.text(),
       };
     });
-  const state = (versionId: string) =>
+  const state = () =>
     t.run(
       async (ctx) =>
         (
           await ctx.db
             .query("versions")
-            .withIndex("by_versionId", (q) => q.eq("versionId", versionId))
+            .withIndex("by_versionId", (q) => q.eq("versionId", "v1"))
             .unique()
         )?.state.kind,
     );
   const finish = () => t.finishAllScheduledFunctions(vi.runAllTimers);
-  return { t, serve, state, finish };
+  return { site, serve, state, finish };
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
 describe("routeAll", () => {
-  test("routes the action for every method Convex routes, at every path, and returns it", () => {
+  test("routes the action for every method Convex routes, at every path, and returns it", async () => {
+    const { site } = await setup();
     const http = httpRouter();
-    const site = routeAll(http, component, "v1");
+    const action = routeAll(http, component, site);
     for (const method of ROUTABLE_HTTP_METHODS) {
-      expect(http.lookup("/any/path", method)).toEqual([site, method, "/*"]);
+      expect(http.lookup("/any/path", method)).toEqual([action, method, "/*"]);
     }
   });
 });
 
 describe("the site's action", () => {
-  test("answers a hit with the stored body and the handler's headers", async () => {
+  test("answers a hit with the stored body and the handler's headers, and calls no function", async () => {
     const fetchStorage = vi.fn(async () => new Response("<h1>Home</h1>"));
     vi.stubGlobal("fetch", fetchStorage);
     const hit = await (await setup()).serve("/");
@@ -91,62 +117,64 @@ describe("the site's action", () => {
     expect(hit.contentType).toBe("text/html");
     expect(hit.body).toBe("<h1>Home</h1>");
     expect(fetchStorage).toHaveBeenCalledOnce();
+    expect(hit.calls).toBe(0);
   });
 
-  test("the first request marks the version live; a later request makes no mutation call", async () => {
-    vi.stubGlobal("fetch", async () => new Response("<h1>Home</h1>"));
-    const { serve, state, finish } = await setup();
-    expect(await state("v1")).toBe("ready");
-    const first = await serve("/");
-    expect(first.mutations).toBe(1);
-    expect(first.status).toBe(200);
-    expect(await state("v1")).toBe("live");
-    const later = await serve("/");
-    expect(later.mutations).toBe(0);
-    expect(later.status).toBe(200);
-    await finish();
-    expect(await state("v1")).toBe("live");
-  });
-
-  test("concurrent first requests all mark the version live, and all answer", async () => {
-    vi.stubGlobal("fetch", async () => new Response("<h1>Home</h1>"));
-    const { serve, state, finish } = await setup();
-    const answers = await Promise.all([serve("/"), serve("/"), serve("/missing")]);
-    expect(answers.map(({ status }) => status)).toEqual([200, 200, 404]);
-    await finish();
-    expect(await state("v1")).toBe("live");
-  });
-
-  test("answers 404 for a version that is being deleted, and does not mark it", async () => {
-    const { t, serve } = await setup();
-    await t.run(async (ctx) => {
-      const version = await ctx.db
-        .query("versions")
-        .withIndex("by_versionId", (q) => q.eq("versionId", "v1"))
-        .unique();
-      if (version !== null)
-        await ctx.db.patch("versions", version._id, { state: { kind: "deleting" } });
-    });
-    const deleting = await serve("/");
-    expect(deleting.status).toBe(404);
-    expect(deleting.body).toBe("Version v1 of the site is being deleted.");
-    expect(deleting.cacheControl).toBe("no-store");
-    expect(deleting.mutations).toBe(0);
-  });
-
-  test("answers 404 naming a version that does not exist or is uploading, without rendering", async () => {
-    const { serve } = await setup();
+  test("the request with the site's mark token marks the version live and answers the result", async () => {
+    const { site, serve, state, finish } = await setup();
     const render = vi.fn(async () => new Response("page"));
-    const missing = await serve("/", "v3", render);
-    expect(missing.status).toBe(404);
-    expect(missing.body).toContain("v3");
-    expect(missing.cacheControl).toBe("no-store");
-    const uploading = await serve("/", "v2", render);
-    expect(uploading.status).toBe(404);
-    expect(uploading.body).toContain("v2");
-    expect(uploading.cacheControl).toBe("no-store");
-    expect(missing.mutations + uploading.mutations).toBe(0);
+    const marked = await serve("/.convex-hosting/mark", {
+      render,
+      method: "POST",
+      headers: { [MARK_HEADER]: site.markToken },
+    });
+    expect(marked.calls).toBe(1);
+    expect(JSON.parse(marked.body)).toEqual({ versionId: "v1", result: "marked" });
+    expect(marked.cacheControl).toBe("no-store");
     expect(render).not.toHaveBeenCalled();
+    expect(await state()).toBe("live");
+    const again = await serve("/", { headers: { [MARK_HEADER]: site.markToken } });
+    expect(JSON.parse(again.body)).toEqual({ versionId: "v1", result: "live" });
+    await finish();
+    expect(await state()).toBe("live");
+  });
+
+  test("a request with another mark token is an ordinary request, which calls no function", async () => {
+    vi.stubGlobal("fetch", async () => new Response("<h1>Home</h1>"));
+    const { serve, state } = await setup();
+    const other = await serve("/", { headers: { [MARK_HEADER]: "guess" } });
+    expect(other.status).toBe(200);
+    expect(other.body).toBe("<h1>Home</h1>");
+    expect(other.calls).toBe(0);
+    expect(await state()).toBe("ready");
+  });
+
+  test("a first install's site, before its upload, answers 404 naming the version, without rendering", async () => {
+    const { site, serve } = await setup();
+    const render = vi.fn(async () => new Response("page"));
+    const early = await serve("/", { site: { ...site, files: null }, render });
+    expect(early.status).toBe(404);
+    expect(early.body).toBe("Version v1 of the site is not uploaded yet.");
+    expect(early.cacheControl).toBe("no-store");
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  test("a site uploaded to another deployment answers 404 naming it, without rendering", async () => {
+    const { site, serve } = await setup();
+    vi.stubEnv("CONVEX_CLOUD_URL", "https://other-dog-456.convex.cloud");
+    const render = vi.fn(async () => new Response("page"));
+    const elsewhere = await serve("/", { site, render });
+    expect(elsewhere.status).toBe(404);
+    expect(elsewhere.body).toContain(`was uploaded to ${CLOUD_URL}, not to this deployment`);
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  test("a site of another format answers 500 and asks for a deploy", async () => {
+    const { site, serve } = await setup();
+    // A version file that another release wrote.
+    const answer = await serve("/", { site: { ...site, format: 0 } });
+    expect(answer.status).toBe(500);
+    expect(answer.body).toContain("Deploy again.");
   });
 
   test("answers 404 when storage no longer has the file, and 502 for other failures", async () => {
@@ -170,19 +198,26 @@ describe("the site's action", () => {
   test("answers a file without rendering", async () => {
     vi.stubGlobal("fetch", async () => new Response("<h1>Home</h1>"));
     const render = vi.fn(async () => new Response("page"));
-    const file = await (await setup()).serve("/", "v1", render);
+    const file = await (await setup()).serve("/", { render });
     expect(file.status).toBe(200);
     expect(file.cacheControl).toBe("public, max-age=0, must-revalidate");
     expect(file.body).toBe("<h1>Home</h1>");
     expect(render).not.toHaveBeenCalled();
   });
 
+  test("a redirect downloads nothing", async () => {
+    const fetchStorage = vi.fn(async () => new Response("<h1>Home</h1>"));
+    vi.stubGlobal("fetch", fetchStorage);
+    const { serve } = await setup();
+    const redirect = await serve("/index.html");
+    expect(redirect.status).toBe(307);
+    expect(fetchStorage).not.toHaveBeenCalled();
+  });
+
   test("answers a rendered page with no-store and keeps its other headers", async () => {
     const { serve } = await setup();
-    const page = await serve(
-      "/todos",
-      "v1",
-      async () =>
+    const page = await serve("/todos", {
+      render: async () =>
         new Response("<h1>Todos</h1>", {
           status: 200,
           headers: [
@@ -191,11 +226,12 @@ describe("the site's action", () => {
             ["Set-Cookie", "b=2"],
           ],
         }),
-    );
+    });
     expect(page.status).toBe(200);
     expect(page.cacheControl).toBe("no-store");
     expect(page.setCookie).toEqual(["a=1", "b=2"]);
     expect(page.body).toBe("<h1>Todos</h1>");
+    expect(page.calls).toBe(0);
   });
 
   test("answers a miss without render with 404 and no-store", async () => {
@@ -206,16 +242,18 @@ describe("the site's action", () => {
 
   test("without render, the single-page fallback answers a request that is not a navigation", async () => {
     vi.stubGlobal("fetch", async () => new Response("<h1>Home</h1>"));
-    const spa = JSON.stringify({ not_found_handling: "single-page-application" });
-    const page = await (await setup(spa)).serve("/about");
+    const page = await (
+      await setup({ not_found_handling: "single-page-application" })
+    ).serve("/about");
     expect(page.status).toBe(200);
     expect(page.body).toBe("<h1>Home</h1>");
   });
 
   test("with render, a request that is not a navigation and matches no file is rendered", async () => {
-    const spa = JSON.stringify({ not_found_handling: "single-page-application" });
     const render = vi.fn(async () => new Response("<h1>About</h1>"));
-    const page = await (await setup(spa)).serve("/about", "v1", render);
+    const page = await (
+      await setup({ not_found_handling: "single-page-application" })
+    ).serve("/about", { render });
     expect(render).toHaveBeenCalledOnce();
     expect(page.status).toBe(200);
     expect(page.body).toBe("<h1>About</h1>");

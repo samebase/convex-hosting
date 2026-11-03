@@ -3,4 +3,5 @@
 // in an ambient context.
 declare module "*/.convex-hosting/version.js" {
   export const versionId: string;
+  export const site: import("./manifest.js").Site;
 }

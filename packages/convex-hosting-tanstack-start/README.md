@@ -33,7 +33,7 @@ import { routeAll } from "@samebase/convex-hosting";
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
-routeAll(http, components.hosting, versionId, server);
+routeAll(http, components.hosting, site, server);
 ```
 
 Import `@samebase/convex-hosting` before the server build: it defines `queueMicrotask` when it
