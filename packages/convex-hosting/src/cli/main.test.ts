@@ -72,7 +72,7 @@ function fake(
     build?: () => Promise<number>;
     push?: (cli: Cli, args: string[]) => Promise<number>;
     /** The site's answer to the mark request; by default it marks the version of the file. */
-    mark?: (token: string | null) => Promise<Response>;
+    mark?: (token: string | null, init: RequestInit | undefined) => Promise<Response>;
   } = {},
 ) {
   const runs: string[][] = [];
@@ -102,9 +102,11 @@ function fake(
         const code = args[args.indexOf("--inline-query") + 1];
         const [, versionId, after] =
           /q\.eq\("versionId", ("[^"]*")\)\.gt\("path", ("[^"]*")\)/.exec(code) ?? [];
+        const take = Number(/\.take\((\d+)\)/.exec(code)?.[1]);
         const files = (recorded.get(JSON.parse(versionId)) ?? [])
           .filter(({ path }) => path > JSON.parse(after))
           .sort((a, b) => (a.path < b.path ? -1 : 1))
+          .slice(0, take)
           .map(({ path, storageId }) => [path, fileUrl(storageId)]);
         return ok({ cloudUrl: CLOUD_URL, files });
       }
@@ -152,7 +154,7 @@ function fake(
       if (url === SITE_URL + MARK_PATH) {
         events.push("mark");
         const token = new Headers(init?.headers).get(MARK_HEADER);
-        if (options.mark !== undefined) return await options.mark(token);
+        if (options.mark !== undefined) return await options.mark(token, init);
         const site = writtenSite(cwd);
         return token === site.markToken
           ? Response.json({ versionId: site.versionId, result: "marked" })
@@ -420,6 +422,20 @@ describe("deploy reports", () => {
     }
   });
 
+  test("the mark follows no redirect, which would carry the token to another origin", async () => {
+    const redirects: (RequestRedirect | undefined)[] = [];
+    const { cli, logs } = fake(app(site), {
+      push: innerUpload,
+      mark: async (_token, init) => {
+        redirects.push(init?.redirect);
+        return new Response(null, { status: 307, headers: { Location: "https://other.example/" } });
+      },
+    });
+    expect(await main(DEPLOY, cli)).toBe(0);
+    expect(redirects).toEqual(["manual"]);
+    expect(logs.some((line) => line.includes("did not answer as version"))).toBe(true);
+  });
+
   test("a mark refused because a newer version is live says that deploys overlapped", async () => {
     const cwd = app(site);
     const { cli, logs } = fake(cwd, {
@@ -675,6 +691,21 @@ describe("upload", () => {
     expect(storageUrl(files.storage, found?.file ?? -1)).toBe(fileUrl(home.storageId));
     expect(await lookup(files, "/private/notes.txt")).toBeNull();
     expect(readFileSync(join(cwd, ".convex-hosting", ".gitignore"), "utf8")).toBe("*\n");
+  });
+
+  test("reads the storage URLs a page at a time, and every path finds its stored file", async () => {
+    const files = Object.fromEntries(
+      Array.from({ length: 2500 }, (_, i) => [`dist/assets/${i}.js`, `console.log(${i})`]),
+    );
+    const cwd = app(files);
+    const { cli, calls } = fake(cwd);
+    expect(await main(upload(), cli)).toBe(0);
+    expect(calls().filter((name) => name === "urls")).toHaveLength(2);
+    const written = writtenSite(cwd).files;
+    if (written === null) throw new Error("The version file has no files.");
+    for (const i of [0, 1999, 2000, 2499]) {
+      expect(await lookup(written, `/assets/${i}.js`)).not.toBeNull();
+    }
   });
 
   test("does not upload the files that knownFiles knows, and records them with their stored file", async () => {

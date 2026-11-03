@@ -1,12 +1,14 @@
 # Deploy
 
 `deploy` runs `npx convex deploy` with your build and the upload of `--dist` as its `--cmd`. The
-pushed code names the version it was built with, so the push switches the site. Then the command
-prints the site URL, which it asks the deployment for (`CONVEX_SITE_URL`), and ends. The first
-request that the new code serves marks its version live, which deletes the versions that were live
-before it. A version that never becomes live, from a deploy that failed, is deleted at the first
-switch after it is a day old, and the stored files that no version uses go at the switch after that.
-Nothing is deleted while a site gets no request.
+pushed code carries the version it was built with and that version's files, so the push switches the
+site. Then the command reads the site URL from the deployment (`CONVEX_SITE_URL`), sends one request
+to it with the version's mark token, which makes the code that answers mark its version live and
+delete the versions that were live before it, prints the site URL, and ends. When that request
+fails, the deploy still succeeds and says so; the old versions then stay until the next deploy's
+mark. A version that never becomes live, from a deploy that failed, is deleted at the first switch
+after it is a day old, and the stored files that no version uses go at the switch after that.
+Nothing is deleted but at a deploy's mark.
 
 `deploy` goes to production. `--preview-name <name>` sends it to that preview (with a login or a
 project's preview deploy key; always pass the name with that key), and `--dev` to the development
@@ -15,8 +17,8 @@ deployment (see [Development](./development.md)). A deploy key in `CONVEX_DEPLOY
 plain `deploy`, and so does `CONVEX_SELF_HOSTED_URL` for a self-hosted deployment; `--dev` refuses a
 key, and `--preview-name` accepts only a preview key, so a production key cannot redirect either.
 
-The first deploy to a deployment pushes the component, then uploads the files. Until that upload
-ends, the site answers 404.
+The first deploy to a deployment pushes the component, uploads the files, and pushes again. Until
+the second push, the site answers 404 naming the version.
 
 Run one deploy at a time per deployment; in GitHub Actions, the job's `concurrency` group queues
 them (see [GitHub Actions](#github-actions)).

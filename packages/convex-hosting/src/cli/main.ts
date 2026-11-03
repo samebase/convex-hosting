@@ -573,9 +573,11 @@ async function markServedVersion(
   const later = `Version ${site.versionId} serves, and the next deploy deletes the files of the versions before it.`;
   let answer: unknown;
   try {
+    // A redirect would carry the token to another origin, so it counts as other code answering.
     const response = await cli.fetch(url + MARK_PATH, {
       method: "POST",
       headers: { [MARK_HEADER]: site.markToken },
+      redirect: "manual",
     });
     // Other code answers the path with a page or a 404, which is no mark.
     answer = response.ok ? await response.json().catch(() => null) : null;

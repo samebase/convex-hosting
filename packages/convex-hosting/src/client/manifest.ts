@@ -144,7 +144,9 @@ function compressUrls(urls: string[]): SiteFiles["storage"] {
   for (const rest of rests)
     suffixLength = Math.min(suffixLength, commonSuffixLength(rests[0], rest));
   const keys = rests.map((rest) => rest.slice(0, rest.length - suffixLength));
-  const width = Math.max(...keys.map((key) => key.length));
+  // A loop, since a spread passes one argument per stored file, more than V8 allows on a large site.
+  let width = 0;
+  for (const key of keys) width = Math.max(width, key.length);
   const storage = {
     prefix: urls[0].slice(0, prefixLength),
     suffix: rests[0].slice(rests[0].length - suffixLength),
