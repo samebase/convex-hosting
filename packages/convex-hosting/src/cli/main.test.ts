@@ -666,7 +666,11 @@ describe("upload", () => {
       home.storageId,
     );
 
-    expect(versionFile(cwd).split("\n")[0]).toBe('export const versionId = "v1";');
+    expect(versionFile(cwd).split("\n").slice(0, 2)).toEqual([
+      'export const versionId = "v1";',
+      // tsc reads the file itself in an app whose convex/tsconfig.json sets allowJs.
+      '/** @type {import("@samebase/convex-hosting").Site} */',
+    ]);
     const written = writtenSite(cwd);
     expect(written).toMatchObject({ format: 1, versionId: "v1", markToken: expect.any(String) });
     const files = written.files;

@@ -96,11 +96,11 @@ export default app;
     `import { httpRouter } from "convex/server";
 import { routeAll } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
-import { versionId } from "../.convex-hosting/version.js";
+import { site } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
-routeAll(http, components.hosting, versionId);
+routeAll(http, components.hosting, site);
 
 export default http;
 `,

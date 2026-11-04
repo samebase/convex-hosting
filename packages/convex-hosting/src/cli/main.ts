@@ -539,13 +539,17 @@ const SITE_LINE = "export const site = ";
 
 /**
  * Writes the version file. `versionId` is its own export too, for the app query that reloads
- * pages on a new version.
+ * pages on a new version. The site carries its type as JSDoc: Convex's default
+ * `convex/tsconfig.json` sets `allowJs`, so tsc reads this file instead of the package's
+ * declaration, and would infer `string` where `Site` has a union of literals.
  */
 function writeVersionFile(cli: Cli, site: Site) {
   writeStateFile(
     cli,
     VERSION_FILE,
-    `export const versionId = ${JSON.stringify(site.versionId)};\n${SITE_LINE}${JSON.stringify(site)};\n`,
+    `export const versionId = ${JSON.stringify(site.versionId)};\n` +
+      `/** @type {import("@samebase/convex-hosting").Site} */\n` +
+      `${SITE_LINE}${JSON.stringify(site)};\n`,
   );
 }
 
