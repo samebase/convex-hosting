@@ -1,0 +1,47 @@
+{
+  "target": "convex-hosting-branch",
+  "dependencies": {
+    "@samebase/convex-hosting": "file:bench/.work/pack/samebase-convex-hosting-0.15.0.tgz"
+  },
+  "convex": "1.46.0",
+  "commit": "9007184db5b59bd4f0be4ab411c748f49fbccf49",
+  "deployment": "clean-swordfish-403",
+  "files": 400,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-04T00:14:09.590Z",
+  "case": "asset",
+  "path": "/assets/chunk-200-ICKA4Pr8.js",
+  "client": {
+    "requests": 1501,
+    "rate": 24.869355938191646,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 355.262,
+      "p90": 418.642,
+      "p95": 443.636,
+      "p99": 492.54,
+      "max": 757.795
+    }
+  },
+  "server": {
+    "httpActionsLogged": 1501,
+    "logCompleteness": 1,
+    "functionsPerRequest": 1,
+    "downloadsPerRequest": 1,
+    "billedCallsPerRequest": 2,
+    "byFunction": {
+      "HttpAction GET /*": 1501
+    },
+    "httpActionMs": {
+      "median": 51.838714,
+      "p95": 92.062591
+    },
+    "innerFunctionMs": {
+      "median": null,
+      "p95": null
+    }
+  }
+}

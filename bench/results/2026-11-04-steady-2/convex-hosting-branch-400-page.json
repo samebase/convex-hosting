@@ -1,0 +1,47 @@
+{
+  "target": "convex-hosting-branch",
+  "dependencies": {
+    "@samebase/convex-hosting": "file:bench/.work/pack/samebase-convex-hosting-0.15.0.tgz"
+  },
+  "convex": "1.46.0",
+  "commit": "9007184db5b59bd4f0be4ab411c748f49fbccf49",
+  "deployment": "clean-swordfish-403",
+  "files": 400,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-04T00:12:45.925Z",
+  "case": "page",
+  "path": "/",
+  "client": {
+    "requests": 1501,
+    "rate": 24.934123497534255,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 196.604,
+      "p90": 226.715,
+      "p95": 247.656,
+      "p99": 465.25,
+      "max": 910.409
+    }
+  },
+  "server": {
+    "httpActionsLogged": 1501,
+    "logCompleteness": 1,
+    "functionsPerRequest": 1,
+    "downloadsPerRequest": 1,
+    "billedCallsPerRequest": 2,
+    "byFunction": {
+      "HttpAction GET /*": 1501
+    },
+    "httpActionMs": {
+      "median": 52.636536,
+      "p95": 91.936576
+    },
+    "innerFunctionMs": {
+      "median": null,
+      "p95": null
+    }
+  }
+}
