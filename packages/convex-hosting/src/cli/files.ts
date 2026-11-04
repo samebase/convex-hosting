@@ -10,6 +10,7 @@ import { parseHeaders } from "../workers-sdk/packages/workers-shared/utils/confi
 import { parseRedirects } from "../workers-sdk/packages/workers-shared/utils/configuration/parseRedirects.js";
 import {
   HEADERS_FILENAME,
+  MAX_ASSET_COUNT,
   MAX_ASSET_SIZE,
   REDIRECTS_FILENAME,
 } from "../workers-sdk/packages/workers-shared/utils/constants.js";
@@ -72,6 +73,13 @@ export async function readDist(
         }
         walk(file);
       } else if (stats.isFile() && !assetsIgnoreFunction(ignorePath)) {
+        // Cloudflare's limit per Worker version on its Paid plan, 100,000 files.
+        if (entries.length === MAX_ASSET_COUNT) {
+          throw new Error(
+            `${dist} has more than ${MAX_ASSET_COUNT.toLocaleString("en-US")} files, Cloudflare's ` +
+              "limit per Worker version. List the files that are not served in .assetsignore.",
+          );
+        }
         const bytes = readFileSync(file);
         // Cloudflare's limit per asset, 25 MiB. The HTTP action that serves a file cannot answer
         // more than Convex's 100 MiB response limit anyway.

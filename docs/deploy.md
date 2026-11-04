@@ -53,7 +53,8 @@ The two handling options work as
 
 Each file of `--dist` must be 25 MiB or smaller, and the CLI names a file that is larger. This is
 Cloudflare's limit per asset, and the HTTP action that serves a file cannot answer more than
-Convex's 100 MiB response limit anyway.
+Convex's 100 MiB response limit anyway. A site has at most 100,000 files, Cloudflare's limit per
+Worker version on its Paid plan.
 
 ## Deploy tools and CI
 

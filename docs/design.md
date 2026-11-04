@@ -75,7 +75,8 @@ Bristol's production used it while hosting 0.3 and 0.4 ran side by side under tw
       Wrangler does (a link to nothing, or to a folder that contains it, is skipped with a message;
       a link to another folder uploads its files under both paths), and computes each file's sha256
       and content type; refuses a file above 25 MiB, Cloudflare's limit per asset (the HTTP action
-      that serves a file could not answer more than Convex's 100 MiB response limit anyway); reads
+      that serves a file could not answer more than Convex's 100 MiB response limit anyway), and
+      more than 100,000 files, Cloudflare's limit per Worker version on its Paid plan; reads
       `_headers` and `_redirects` with Cloudflare's parsers into the version's config;
    2. stores the config as one file through an upload URL, because `npx convex run` passes arguments
       on the command line, which the operating system limits, and a `_redirects` file can be large;
@@ -323,9 +324,11 @@ not to the bytes: paths with identical bytes share one stored file but keep thei
 site's manifest carries each type, so serving reads no `_storage` metadata. Serving does not read
 `config` either; it makes a retried upload of the same id refuse another config.
 
-The package sets one limit of its own, 25 MiB per file, for the reason above. Convex's limits apply:
-1 MiB per document, and the transaction limits (16,000 writes, 32,000 documents scanned, 16 MiB read
-and written, 8,192 array elements, 4,096 index ranges, argument and result sizes) shape the batches.
+The package sets two limits of its own, Cloudflare's: 25 MiB per file, for the reason above, and
+100,000 files per site, the most that the site's files were measured with in the pushed code.
+Convex's limits apply: 1 MiB per document, and the transaction limits (16,000 writes, 32,000
+documents scanned, 16 MiB read and written, 8,192 array elements, 4,096 index ranges, argument and
+result sizes) shape the batches.
 
 ## Orderings and timing
 
