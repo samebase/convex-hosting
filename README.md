@@ -56,14 +56,14 @@ server build for every other request, as a Cloudflare Worker with static assets 
 import { httpRouter } from "convex/server";
 import { routeAll } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
-import { versionId } from "../.convex-hosting/version.js";
+import { site } from "../.convex-hosting/version.js";
 // Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
 const http = httpRouter();
 
-routeAll(http, components.hosting, versionId, server);
+routeAll(http, components.hosting, site, server);
 
 export default http;
 ```
@@ -106,10 +106,10 @@ wires both.
 
 ## Files only
 
-A site without a server leaves the fourth argument out,
-`routeAll(http, components.hosting, versionId)`, needs no adapter package, and deploys its build
-directory: `--dist dist` after a `vite build`, or `--dist public` with no `--build` at all. A
-single-page app adds `--not-found-handling single-page-application`. The
+A site without a server leaves the fourth argument out, `routeAll(http, components.hosting, site)`,
+needs no adapter package, and deploys its build directory: `--dist dist` after a `vite build`, or
+`--dist public` with no `--build` at all. A single-page app adds
+`--not-found-handling single-page-application`. The
 [tanstack-spa](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa) and
 [hello-world-assets-only](https://github.com/samebase/convex-hosting/tree/main/examples/hello-world-assets-only)
 examples are such sites.
@@ -161,7 +161,7 @@ inside a Convex HTTP action, so `_headers`, `_redirects`, `.assetsignore`, `html
 `not_found_handling` mean what they mean on Cloudflare.
 
 This repository's CI runs Cloudflare's own tests against it: its
-[196 cases](https://github.com/samebase/convex-hosting/blob/main/packages/convex-hosting/src/component/conformance.test.ts)
+[196 cases](https://github.com/samebase/convex-hosting/blob/main/packages/convex-hosting/src/client/answer.test.ts)
 for `html_handling` and path encoding, and its
 [integration test](https://github.com/samebase/convex-hosting/tree/main/packages/convex-hosting/src/workers-sdk/fixtures/workers-with-assets-only)
 for a files-only site, with its imports pointed at this package, on a local Convex deployment.
@@ -185,13 +185,15 @@ lists what differs and how to move an app.
 On Cloudflare, `wrangler deploy` uploads the files and the Worker code as one version, so the switch
 is atomic. Here two systems hold the two halves: the component's storage holds the files, and
 `npx convex deploy` pushes the code. `deploy` binds them the same way. It uploads the files as a new
-version, writes that version's id to `.convex-hosting/version.js`, and then pushes the code, which
-imports the file and asks the component for exactly that version. The push is the switch: no pointer
-moves in a second step, so there is no moment when new code serves old files, and no page refers to
-a file that is not uploaded yet. The first request the new code serves marks its version live and
-deletes the versions that were live before it. A version whose push never came is deleted at a later
-switch, once it is a day old; nothing is deleted by the clock alone. The one rule: run one deploy at
-a time per deployment. The
+version, writes that version's id and its files (each path's stored file, in the layout of
+Cloudflare's asset manifest) to `.convex-hosting/version.js`, and then pushes the code, which
+imports the file. The push is the switch: no pointer moves in a second step, so there is no moment
+when new code serves old files, and no page refers to a file that is not uploaded yet. A request
+reads no database: it costs one function call, the HTTP action, and a file adds the download of its
+bytes, which Convex counts as a call too. After the push, `deploy` asks the served code to mark its
+version live, which deletes the versions that were live before it. A version whose push never came
+is deleted at a later switch, once it is a day old; nothing is deleted by the clock alone. The one
+rule: run one deploy at a time per deployment. The
 [design](https://github.com/samebase/convex-hosting/blob/main/docs/design.md#orderings-and-timing)
 works through every interleaving.
 

@@ -2,7 +2,7 @@
 // from cloudflare/workers-sdk (MIT OR Apache-2.0) into src/workers-sdk, at the commit recorded in
 // src/workers-sdk/UPSTREAM: the asset Worker and its tests from packages/workers-shared, and
 // Cloudflare's html_handling and encoding cases from fixtures/workers-shared-asset-config, which
-// src/component/conformance.test.ts runs through `route`.
+// src/client/answer.test.ts runs through the site's action.
 //
 //   node scripts/sync-workers-sdk.ts [<commit>]
 //

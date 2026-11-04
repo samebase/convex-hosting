@@ -1,0 +1,48 @@
+{
+  "target": "static-hosting-0.2.1",
+  "dependencies": {
+    "@convex-dev/static-hosting": "0.2.1"
+  },
+  "convex": "1.46.0",
+  "commit": "9007184db5b59bd4f0be4ab411c748f49fbccf49",
+  "deployment": "handsome-rooster-935",
+  "files": 400,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-04T00:05:46.680Z",
+  "case": "page",
+  "path": "/",
+  "client": {
+    "requests": 1500,
+    "rate": 24.938959817599773,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 183.47050000000002,
+      "p90": 213.703,
+      "p95": 245.98624999999987,
+      "p99": 351.2222599999998,
+      "max": 532.496
+    }
+  },
+  "server": {
+    "httpActionsLogged": 1500,
+    "logCompleteness": 1,
+    "functionsPerRequest": 2,
+    "downloadsPerRequest": 1,
+    "billedCallsPerRequest": 3,
+    "byFunction": {
+      "HttpAction GET /*": 1500,
+      "Query staticHosting/lib:resolveAsset": 1500
+    },
+    "httpActionMs": {
+      "median": 41.210496,
+      "p95": 94.89908399999999
+    },
+    "innerFunctionMs": {
+      "median": 0.026396,
+      "p95": 0.035913
+    }
+  }
+}

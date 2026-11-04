@@ -10,14 +10,14 @@ and source on 2026-10-18, version 0.2.1.
 
 ## What differs
 
-|               | static-hosting                                                                                                                                                      | convex-hosting                                                                                                                                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pages         | Files only                                                                                                                                                          | What no file answers goes to the app's server entry, an object with `fetch(request)`; TanStack Start has an [adapter](../packages/convex-hosting-tanstack-start)                                                              |
-| File rules    | Its own: a miss without an extension gets `index.html` unless deployed with `--no-spa`, and a miss with one is 404. Hashed file names get a one-year cache          | Cloudflare's asset Worker: `_headers`, `_redirects`, `.assetsignore`, `html_handling`, and `not_found_handling` (see [Serving](./serving.md)). Every file revalidates unless `_headers` says otherwise                        |
-| Routes        | The component owns `/`, with the app's routes under `/api`, or a sub-path; or `registerStaticRoutes` adds a GET catch-all to `convex/http.ts`                       | `routeAll` adds a catch-all for every method to `convex/http.ts`, and exact routes win over it. There is no sub-path option                                                                                                   |
-| Deploy        | Build, `npx convex deploy`, then upload. The upload's last mutation switches the files and deletes the previous ones, so code and files switch at different moments | Upload a new version, then push code that names it. The push switches code and files together, and the first request on the new code deletes the versions live before it ([how](../README.md#how-a-deploy-switches-the-site)) |
-| CLI           | `setup`, `deploy`, and `upload`; `--dist` defaults to `./dist` and `--build-command` to `npm run build`                                                             | `deploy`, with `--dist` required and `--build` optional; `--dev` and `--preview-name` pick the deployment ([options](./deploy.md#options))                                                                                    |
-| Reload prompt | `UpdateBanner` and `useDeploymentUpdates`                                                                                                                           | A query and a hook to copy, in [Development](./development.md#open-tabs-after-a-deploy)                                                                                                                                       |
+|               | static-hosting                                                                                                                                                      | convex-hosting                                                                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pages         | Files only                                                                                                                                                          | What no file answers goes to the app's server entry, an object with `fetch(request)`; TanStack Start has an [adapter](../packages/convex-hosting-tanstack-start)                                                                 |
+| File rules    | Its own: a miss without an extension gets `index.html` unless deployed with `--no-spa`, and a miss with one is 404. Hashed file names get a one-year cache          | Cloudflare's asset Worker: `_headers`, `_redirects`, `.assetsignore`, `html_handling`, and `not_found_handling` (see [Serving](./serving.md)). Every file revalidates unless `_headers` says otherwise                           |
+| Routes        | The component owns `/`, with the app's routes under `/api`, or a sub-path; or `registerStaticRoutes` adds a GET catch-all to `convex/http.ts`                       | `routeAll` adds a catch-all for every method to `convex/http.ts`, and exact routes win over it. There is no sub-path option                                                                                                      |
+| Deploy        | Build, `npx convex deploy`, then upload. The upload's last mutation switches the files and deletes the previous ones, so code and files switch at different moments | Upload a new version, then push code that names it. The push switches code and files together, and the deploy then marks it live, which deletes the versions live before it ([how](../README.md#how-a-deploy-switches-the-site)) |
+| CLI           | `setup`, `deploy`, and `upload`; `--dist` defaults to `./dist` and `--build-command` to `npm run build`                                                             | `deploy`, with `--dist` required and `--build` optional; `--dev` and `--preview-name` pick the deployment ([options](./deploy.md#options))                                                                                       |
+| Reload prompt | `UpdateBanner` and `useDeploymentUpdates`                                                                                                                           | A query and a hook to copy, in [Development](./development.md#open-tabs-after-a-deploy)                                                                                                                                          |
 
 ## How to move
 
@@ -31,7 +31,7 @@ and source on 2026-10-18, version 0.2.1.
    `httpPrefix: "/api"` from `defineApp`, and add `/api` to the paths of your own routes whose URLs
    must stay.
 3. In `convex/http.ts`, replace `registerStaticRoutes(...)` with
-   `routeAll(http, components.hosting, versionId)`, and import `versionId` from
+   `routeAll(http, components.hosting, site)`, and import `site` from
    `../.convex-hosting/version.js`. Your exact routes keep winning. A server-rendered app passes its
    server entry as the fourth argument.
 4. In the deploy scripts, replace `@convex-dev/static-hosting deploy`, or the pair
@@ -57,8 +57,8 @@ Then check three things:
   without a server entry answers a missing file with an extension, such as `/assets/old.js`, with
   `index.html`, where static-hosting answered 404.
 - **Old files.** The push that removes `app.use(staticHosting)` unmounts that component, and its
-  files stay until you delete it in the Convex dashboard. From then on, each deploy's first request
-  deletes the version that was live before it.
+  files stay until you delete it in the Convex dashboard. From then on, each deploy's mark deletes
+  the version that was live before it.
 
 ## From convex-hosting 0.3.x
 

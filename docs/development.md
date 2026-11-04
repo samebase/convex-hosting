@@ -44,7 +44,10 @@ Two cases are transient:
 
   ```ts
   vi.mock("../dist/server/server.js", () => ({ default: { fetch: async () => new Response() } }));
-  vi.mock("../.convex-hosting/version.js", () => ({ versionId: "test" }));
+  vi.mock("../.convex-hosting/version.js", () => ({
+    versionId: "test",
+    site: { format: 1, versionId: "test", markToken: "test", files: null },
+  }));
   ```
 
 - `npx convex codegen` bundles `convex/http.ts`, so before the first `deploy --dev` it fails with
