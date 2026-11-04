@@ -109,8 +109,10 @@ number of files. Measured on the same cloud deployment:
 - a real 10,000-file site (a 0.89 MB `version.js`) served the same as 400 files: HTTP action median
   51.1 ms for the page, 51.3 ms for the asset, 6.7 ms for the rendered page, one function per
   request, every check passed (`2026-11-04-files-10000`);
-- deploying those 10,000 files took 1,519 s. The upload makes about one `npx convex run` call per 60
-  files and each call starts a process, so deploy time grows with the file count; serving does not;
+- deploying those 10,000 files took 1,519 s: about 360 `npx convex run` calls, each its own process
+  (`knownFiles` per 119 files, `generateUploadUrls` per 100, `recordFiles` per 60, and 5 pages of
+  storage URLs), and the files themselves, four at a time. Deploy time grows with the file count;
+  serving does not;
 - 100,000 files is the most that the CLI accepts, Cloudflare's limit per Worker version.
 
 **Provenance.** The 0.15.0 deployment of the 400-file runs was built at commit `e4b3e7f`; the
