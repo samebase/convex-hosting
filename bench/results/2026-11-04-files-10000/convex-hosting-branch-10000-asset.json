@@ -1,0 +1,48 @@
+{
+  "target": "convex-hosting-branch",
+  "dependencies": {
+    "@samebase/convex-hosting": "file:/Users/nicu/dev/claude_worktrees/convex-hosting/manifest-serving/bench/.work/pack/samebase-convex-hosting-0.15.0.tgz"
+  },
+  "convex": "1.46.0",
+  "commit": "787b8b62799901f029868cd7a622cd08fc422d5f",
+  "deployment": "clean-swordfish-403",
+  "files": 10000,
+  "deploySeconds": 1519.45,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-04T00:57:26.554Z",
+  "case": "asset",
+  "path": "/assets/chunk-5000-kF1X3LF9.js",
+  "client": {
+    "requests": 1500,
+    "rate": 24.86410935434207,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 364.0105,
+      "p90": 411.1783,
+      "p95": 430.6901,
+      "p99": 470.42904999999996,
+      "max": 517.487
+    }
+  },
+  "server": {
+    "httpActionsLogged": 1500,
+    "logCompleteness": 1,
+    "functionsPerRequest": 1,
+    "downloadsPerRequest": 1,
+    "billedCallsPerRequest": 2,
+    "byFunction": {
+      "HttpAction GET /*": 1500
+    },
+    "httpActionMs": {
+      "median": 51.27682,
+      "p95": 69.993623
+    },
+    "innerFunctionMs": {
+      "median": null,
+      "p95": null
+    }
+  }
+}
