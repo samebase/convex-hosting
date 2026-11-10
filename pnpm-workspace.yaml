@@ -17,6 +17,7 @@ catalog:
   ignore: 7.0.12
   mime: 4.1.1
   convex-test: 0.0.61
+  fast-check: 4.10.2
   react: 19.3.0
   react-dom: 19.3.0
   typescript: 7.0.2

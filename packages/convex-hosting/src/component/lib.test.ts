@@ -3,7 +3,7 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import type { Id } from "./_generated/dataModel.js";
 import type { Config } from "./lib.js";
-import { api, internal } from "./_generated/api.js";
+import { internal } from "./_generated/api.js";
 import schema from "./schema.js";
 
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts"]);
@@ -72,7 +72,7 @@ const site: Files = {
 };
 
 async function markLive(t: ReturnType<typeof convexTest>, versionId: string) {
-  return await t.mutation(api.lib.markLive, { versionId });
+  return await t.mutation(internal.lib.markLive, { versionId });
 }
 
 /** The kind of each version's state, and the number of `collect` chains that `markLive` started. */

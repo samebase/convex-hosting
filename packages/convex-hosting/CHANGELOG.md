@@ -9,22 +9,21 @@
   two; an answer with a body costs two, the action and the download of the file, where it cost
   three. The component's `route` query is gone.
 - Breaking: `routeAll` takes one object, with every input named, and the assets in place of the
-  version id:
+  component and the version id:
 
   ```ts
   import { assets } from "../.convex-hosting/version.js";
 
-  routeAll({ http, component: components.hosting, assets, worker: server });
+  routeAll({ http, assets, worker: server });
   ```
 
   A files-only site leaves `worker` out. `assets` and `worker` are Cloudflare's names: the static
   assets of a Worker, and the Worker script. `versionId` stays exported for the query that reloads
   open tabs. A test that mocks the version module adds
-  `assets: { format: 1, versionId: "test", markToken: "test", files: null }`.
+  `assets: { format: 1, versionId: "test", files: null }`.
 
-- After the push, `deploy` sends one request with the version's mark token, and the code that
-  answers marks its version live; before, the first request did. `markLive` answers what it did and
-  never throws.
+- After the push, `deploy` marks its version live; before, the first request did. The component has
+  no public function left.
 - A first install pushes twice: once to install the component, and once after the upload, to serve
   the site.
 - A version file uploaded to another deployment, such as production's pushed to development by a

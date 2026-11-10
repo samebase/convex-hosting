@@ -5,9 +5,8 @@ import {
   type HttpRouter,
   type PublicHttpAction,
 } from "convex/server";
-import type { ComponentApi } from "../component/_generated/component.js";
 import { answer, type Answer } from "./answer.js";
-import { ASSETS_FORMAT, MARK_HEADER, type Assets } from "./manifest.js";
+import { ASSETS_FORMAT, type Assets } from "./manifest.js";
 
 export type { Assets } from "./manifest.js";
 
@@ -15,8 +14,6 @@ export type { Assets } from "./manifest.js";
 export type RouteAllOptions = {
   /** The app's router, from `httpRouter()`. */
   http: HttpRouter;
-  /** The installed component: `components.hosting`. */
-  component: ComponentApi;
   /** `assets` from `.convex-hosting/version.js`, which `convex-hosting deploy` writes. */
   assets: Assets;
   /**
@@ -33,26 +30,23 @@ export type RouteAllOptions = {
  * `worker`, it applies to navigations only and `worker` answers the other misses; without it, it
  * applies to every request.
  *
- * The assets are in the pushed code, so a request calls no function of the component: a file costs
- * this action and the download of its bytes, any other answer this action alone.
+ * The assets are in the pushed code, so a request calls no function of the component, and
+ * `routeAll` does not take it: a file costs this action and the download of its bytes, any other
+ * answer this action alone.
  *
  * A page and a 404 answer `Cache-Control: no-store`. The deployment's Cloudflare front keeps that
  * for a path without an extension and replaces it with a four-hour browser `max-age` for a path
  * with one, so a browser that asks for a script before its upload ended keeps the 404; the deploy
  * order prevents that case, because no page refers to a file that is not uploaded yet.
  */
-function serveSite({ component, assets, worker }: RouteAllOptions): PublicHttpAction {
-  return httpActionGeneric(async (ctx, request) => {
+function serveSite({ assets, worker }: RouteAllOptions): PublicHttpAction {
+  return httpActionGeneric(async (_ctx, request) => {
     if (assets.format !== ASSETS_FORMAT) {
       return notServed(
         500,
         `.convex-hosting/version.js has format ${assets.format}, and this release of ` +
           `@samebase/convex-hosting reads format ${ASSETS_FORMAT}. Deploy again.`,
       );
-    }
-    if (request.headers.get(MARK_HEADER) === assets.markToken) {
-      const result = await ctx.runMutation(component.lib.markLive, { versionId: assets.versionId });
-      return Response.json({ versionId: assets.versionId, result }, { headers: NO_STORE });
     }
     const { files } = assets;
     // A first install pushes before its upload; the deploy pushes again when the upload ends.
@@ -85,7 +79,7 @@ function serveSite({ component, assets, worker }: RouteAllOptions): PublicHttpAc
  * through GET.
  *
  * ```ts
- * routeAll({ http, component: components.hosting, assets, worker: server });
+ * routeAll({ http, assets, worker: server });
  * ```
  *
  * Returns the action, for the paths that a component's HTTP prefix would otherwise take: Convex

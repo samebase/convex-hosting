@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import fc from "fast-check";
 import { describe, expect, test } from "vite-plus/test";
 import { manifestLookup } from "../client/manifest.js";
 import { buildAssetFiles, type AssetEntry } from "./manifest.js";
@@ -10,46 +11,58 @@ const sha256Hex = (text: string) => createHash("sha256").update(text).digest("he
 const url = (key: string) =>
   `${CLOUD_URL}/api/storage/${key}?component=m026ambq8g7g5yxf42tb4d4tfx8hg303`;
 
-/** `count` entries; every third shares the bytes of the one before, and every fifth has no type. */
-function entries(count: number, paths = (i: number) => `/assets/chunk-${i}.js`): AssetEntry[] {
-  return Array.from({ length: count }, (_, i) => {
-    const sha256 = sha256Hex(`body ${i - (i % 3 === 2 ? 1 : 0)}`);
-    const contentType = i % 5 === 4 ? undefined : i % 2 === 0 ? "text/javascript" : "text/html";
-    return { path: paths(i), sha256, contentType, url: url(sha256.slice(0, 36)) };
-  });
-}
+/** What the lookup finds for an entry. */
+const hit = (entry: AssetEntry) => ({
+  eTag: sha256Hex(`${entry.sha256}\n${entry.contentType ?? ""}`).slice(0, 32),
+  url: entry.url,
+  contentType: entry.contentType,
+});
+
+/** A file of any path, Unicode included, whose storage key has any length. */
+const anyEntry = fc.record({
+  path: fc.string({ unit: "grapheme" }).map((path) => `/${path}`),
+  sha256: fc.uint8Array({ minLength: 32, maxLength: 32 }).map((bytes) => {
+    return Buffer.from(bytes).toString("hex");
+  }),
+  contentType: fc.option(fc.constantFrom("text/html; charset=utf-8", "text/css", "image/png"), {
+    nil: undefined,
+  }),
+  url: fc.stringMatching(/^[0-9a-z-]{1,40}$/).map(url),
+});
 
 describe("buildAssetFiles, read with Cloudflare's lookup", () => {
-  test.each([0, 1, 2, 64, 5000])("%i entries: every path finds its URL and type", async (count) => {
-    const list = entries(count);
-    const lookup = manifestLookup(buildAssetFiles(CLOUD_URL, config, list));
-    for (const entry of list) {
-      const hit = await lookup(entry.path);
-      expect(hit).toEqual({
-        eTag: sha256Hex(`${entry.sha256}\n${entry.contentType ?? ""}`).slice(0, 32),
-        url: entry.url,
-        contentType: entry.contentType,
-      });
-    }
+  test("every path of any site finds its own entry, and any other path finds none", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.uniqueArray(anyEntry, { selector: ({ path }) => path, maxLength: 40 }),
+        fc.string({ unit: "grapheme" }).map((path) => `/${path}`),
+        async (entries, other) => {
+          const lookup = manifestLookup(buildAssetFiles(CLOUD_URL, config, entries));
+          for (const entry of entries) expect(await lookup(entry.path)).toEqual(hit(entry));
+          if (entries.every(({ path }) => path !== other)) expect(await lookup(other)).toBeNull();
+        },
+      ),
+    );
+  });
+
+  test("5,000 entries: every path finds its entry", async () => {
+    // Every third entry shares the bytes of the one before, and every fifth has no type.
+    const entries = Array.from({ length: 5000 }, (_, i) => {
+      const sha256 = sha256Hex(`body ${i - (i % 3 === 2 ? 1 : 0)}`);
+      const contentType = i % 5 === 4 ? undefined : i % 2 === 0 ? "text/javascript" : "text/html";
+      return { path: `/assets/chunk-${i}.js`, sha256, contentType, url: url(sha256.slice(0, 36)) };
+    });
+    const lookup = manifestLookup(buildAssetFiles(CLOUD_URL, config, entries));
+    for (const entry of entries) expect(await lookup(entry.path)).toEqual(hit(entry));
     expect(await lookup("/assets/missing.js")).toBeNull();
   });
 
-  test("paths with Unicode, spaces, and percent signs are found as the handler decodes them", async () => {
-    const paths = [
-      "/café/menu.html",
-      "/a b/c.txt",
-      "/100%.html",
-      "/日本語/索引.html",
-      "/emoji/🙂.svg",
-    ];
+  test("a path is found as the handler decodes it, not percent-encoded", async () => {
+    const entry = { path: "/café/menu.html", sha256: sha256Hex("menu"), contentType: undefined };
     const lookup = manifestLookup(
-      buildAssetFiles(
-        CLOUD_URL,
-        config,
-        entries(paths.length, (i) => paths[i]),
-      ),
+      buildAssetFiles(CLOUD_URL, config, [{ ...entry, url: url("k") }]),
     );
-    for (const path of paths) expect(await lookup(path)).not.toBeNull();
+    expect(await lookup("/café/menu.html")).not.toBeNull();
     expect(await lookup("/caf%C3%A9/menu.html")).toBeNull();
   });
 
@@ -62,8 +75,23 @@ describe("buildAssetFiles, read with Cloudflare's lookup", () => {
     const lookup = manifestLookup(files);
     const txt = await lookup("/a.txt");
     const js = await lookup("/a.js");
-    expect(files.urls).toEqual([url("k1")]);
+    expect([txt?.url, js?.url]).toEqual([url("k1"), url("k1")]);
     expect(txt?.eTag).not.toBe(js?.eTag);
     expect([txt?.contentType, js?.contentType]).toEqual(["text/plain", "text/javascript"]);
+  });
+
+  test("the storage URLs are written as what they share and one string of keys", () => {
+    const entries = ["0c1f6a52", "5b7d2e11", "9e4a7c30"].map((key, i) => ({
+      path: `/${i}.js`,
+      sha256: sha256Hex(key),
+      contentType: undefined,
+      url: url(key),
+    }));
+    expect(buildAssetFiles(CLOUD_URL, config, entries)).toMatchObject({
+      urlPrefix: `${CLOUD_URL}/api/storage/`,
+      urlSuffix: "?component=m026ambq8g7g5yxf42tb4d4tfx8hg303",
+      urlKeys: "0c1f6a525b7d2e119e4a7c30",
+      urlKeyWidth: 8,
+    });
   });
 });

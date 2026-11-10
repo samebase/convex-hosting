@@ -26,20 +26,20 @@ the file when the page reloads. A local deployment, which has no front, sends th
 
 ## Routing
 
-`routeAll({ http, component, assets, worker? })` routes the site's HTTP action for every method at
-every path, and returns it. The action answers with the file that matches, else with what `worker`
-answers (see [Server-rendered pages](#server-rendered-pages)), else 404. Another method than GET or
-HEAD on a path that has a file answers 405, as on Cloudflare; on any other path it goes to `worker`,
-else 404. `worker` is the Worker script, an object with `fetch(request)`: the code that runs on a
-miss. Everything it returns gets `Cache-Control: no-store`, and so does a 404, because the
-`*.convex.site` front caches paths with an extension. The front keeps `no-store` for a path without
-an extension and replaces it with a four-hour browser `max-age` for a path with one, so a browser
-that asks for a script before its upload ended keeps the 404; the deploy order prevents that case,
-because no page refers to a file that is not uploaded yet. The `assets` of the version come with the
-pushed code, in `.convex-hosting/version.js`, so a request reads no database: it costs one function
-call, the HTTP action, and a file adds the download of its bytes, which Convex counts as a call too.
-A redirect, a 304, a miss, and a rendered page download nothing. Until a first install's upload
-ends, the site answers 404 naming the version.
+`routeAll({ http, assets, worker? })` routes the site's HTTP action for every method at every path,
+and returns it. The action answers with the file that matches, else with what `worker` answers (see
+[Server-rendered pages](#server-rendered-pages)), else 404. Another method than GET or HEAD on a
+path that has a file answers 405, as on Cloudflare; on any other path it goes to `worker`, else 404.
+`worker` is the Worker script, an object with `fetch(request)`: the code that runs on a miss.
+Everything it returns gets `Cache-Control: no-store`, and so does a 404, because the `*.convex.site`
+front caches paths with an extension. The front keeps `no-store` for a path without an extension and
+replaces it with a four-hour browser `max-age` for a path with one, so a browser that asks for a
+script before its upload ended keeps the 404; the deploy order prevents that case, because no page
+refers to a file that is not uploaded yet. The `assets` of the version come with the pushed code, in
+`.convex-hosting/version.js`, so a request reads no database: it costs one function call, the HTTP
+action, and a file adds the download of its bytes, which Convex counts as a call too. A redirect, a
+304, a miss, and a rendered page download nothing. Until a first install's upload ends, the site
+answers 404 naming the version.
 
 As on Cloudflare, the presence of code decides where `not_found_handling` (the single-page fallback
 or the 404 page) applies:

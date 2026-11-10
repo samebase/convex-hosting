@@ -32,7 +32,8 @@ const sha256 = (text: string) => createHash("sha256").update(text).digest();
  * Builds the files that serving reads. The manifest is encoded as Miniflare encodes it for
  * `wrangler dev`: a 20-byte header, then one 40-byte entry per path, sorted by the path hash. The
  * content hash covers the bytes and the content type, as Cloudflare's covers the bytes and the
- * extension, so the same bytes under two types are two entries with two ETags.
+ * extension, so the same bytes under two types are two entries with two ETags. The storage URLs
+ * differ only in a key, so what they share is written once.
  */
 export function buildAssetFiles(
   cloudUrl: string,
@@ -47,6 +48,10 @@ export function buildAssetFiles(
     ),
   ].sort();
   const urlIndex = new Map(urls.map((url, index) => [url, index]));
+  const urlPrefix = sharedStart(urls);
+  const urlSuffix = reversed(sharedStart(urls.map((url) => reversed(url.slice(urlPrefix.length)))));
+  const keys = urls.map((url) => url.slice(urlPrefix.length, url.length - urlSuffix.length));
+  const urlKeyWidth = keys.reduce((width, key) => Math.max(width, key.length), 0);
   const contentTypeIndex = new Map(contentTypes.map((type, index) => [type, index]));
 
   const sorted = entries
@@ -71,5 +76,27 @@ export function buildAssetFiles(
       tail + TAIL_CONTENT_TYPE,
     );
   });
-  return { cloudUrl, config, manifest: manifest.toString("base64"), contentTypes, urls };
+  return {
+    cloudUrl,
+    config,
+    manifest: manifest.toString("base64"),
+    contentTypes,
+    urlPrefix,
+    urlSuffix,
+    urlKeys: keys.map((key) => key.padEnd(urlKeyWidth)).join(""),
+    urlKeyWidth,
+  };
 }
+
+/** The longest start that all of `texts` share. */
+function sharedStart(texts: string[]): string {
+  let start = texts[0] ?? "";
+  for (const text of texts) {
+    let length = 0;
+    while (length < start.length && start[length] === text[length]) length++;
+    start = start.slice(0, length);
+  }
+  return start;
+}
+
+const reversed = (text: string) => [...text].reverse().join("");

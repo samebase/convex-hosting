@@ -55,7 +55,6 @@ server build for every other request, as a Cloudflare Worker with static assets 
 ```ts
 import { httpRouter } from "convex/server";
 import { routeAll } from "@samebase/convex-hosting";
-import { components } from "./_generated/api.js";
 import { assets } from "../.convex-hosting/version.js";
 // Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
@@ -63,7 +62,7 @@ import server from "../dist/server/server.js";
 
 const http = httpRouter();
 
-routeAll({ http, component: components.hosting, assets, worker: server });
+routeAll({ http, assets, worker: server });
 
 export default http;
 ```
@@ -106,10 +105,9 @@ wires both.
 
 ## Files only
 
-A site without a server leaves `worker` out,
-`routeAll({ http, component: components.hosting, assets })`, needs no adapter package, and deploys
-its build directory: `--dist dist` after a `vite build`, or `--dist public` with no `--build` at
-all. A single-page app adds `--not-found-handling single-page-application`. The
+A site without a server leaves `worker` out, `routeAll({ http, assets })`, needs no adapter package,
+and deploys its build directory: `--dist dist` after a `vite build`, or `--dist public` with no
+`--build` at all. A single-page app adds `--not-found-handling single-page-application`. The
 [tanstack-spa](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa) and
 [hello-world-assets-only](https://github.com/samebase/convex-hosting/tree/main/examples/hello-world-assets-only)
 examples are such sites.
@@ -190,10 +188,10 @@ Cloudflare's asset manifest) to `.convex-hosting/version.js`, and then pushes th
 imports the file. The push is the switch: no pointer moves in a second step, so there is no moment
 when new code serves old files, and no page refers to a file that is not uploaded yet. A request
 reads no database: it costs one function call, the HTTP action, and a file adds the download of its
-bytes, which Convex counts as a call too. After the push, `deploy` asks the served code to mark its
-version live, which deletes the versions that were live before it. A version whose push never came
-is deleted at a later switch, once it is a day old; nothing is deleted by the clock alone. The one
-rule: run one deploy at a time per deployment. The
+bytes, which Convex counts as a call too. After the push, `deploy` marks its version live, which
+deletes the versions that were live before it. A version whose push never came is deleted at a later
+switch, once it is a day old; nothing is deleted by the clock alone. The one rule: run one deploy at
+a time per deployment. The
 [design](https://github.com/samebase/convex-hosting/blob/main/docs/design.md#orderings-and-timing)
 works through every interleaving.
 

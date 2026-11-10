@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
-import { manifestLookup, MARK_HEADER, MARK_PATH, type Assets } from "../client/manifest.js";
+import { manifestLookup, type Assets } from "../client/manifest.js";
 import { deploymentSelector, type Cli } from "./convex.js";
 import { main, VERSION_FILE } from "./main.js";
 
@@ -55,10 +55,9 @@ const callName = (args: string[]) =>
 
 /**
  * A fake `Cli`: `npx convex run` answers like a deployment with the component, the build calls
- * `build`, `npx convex deploy` or `npx convex run --push` calls `push`, and the site answers the
- * mark request with `mark`. No processes, no network. `events` lists the builds, the probes, the
- * site URL queries, the storage URL queries, the function calls, the pushes, and the marks in
- * order.
+ * `build`, and `npx convex deploy` or `npx convex run --push` calls `push`. No processes, no
+ * network. `events` lists the builds, the probes, the site URL queries, the storage URL queries,
+ * the function calls, and the pushes in order.
  */
 function fake(
   cwd: string,
@@ -71,8 +70,8 @@ function fake(
     failing?: Record<string, string>;
     build?: () => Promise<number>;
     push?: (cli: Cli, args: string[]) => Promise<number>;
-    /** The site's answer to the mark request; by default it marks the version of the file. */
-    mark?: (token: string | null, init: RequestInit | undefined) => Promise<Response>;
+    /** What `markLive` answers; by default it marks the version. */
+    mark?: string;
   } = {},
 ) {
   const runs: string[][] = [];
@@ -136,6 +135,8 @@ function fake(
               return storageId === undefined ? [] : [{ sha256, storageId }];
             }),
           );
+        case "lib:markLive":
+          return ok(options.mark ?? "marked");
         default:
           return ok(null);
       }
@@ -151,15 +152,6 @@ function fake(
       return (await options.build?.()) ?? 0;
     },
     fetch: async (url, init) => {
-      if (url === SITE_URL + MARK_PATH) {
-        events.push("mark");
-        const token = new Headers(init?.headers).get(MARK_HEADER);
-        if (options.mark !== undefined) return await options.mark(token, init);
-        const assets = writtenAssets(cwd);
-        return token === assets.markToken
-          ? Response.json({ versionId: assets.versionId, result: "marked" })
-          : new Response("<h1>Home</h1>");
-      }
       const storageId = `storage-${stored.size}`;
       stored.set(storageId, await new Response(init?.body).text());
       return Response.json({ storageId });
@@ -235,7 +227,7 @@ describe("deploy --dev", () => {
     expect(await main(DEV, cli)).toBe(0);
 
     expect(builds).toEqual(["vite build"]);
-    // Only the site URL query runs after the push.
+    // Only the mark and the site URL query run after the push.
     expect(events).toEqual([
       "build",
       "probe",
@@ -247,8 +239,8 @@ describe("deploy --dev", () => {
       "lib:finishVersion",
       "urls",
       "push: run",
+      "lib:markLive",
       "site url",
-      "mark",
     ]);
     // An inline query at the app's root, which exists before a first install.
     expect(pushes).toEqual([["run", "--push", "--inline-query", "null"]]);
@@ -283,8 +275,8 @@ describe("deploy --dev", () => {
       "lib:finishVersion",
       "urls",
       "push: run",
+      "lib:markLive",
       "site url",
-      "mark",
     ]);
     expect(pushedFiles).toEqual([false, true]);
     expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
@@ -392,57 +384,28 @@ describe("deploy reports", () => {
     );
   });
 
-  test("the mark carries the site's token, so only the code of this deploy marks", async () => {
-    const tokens: (string | null)[] = [];
+  test("after the push, marks the version of this deploy live", async () => {
     const cwd = app(site);
-    const { cli, logs } = fake(cwd, {
-      push: innerUpload,
-      mark: async (token) => {
-        tokens.push(token);
-        return Response.json({ versionId: writtenAssets(cwd).versionId, result: "marked" });
-      },
-    });
+    const { cli, callArgs, logs } = fake(cwd, { push: innerUpload });
     expect(await main(DEPLOY, cli)).toBe(0);
-    expect(tokens).toEqual([writtenAssets(cwd).markToken]);
+    expect(callArgs("lib:markLive")).toEqual([{ versionId: writtenVersionId(cwd) }]);
     expect(logs[logs.length - 1]).toMatch(/^Deployed version /);
   });
 
-  test("a mark that fails or reaches other code is reported, and the deploy succeeds", async () => {
-    const answers: Record<string, () => Promise<Response>> = {
-      "failed: fetch failed": async () => {
-        throw new TypeError("fetch failed");
-      },
-      "did not answer as version": async () => new Response("<h1>Home</h1>"),
-    };
-    for (const [message, answer] of Object.entries(answers)) {
-      const { cli, logs } = fake(app(site), { push: innerUpload, mark: answer });
-      expect(await main(DEPLOY, cli)).toBe(0);
-      expect(logs.some((line) => line.includes(message))).toBe(true);
-      expect(logs[logs.length - 1]).toMatch(/^Deployed version /);
-    }
-  });
-
-  test("the mark follows no redirect, which would carry the token to another origin", async () => {
-    const redirects: (RequestRedirect | undefined)[] = [];
+  test("a mark that fails is reported, and the deploy succeeds", async () => {
     const { cli, logs } = fake(app(site), {
       push: innerUpload,
-      mark: async (_token, init) => {
-        redirects.push(init?.redirect);
-        return new Response(null, { status: 307, headers: { Location: "https://other.example/" } });
-      },
+      failing: { "lib:markLive": "✖ Not logged in." },
     });
     expect(await main(DEPLOY, cli)).toBe(0);
-    expect(redirects).toEqual(["manual"]);
-    expect(logs.some((line) => line.includes("did not answer as version"))).toBe(true);
+    expect(
+      logs.some((line) => /^Marking version .* live failed: ✖ Not logged in\./.test(line)),
+    ).toBe(true);
+    expect(logs[logs.length - 1]).toMatch(/^Deployed version /);
   });
 
   test("a mark refused because a newer version is live says that deploys overlapped", async () => {
-    const cwd = app(site);
-    const { cli, logs } = fake(cwd, {
-      push: innerUpload,
-      mark: async () =>
-        Response.json({ versionId: writtenAssets(cwd).versionId, result: "superseded" }),
-    });
+    const { cli, logs } = fake(app(site), { push: innerUpload, mark: "superseded" });
     expect(await main(DEPLOY, cli)).toBe(0);
     expect(logs.some((line) => line.includes("a deploy overlapped this one"))).toBe(true);
   });
@@ -486,7 +449,7 @@ describe("deploy without --build", () => {
     expect(await main(["deploy", "--dev", "--dist", "dist"], cli)).toBe(0);
     expect(builds).toEqual([]);
     expect(events[0]).toBe("probe");
-    expect(events.slice(-3)).toEqual(["push: run", "site url", "mark"]);
+    expect(events.slice(-3)).toEqual(["push: run", "lib:markLive", "site url"]);
   });
 
   test("production runs only the upload inside npx convex deploy --cmd", async () => {
@@ -494,7 +457,7 @@ describe("deploy without --build", () => {
     expect(await main(["deploy", "--dist", "dist"], cli)).toBe(0);
     expect(pushes[0][2]).toMatch(/^'.+' '.+' 'upload' '--dist' 'dist' '--version-id' '/);
     expect(events[0]).toBe("push: deploy");
-    expect(events.slice(-4)).toEqual(["lib:finishVersion", "urls", "site url", "mark"]);
+    expect(events.slice(-4)).toEqual(["lib:finishVersion", "urls", "lib:markLive", "site url"]);
   });
 });
 
@@ -513,9 +476,9 @@ describe("deploy", () => {
     // `npx convex deploy` goes to production by default and has no --prod flag; every run gets it.
     expect(pushes[0]).not.toContain("--prod");
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
-    // The upload runs inside the push; after it, the site URL query and the mark.
+    // The upload runs inside the push; after it, the mark and the site URL query.
     expect(events[0]).toBe("push: deploy");
-    expect(events.slice(-4)).toEqual(["lib:finishVersion", "urls", "site url", "mark"]);
+    expect(events.slice(-4)).toEqual(["lib:finishVersion", "urls", "lib:markLive", "site url"]);
     expect(callArgs("lib:createVersion")[0].versionId).toBe(writtenVersionId(cwd));
   });
 
@@ -540,7 +503,7 @@ describe("deploy", () => {
     expect(await main(DEPLOY, cli)).toBe(0);
 
     expect(calls().slice(0, 3)).toEqual(["probe", "probe", "lib:generateUploadUrls"]);
-    expect(calls().slice(-3)).toEqual(["lib:finishVersion", "urls", "site url"]);
+    expect(calls().slice(-4)).toEqual(["lib:finishVersion", "urls", "lib:markLive", "site url"]);
     expect(pushes.map((args) => args[0])).toEqual(["deploy", "deploy"]);
     expect(pushes[1]).toEqual(["deploy"]);
     expect(pushedFiles).toEqual([false, true]);
@@ -672,7 +635,7 @@ describe("upload", () => {
       '/** @type {import("@samebase/convex-hosting").Assets} */',
     ]);
     const written = writtenAssets(cwd);
-    expect(written).toMatchObject({ format: 1, versionId: "v1", markToken: expect.any(String) });
+    expect(written).toMatchObject({ format: 1, versionId: "v1" });
     const files = written.files;
     if (files === null) throw new Error("The version file has no files.");
     expect(files.cloudUrl).toBe(CLOUD_URL);

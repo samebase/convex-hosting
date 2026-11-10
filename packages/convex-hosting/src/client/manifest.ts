@@ -12,15 +12,6 @@ import { CONTENT_HASH_SIZE } from "../workers-sdk/packages/workers-shared/utils/
 export const ASSETS_FORMAT = 1;
 
 /**
- * The header with which the CLI, after the push, asks the served code to mark its version live. Its
- * value is the site's `markToken`; a request without it is an ordinary request.
- */
-export const MARK_HEADER = "Convex-Hosting-Mark";
-
-/** The path of that request, which names it in logs; the header alone decides. */
-export const MARK_PATH = "/.convex-hosting/mark";
-
-/**
  * The static assets of one version, as `.convex-hosting/version.js` exports them under `assets`,
  * Cloudflare's name for them: the version's id, and everything that serving reads, so that a
  * request reads no database. `files` is `null` in the code that a first install pushes before its
@@ -30,11 +21,6 @@ export type Assets = {
   /** `ASSETS_FORMAT` of the release that wrote it. */
   format: number;
   versionId: string;
-  /**
-   * The CLI sends it after the push, so that only the CLI makes the served code mark its version
-   * live; another request with the header pays nothing more than any other request.
-   */
-  markToken: string;
   files: AssetFiles | null;
 };
 
@@ -50,8 +36,15 @@ export type AssetFiles = {
   manifest: string;
   /** The content types of the entries. */
   contentTypes: string[];
-  /** The storage URL of each stored file. */
-  urls: string[];
+  /**
+   * The storage URL of each stored file is `urlPrefix`, its key, and `urlSuffix`. The keys are one
+   * string, `urlKeyWidth` characters each, padded with spaces: Convex evaluates the module for
+   * every request, and one string costs less than an array of 100,000.
+   */
+  urlPrefix: string;
+  urlSuffix: string;
+  urlKeys: string;
+  urlKeyWidth: number;
 };
 
 /** Where an entry's tail, after the content hash, keeps the index of its URL (a big-endian u32). */
@@ -79,10 +72,14 @@ export function manifestLookup(files: AssetFiles) {
     const contentHash = binarySearch(manifest, await hashPath(path));
     if (contentHash === false) return null;
     const tail = new DataView(contentHash.buffer, contentHash.byteOffset + CONTENT_HASH_SIZE);
+    const key = tail.getUint32(TAIL_URL) * files.urlKeyWidth;
     const contentType = tail.getUint16(TAIL_CONTENT_TYPE);
     return {
       eTag: Array.from(contentHash, (byte) => byte.toString(16).padStart(2, "0")).join(""),
-      url: files.urls[tail.getUint32(TAIL_URL)],
+      url:
+        files.urlPrefix +
+        files.urlKeys.slice(key, key + files.urlKeyWidth).trimEnd() +
+        files.urlSuffix,
       contentType: contentType === NO_CONTENT_TYPE ? undefined : files.contentTypes[contentType],
     };
   };
