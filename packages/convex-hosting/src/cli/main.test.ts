@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
-import { lookup, MARK_HEADER, MARK_PATH, storageUrl, type Assets } from "../client/manifest.js";
+import { manifestLookup, MARK_HEADER, MARK_PATH, type Assets } from "../client/manifest.js";
 import { deploymentSelector, type Cli } from "./convex.js";
 import { main, VERSION_FILE } from "./main.js";
 
@@ -685,15 +685,20 @@ describe("upload", () => {
       "text/html; charset=utf-8",
       "text/javascript; charset=utf-8",
     ]);
-    // Every path finds its stored file and its type; the two copies share one stored file.
-    const found = await lookup(files, "/copy.html");
+    // Every path finds its stored file and its type; the two copies share one stored file and ETag.
+    const contentType = "text/html; charset=utf-8";
+    const lookup = manifestLookup(files);
+    const found = await lookup("/copy.html");
     expect(found).toEqual({
-      contentHash: home.sha256.slice(0, 32),
-      file: (await lookup(files, "/index.html"))?.file,
-      contentType: "text/html; charset=utf-8",
+      eTag: createHash("sha256")
+        .update(`${home.sha256}\n${contentType}`)
+        .digest("hex")
+        .slice(0, 32),
+      url: fileUrl(home.storageId),
+      contentType,
     });
-    expect(storageUrl(files.storage, found?.file ?? -1)).toBe(fileUrl(home.storageId));
-    expect(await lookup(files, "/private/notes.txt")).toBeNull();
+    expect(await lookup("/index.html")).toEqual(found);
+    expect(await lookup("/private/notes.txt")).toBeNull();
     expect(readFileSync(join(cwd, ".convex-hosting", ".gitignore"), "utf8")).toBe("*\n");
   });
 
@@ -707,8 +712,9 @@ describe("upload", () => {
     expect(calls().filter((name) => name === "urls")).toHaveLength(2);
     const written = writtenAssets(cwd).files;
     if (written === null) throw new Error("The version file has no files.");
+    const lookup = manifestLookup(written);
     for (const i of [0, 1999, 2000, 2499]) {
-      expect(await lookup(written, `/assets/${i}.js`)).not.toBeNull();
+      expect(await lookup(`/assets/${i}.js`)).not.toBeNull();
     }
   });
 

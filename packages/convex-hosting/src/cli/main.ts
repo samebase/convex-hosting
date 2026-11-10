@@ -14,7 +14,6 @@ import { parseArgs } from "node:util";
 import { z } from "zod";
 import {
   ASSETS_FORMAT,
-  buildAssetFiles,
   MARK_HEADER,
   MARK_PATH,
   type AssetFiles,
@@ -36,6 +35,7 @@ import {
   type Target,
 } from "./convex.js";
 import { readDist, type DistEntry, type HandlingOptions } from "./files.js";
+import { buildAssetFiles } from "./manifest.js";
 import { siteConfig } from "./site-config.js";
 
 const USAGE = `Usage:
@@ -523,7 +523,7 @@ async function assetFiles(
     if (page.files.length < URL_PAGE) break;
     after = page.files[page.files.length - 1][0];
   }
-  return await buildAssetFiles(
+  return buildAssetFiles(
     cloudUrl,
     siteConfig(config),
     entries.map(({ path, sha256, contentType }) => {

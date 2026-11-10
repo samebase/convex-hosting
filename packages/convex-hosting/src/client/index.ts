@@ -7,13 +7,7 @@ import {
 } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { answer, type Answer } from "./answer.js";
-import {
-  ASSETS_FORMAT,
-  MARK_HEADER,
-  storageUrl,
-  type AssetFiles,
-  type Assets,
-} from "./manifest.js";
+import { ASSETS_FORMAT, MARK_HEADER, type Assets } from "./manifest.js";
 
 export type { Assets } from "./manifest.js";
 
@@ -75,7 +69,7 @@ function serveSite({ component, assets, worker }: RouteAllOptions): PublicHttpAc
     }
 
     const asset = await answer(files, request, worker !== undefined);
-    if (asset !== null) return await withBody(files, asset);
+    if (asset !== null) return await withBody(asset);
     // `answer` answers every assets-only request itself, so this 404 only fails closed.
     if (worker === undefined) return new Response(null, { status: 404, headers: NO_STORE });
     const page = await worker.fetch(request);
@@ -107,13 +101,13 @@ export function routeAll(options: RouteAllOptions): PublicHttpAction {
 }
 
 /** The response of `asset`, with the stored file as its body when it has one. */
-async function withBody(files: AssetFiles, asset: Answer): Promise<Response> {
-  if (asset.file === null)
+async function withBody(asset: Answer): Promise<Response> {
+  if (asset.url === null)
     return new Response(null, { status: asset.status, headers: asset.headers });
   // An app cannot read a component's storage, so the body comes from the storage URL.
   let stored: Response;
   try {
-    stored = await fetch(storageUrl(files.storage, asset.file));
+    stored = await fetch(asset.url);
   } catch {
     return new Response(null, { status: 502, headers: NO_STORE });
   }

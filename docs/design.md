@@ -290,24 +290,22 @@ can call only a component's public functions; clients cannot call it at all. The
 functions, which are internal, with `npx convex run --component`.
 
 The two callbacks that Cloudflare's code takes map to the site's manifest: `exists(path)` finds the
-path's entry and returns its ETag, the content hash followed by a short hash of the content type, so
-that identical bytes stored under two content types stay distinct; `getByETag` returns the content
-type of the entry that `exists` found and a placeholder stream, which `serveSite` replaces with the
-body. Nothing is added to Cloudflare's headers besides `no-store` on a 404. Long caching of hashed
-files is a `_headers` rule, as on Cloudflare.
+path's entry and returns its ETag, the content hash, as on Cloudflare; `getByETag` returns the
+content type of the entry that `exists` found and a placeholder stream, which `serveSite` replaces
+with the body. Nothing is added to Cloudflare's headers besides `no-store` on a 404. Long caching of
+hashed files is a `_headers` rule, as on Cloudflare.
 
-**The site's files** (`src/client/manifest.ts`). The manifest is Cloudflare's: a 20-byte header,
-zero and unused as in Cloudflare's, then one 40-byte entry per path, sorted by the path hash, the
-first 16 bytes of the SHA-256 of the path, so a lookup is a binary search. An entry is the path
-hash, the content hash (the first 16 bytes of the SHA-256 of the bytes), and a tail that holds the
-index of the stored file (a big-endian u32) and of the content type (a big-endian u16, `0xffff` for
-none). The manifest is one base64 string, and a lookup decodes only the bytes it compares, so its
-cost does not grow with the site. The storage URLs are one prefix and one suffix around one key per
-stored file, each padded to one width; the CLI rebuilds every URL from them before it writes the
-file. Convex evaluates the HTTP module for every request, so the site is a few string literals and
-nothing is parsed or decoded when the module loads. Measured on a cloud deployment on 2026-11-04: a
-site of 100,000 files is a module of 8.9 MB, which adds about 2 ms to each request; a site of 400
-files is about 35 KB.
+**The site's files.** The manifest is Cloudflare's asset manifest, and Cloudflare's own reader
+(`asset-worker/src/assets-manifest.ts`, vendored) searches it: a 20-byte header, then one 40-byte
+entry per path, sorted by the path hash, the first 16 bytes of the SHA-256 of the path. The CLI
+(`src/cli/manifest.ts`) encodes it as Miniflare does for `wrangler dev`. The content hash covers the
+bytes and the content type, as Cloudflare's covers the bytes and the extension, so the same bytes
+under two types have two ETags. The tail, which Cloudflare leaves zero, holds the index of the
+storage URL (a big-endian u32) and of the content type (a big-endian u16, `0xffff` for none). Convex
+modules carry no binary data, so the manifest is a base64 string, decoded once per request with
+Convex's native `Uint8Array.fromBase64`; the storage URLs are a plain array. Measured on a cloud
+deployment on 2026-11-10, against 3.8 ms for an empty action: 4.2 ms per request at 10,000 files (a
+1.9 MB module), 12.4 ms at 100,000 (18.8 MB).
 
 Other HTTP routes of the app (auth, APIs) win over the site route when they are exact paths or
 longer prefixes, by Convex's router rules for the same method.
@@ -555,10 +553,9 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
 - `packages/convex-hosting`
   - `src/component`: `schema.ts`, `lib.ts`, `convex.config.ts`, and its generated files.
   - `src/client`: `routeAll`, Cloudflare's handler run against the assets (`answer.ts`), the assets'
-    files (`manifest.ts`: the builder that the CLI runs and the lookup that the action runs), and
-    the shipped declaration of the version module.
+    types and lookup (`manifest.ts`), and the shipped declaration of the version module.
   - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, the inner step that
-    `npx convex deploy --cmd` has to call as a program.
+    `npx convex deploy --cmd` has to call as a program; `manifest.ts` encodes the manifest.
   - `src/workers-sdk`: Cloudflare's asset worker, its tests, and its html_handling and encoding
     cases, copied by `scripts/sync-workers-sdk.ts` from cloudflare/workers-sdk at the commit in
     `UPSTREAM`, each file at its upstream path, so the folder mirrors that repository. Only the sync

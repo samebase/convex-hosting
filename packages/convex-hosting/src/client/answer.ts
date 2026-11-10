@@ -4,10 +4,10 @@ import {
   handleRequest,
 } from "../workers-sdk/packages/workers-shared/asset-worker/src/handler.js";
 import { mockJaegerBinding } from "../workers-sdk/packages/workers-shared/utils/tracing.js";
-import { lookup, type AssetFiles, type ManifestHit } from "./manifest.js";
+import { manifestLookup, type AssetFiles, type ManifestHit } from "./manifest.js";
 
-/** An answer of Cloudflare's handler, and the stored file of its body, if it has one. */
-export type Answer = { status: number; headers: Headers; file: number | null };
+/** An answer of Cloudflare's handler, and the storage URL of its body, if it has one. */
+export type Answer = { status: number; headers: Headers; url: string | null };
 
 /**
  * Runs Cloudflare's asset handler for `request` against the version's files, or returns `null` when
@@ -23,15 +23,14 @@ export async function answer(
   hasUserWorker: boolean,
 ): Promise<Answer | null> {
   const env = { JAEGER: mockJaegerBinding() };
-  // `exists` returns an ETag; `getByETag` gets the entry back for that ETag. The ETag is the content
-  // hash and a short hash of the content type, so identical bytes under two types stay distinct.
+  // `exists` returns the entry's ETag; `getByETag` gets the entry back for that ETag.
+  const lookup = manifestLookup(files);
   const found = new Map<string, ManifestHit>();
   const exists = async (pathname: string) => {
-    const hit = await lookup(files, pathname);
+    const hit = await lookup(pathname);
     if (hit === null) return null;
-    const eTag = hit.contentHash + (await shortHash(hit.contentType ?? ""));
-    found.set(eTag, hit);
-    return eTag;
+    found.set(hit.eTag, hit);
+    return hit.eTag;
   };
   let body: ManifestHit | undefined;
   const getByETag = async (eTag: string) => {
@@ -61,14 +60,6 @@ export async function answer(
   return {
     status: response.status,
     headers: response.headers,
-    file: response.body !== null && body !== undefined ? body.file : null,
+    url: response.body !== null && body !== undefined ? body.url : null,
   };
-}
-
-/** The first 8 hex digits of the SHA-256 of `text`. */
-async function shortHash(text: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(digest, 0, 4), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
 }

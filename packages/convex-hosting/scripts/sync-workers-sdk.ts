@@ -40,6 +40,7 @@ const UPSTREAM_FILES = [
   "fixtures/workers-shared-asset-config/test-cases/encoding-test-cases.ts",
   "fixtures/workers-shared-asset-config/test-cases/html-handling-test-cases.ts",
   "packages/workers-shared/asset-worker/src/analytics.ts",
+  "packages/workers-shared/asset-worker/src/assets-manifest.ts",
   "packages/workers-shared/asset-worker/src/compatibility-flags.ts",
   "packages/workers-shared/asset-worker/src/configuration.ts",
   "packages/workers-shared/asset-worker/src/constants.ts",

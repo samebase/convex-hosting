@@ -4,7 +4,8 @@ import type { Config } from "../component/lib.js";
 import { encodingTestCases } from "../workers-sdk/fixtures/workers-shared-asset-config/test-cases/encoding-test-cases.js";
 import { htmlHandlingTestCases } from "../workers-sdk/fixtures/workers-shared-asset-config/test-cases/html-handling-test-cases.js";
 import { answer } from "./answer.js";
-import { buildAssetFiles, storageUrl, type AssetFiles } from "./manifest.js";
+import { buildAssetFiles } from "../cli/manifest.js";
+import type { AssetFiles } from "./manifest.js";
 
 type Files = Record<string, { body: string; contentType?: string }>;
 
@@ -14,6 +15,11 @@ const ORIGIN = "https://example.convex.site";
 async function sha256Hex(body: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** The ETag of `body` under `contentType`: the content hash, which covers both. */
+async function eTagOf(body: string, contentType?: string) {
+  return (await sha256Hex(`${await sha256Hex(body)}\n${contentType ?? ""}`)).slice(0, 32);
 }
 
 /** The stored file's URL of `body`: it names the bytes, so a test can tell which file answered. */
@@ -31,7 +37,7 @@ async function siteFiles(files: Files, config: Config = {}) {
       url: await bodyUrl(body),
     })),
   );
-  return await buildAssetFiles(CLOUD_URL, siteConfig(config), entries);
+  return buildAssetFiles(CLOUD_URL, siteConfig(config), entries);
 }
 
 /** Cloudflare's answer to one request, with the storage URL of its body, or `null` for a miss. */
@@ -47,7 +53,7 @@ async function route(
   return {
     status: asset.status,
     headers: Object.fromEntries(asset.headers),
-    bodyUrl: asset.file === null ? null : storageUrl(files.storage, asset.file),
+    bodyUrl: asset.url,
   };
 }
 
@@ -66,8 +72,7 @@ describe("answer", () => {
     expect(hit?.headers["cache-control"]).toBe("public, max-age=0, must-revalidate");
     expect(hit?.headers["cf-cache-status"]).toBeUndefined();
     const eTag = hit?.headers.etag;
-    const sha256 = await sha256Hex("console.log(1)");
-    expect(eTag).toMatch(new RegExp(`^"${sha256.slice(0, 32)}[0-9a-f]{8}"$`));
+    expect(eTag).toBe(`"${await eTagOf("console.log(1)", "text/javascript; charset=utf-8")}"`);
     expect(hit?.bodyUrl).toBe(await bodyUrl("console.log(1)"));
 
     const revalidated = await route(files, "/assets/app-a1.js", { "if-none-match": eTag ?? "" });
@@ -222,9 +227,7 @@ describe("Cloudflare's conformance cases", () => {
           expect(response.status).toBe(200);
           expect(response.url).toBe(ORIGIN + finalPath);
           expect(response.redirected).toBe(requestPath !== finalPath);
-          expect(response.eTag).toMatch(
-            new RegExp(`^"${(await sha256Hex(matchedFile)).slice(0, 32)}`),
-          );
+          expect(response.eTag).toBe(`"${await eTagOf(matchedFile)}"`);
         } else {
           expect(response.status).toBe(404);
         }

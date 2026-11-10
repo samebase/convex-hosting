@@ -7,7 +7,8 @@ import type { Config } from "../component/lib.js";
 import { internal } from "../component/_generated/api.js";
 import schema from "../component/schema.js";
 import { routeAll } from "./index.js";
-import { buildAssetFiles, MARK_HEADER, type Assets } from "./manifest.js";
+import { buildAssetFiles } from "../cli/manifest.js";
+import { MARK_HEADER, type Assets } from "./manifest.js";
 
 const modules = import.meta.glob(["../component/**/*.ts", "!../component/**/*.test.ts"]);
 
@@ -45,7 +46,7 @@ async function setup(config: Config = {}) {
     format: 1,
     versionId: "v1",
     markToken: "token-1",
-    files: await buildAssetFiles(CLOUD_URL, siteConfig(config), [
+    files: buildAssetFiles(CLOUD_URL, siteConfig(config), [
       { ...entry, url: `${CLOUD_URL}/api/storage/${storageId}` },
     ]),
   };
