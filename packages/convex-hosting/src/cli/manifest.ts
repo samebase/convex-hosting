@@ -104,7 +104,12 @@ function sharedEnd(texts: string[]): string {
   let end = texts[0] ?? "";
   for (const text of texts) {
     let length = 0;
-    while (length < end.length && end.at(-1 - length) === text.at(-1 - length)) length++;
+    while (
+      length < Math.min(end.length, text.length) &&
+      end[end.length - 1 - length] === text[text.length - 1 - length]
+    ) {
+      length++;
+    }
     end = end.slice(end.length - length);
   }
   return end;
