@@ -348,7 +348,7 @@ convex-test run of the exact order of transactions; "runtime" is a run against a
 | A deploy pushes; the CLI's mark reaches the new code                                                      | The version is marked live; the versions live before it are deleted                                                                             | Component test, runtime                  |
 | Two deploys overlap; the pushes land in creation order                                                    | Both complete; the last push's version is marked live by its deploy's mark; the other was never live and goes at a later switch when a day old  | Component test (age rule)                |
 | Two deploys overlap; the earlier-created one pushes last                                                  | Outside the precondition. Its version serves but is never marked, because the other is newer and live; nothing is deleted until the next deploy | Component test (stale request)           |
-| Two deploys overlap; the newer one's mark is still running while the older one is pushed and marked       | Outside the precondition. The version that serves loses its entries to the late mark; its files stay until the next switch                      | Stated; `overlap.test.ts`                |
+| Two deploys overlap; the newer one's mark is still running while the older one is pushed and marked       | Outside the precondition. The version that serves loses its entries to the late mark, and a day-old file if the two cleanups interleave         | Stated; `overlap.test.ts`                |
 | A mark for an older version reaches its code after the new version was marked, from an overlapping deploy | Its version is older than the live one, so the mark answers `superseded`; the new version stays live and keeps its files                        | Component test, CLI test                 |
 | Two marks of one version                                                                                  | One mark; the second answers `live`                                                                                                             | Component test                           |
 | Two marks in one millisecond                                                                              | The second is strictly later                                                                                                                    | Component test                           |
@@ -381,10 +381,12 @@ place for those.
   and nothing is deleted until the next deploy. One order does delete: the newer upload's mark
   request is still running while the older upload is pushed and marked, which takes seconds. The
   older version becomes live, the late mark makes the newer one live over it, and the version that
-  serves loses its entries. Its stored files stay until the next switch, which follows the next
-  deploy's push. `src/client/overlap.test.ts` runs every order of the steps of two deploys, and of
-  three with each mark run as it arrives, on the real component and serving code, and finds this
-  order alone.
+  serves loses its entries. Its stored files stay, unless the two marks' cleanups interleave: when a
+  file step of the first mark's `collect` runs after the second mark's `collect` deleted the
+  entries, it deletes a day-old file that only the serving version had. `src/client/overlap.test.ts`
+  runs every order of the steps of two deploys, and of three with each mark run as it arrives, on
+  the real component and serving code, each `collect` run to its end before the next step, and finds
+  this order alone.
 - An upload that took a stored file from `knownFiles` loses it only if two switches happen during
   that one upload; it fails with a message that says so, and a retry works.
 - No `run_worker_first`, no `base_path`, no selectable compatibility date: an app that needs its

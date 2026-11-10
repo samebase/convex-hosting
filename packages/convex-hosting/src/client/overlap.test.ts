@@ -69,8 +69,8 @@ type Run = {
 /**
  * Runs the deploys on the real component and the real serving code, over a version `p` that was
  * deployed a day before, and returns the first step after which the version that serves lacks an
- * entry or a stored file, or `null`. A stored file goes only after its entries, at a later switch,
- * so the entries are checked too.
+ * entry or a stored file, or `null`. A stored file goes only after its entries, so the entries are
+ * checked too. Every `collect` chain runs to its end before the next step.
  */
 async function firstLoss({ order, pace, markBy }: Run) {
   vi.useFakeTimers();
