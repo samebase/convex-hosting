@@ -243,7 +243,8 @@ export const finishVersion = internalMutation({
  *
  * Precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
  * pushed last, its mark is refused like a mark of replaced code: its version serves but stays
- * `ready`, and nothing is deleted until the next deploy.
+ * `ready`, and nothing is deleted until the next deploy. The one order that deletes, a mark still
+ * running across the other deploy's push and mark, is in `docs/design.md`, "Stated, not solved".
  */
 export const markLive = mutation({
   args: { versionId: v.string() },

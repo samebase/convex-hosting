@@ -43,8 +43,9 @@ may follow its upload, and it is the only time constant in the design.
 
 The precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
 pushed last, its mark is refused like a mark of replaced code: its version serves, but it never
-becomes live, and nothing is deleted until the next deploy. So run one deploy at a time per
-deployment; the example workflows queue them, with one `concurrency` group per deployment.
+becomes live, and nothing is deleted until the next deploy, but for one order in "Stated, not
+solved". So run one deploy at a time per deployment; the example workflows queue them, with one
+`concurrency` group per deployment.
 
 ## Deploy
 
@@ -347,6 +348,7 @@ convex-test run of the exact order of transactions; "runtime" is a run against a
 | A deploy pushes; the CLI's mark reaches the new code                                                      | The version is marked live; the versions live before it are deleted                                                                             | Component test, runtime                  |
 | Two deploys overlap; the pushes land in creation order                                                    | Both complete; the last push's version is marked live by its deploy's mark; the other was never live and goes at a later switch when a day old  | Component test (age rule)                |
 | Two deploys overlap; the earlier-created one pushes last                                                  | Outside the precondition. Its version serves but is never marked, because the other is newer and live; nothing is deleted until the next deploy | Component test (stale request)           |
+| Two deploys overlap; the newer one's mark is still running while the older one is pushed and marked       | Outside the precondition. The version that serves loses its entries to the late mark; its files stay until the next switch                      | Stated; `overlap.test.ts`                |
 | A mark for an older version reaches its code after the new version was marked, from an overlapping deploy | Its version is older than the live one, so the mark answers `superseded`; the new version stays live and keeps its files                        | Component test, CLI test                 |
 | Two marks of one version                                                                                  | One mark; the second answers `live`                                                                                                             | Component test                           |
 | Two marks in one millisecond                                                                              | The second is strictly later                                                                                                                    | Component test                           |
@@ -376,7 +378,13 @@ place for those.
 
 - Deploys to one deployment do not overlap. When two overlap and the older upload is pushed last,
   its mark is refused like a mark of replaced code, so its version serves but is never marked live,
-  and nothing is deleted until the next deploy.
+  and nothing is deleted until the next deploy. One order does delete: the newer upload's mark
+  request is still running while the older upload is pushed and marked, which takes seconds. The
+  older version becomes live, the late mark makes the newer one live over it, and the version that
+  serves loses its entries. Its stored files stay until the next switch, which follows the next
+  deploy's push. `src/client/overlap.test.ts` runs every order of the steps of two deploys, and of
+  three with each mark run as it arrives, on the real component and serving code, and finds this
+  order alone.
 - An upload that took a stored file from `knownFiles` loses it only if two switches happen during
   that one upload; it fails with a message that says so, and a retry works.
 - No `run_worker_first`, no `base_path`, no selectable compatibility date: an app that needs its
@@ -419,7 +427,8 @@ are not proposed again.
 - **Marking live from the CLI with `npx convex run lib:markLive`.** When deploys overlap, the CLI
   can mark a version whose code does not serve, and the mark deletes the files of the code that
   does. The mark request reaches the code that serves, and its token makes only that deploy's code
-  mark.
+  mark. `src/client/overlap.test.ts` runs an order of two deploys in which the CLI's mark deletes
+  the entries of the version that serves, with no request still running.
 - **Marking live on a random share of requests.** It kept the mark in the serving code for about one
   call per hundred requests, but a site with little traffic would keep its old versions for days,
   and every request would pay the draw.
