@@ -2,8 +2,9 @@
 
 `deploy` runs `npx convex deploy` with your build and the upload of `--dist` as its `--cmd`. The
 pushed code carries the version it was built with and that version's files, so the push switches the
-site. Then the command marks its version live, which deletes the versions that were live before it,
-reads the site URL from the deployment (`CONVEX_SITE_URL`), prints it, and ends. When the mark
+site. Then the command reads the site URL from the deployment (`CONVEX_SITE_URL`), sends one request
+to it with the version's mark token, which makes the code that answers mark its version live and
+delete the versions that were live before it, prints the site URL, and ends. When that request
 fails, the deploy still succeeds and says so; the old versions then stay until the next deploy's
 mark. A version that never becomes live, from a deploy that failed, is deleted at the first switch
 after it is a day old, and the stored files that no version uses go at the switch after that.

@@ -95,11 +95,12 @@ export default app;
     join(project, "convex/http.ts"),
     `import { httpRouter } from "convex/server";
 import { routeAll } from "@samebase/convex-hosting";
+import { components } from "./_generated/api.js";
 import { assets } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 
-routeAll({ http, assets });
+routeAll({ http, component: components.hosting, assets });
 
 export default http;
 `,

@@ -12,7 +12,13 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
-import { ASSETS_FORMAT, type AssetFiles, type Assets } from "../client/manifest.js";
+import {
+  ASSETS_FORMAT,
+  MARK_HEADER,
+  MARK_PATH,
+  type AssetFiles,
+  type Assets,
+} from "../client/manifest.js";
 import { internal } from "../component/_generated/api.js";
 import type { Config } from "../component/lib.js";
 import type { Id } from "../component/_generated/dataModel.js";
@@ -179,9 +185,9 @@ function quote(arg: string): string {
 }
 
 /**
- * Builds, uploads, writes the version file, and pushes. The push is the switch. Then it marks the
- * version live, and reports the site URL, for a person and, through `$GITHUB_OUTPUT`, for the next
- * step of a GitHub Actions job.
+ * Builds, uploads, writes the version file, and pushes. The push is the switch. Then it asks the
+ * served code to mark its version live, and reports the site URL, for a person and, through
+ * `$GITHUB_OUTPUT`, for the next step of a GitHub Actions job.
  */
 async function deploy(cli: Cli, options: Options, build: string | undefined) {
   // A deploy key wins over every selector in the Convex CLI, so a production key in the environment
@@ -230,7 +236,6 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
   } else {
     await deployWithConvexDeploy(cli, options, target, versionId, build);
   }
-  await markLive(cli, target, versionId);
   let url: string;
   try {
     url = await siteUrl(cli, target.flags);
@@ -239,6 +244,7 @@ async function deploy(cli: Cli, options: Options, build: string | undefined) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Deployed version ${versionId}, but reading the site URL failed: ${message}`);
   }
+  await markServedVersion(cli, url, readVersionFile(cli));
   cli.log(`Deployed version ${versionId} to ${url}.`);
   if (cli.env.GITHUB_OUTPUT) appendFileSync(cli.env.GITHUB_OUTPUT, `url=${url}\n`);
 }
@@ -378,9 +384,11 @@ async function upload(
       z.array(z.string()).length(count),
     );
 
+  // The CLI sends it after the push; see `MARK_HEADER`.
+  const markToken = randomUUID();
   const missing = await probeComponent(cli, target);
   if (missing !== undefined) {
-    writeVersionFile(cli, { format: ASSETS_FORMAT, versionId, files: null });
+    writeVersionFile(cli, { format: ASSETS_FORMAT, versionId, markToken, files: null });
     return missing;
   }
 
@@ -470,7 +478,7 @@ async function upload(
   }
   await runComponent(cli, target, internal.lib.finishVersion, { versionId }, z.null());
   const files = await assetFiles(cli, target, versionId, config, entries);
-  writeVersionFile(cli, { format: ASSETS_FORMAT, versionId, files });
+  writeVersionFile(cli, { format: ASSETS_FORMAT, versionId, markToken, files });
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
   return undefined;
 }
@@ -526,9 +534,11 @@ async function assetFiles(
   );
 }
 
+/** The line of the version file that holds the assets. */
+const ASSETS_LINE = "export const assets = ";
+
 /**
- * Writes the version file. `versionId` is its own export too, for the app query that reloads
- * pages on a new version. The assets carry their type as JSDoc: Convex's default
+ * Writes the version file. The assets carry their type as JSDoc: Convex's default
  * `convex/tsconfig.json` sets `allowJs`, so tsc reads this file instead of the package's
  * declaration, and would infer `string` where `Assets` has a union of literals.
  */
@@ -536,39 +546,62 @@ function writeVersionFile(cli: Cli, assets: Assets) {
   writeStateFile(
     cli,
     VERSION_FILE,
-    `export const versionId = ${JSON.stringify(assets.versionId)};\n` +
-      `/** @type {import("@samebase/convex-hosting").Assets} */\n` +
-      `export const assets = ${JSON.stringify(assets)};\n`,
+    `/** @type {import("@samebase/convex-hosting").Assets} */\n` +
+      `${ASSETS_LINE}${JSON.stringify(assets)};\n`,
   );
 }
 
+/** The id and the mark token of the assets in the version file that the upload wrote. */
+function readVersionFile(cli: Cli): Pick<Assets, "versionId" | "markToken"> {
+  const line = readFileSync(join(cli.cwd, VERSION_FILE), "utf8")
+    .split("\n")
+    .find((text) => text.startsWith(ASSETS_LINE));
+  if (line === undefined) throw new Error(`${VERSION_FILE} has no assets.`);
+  return z
+    .object({ versionId: z.string(), markToken: z.string() })
+    .parse(JSON.parse(line.slice(ASSETS_LINE.length, -1)));
+}
+
 /**
- * Marks the version live after the push that serves it, so the component deletes the versions
- * before it. A failure deletes nothing: the versions live before stay until a later deploy marks
- * its own, so it is reported, and the deploy succeeds.
+ * Asks the code that the deployment serves to mark its version live, with the site's mark token,
+ * which only the code of this deploy has. A failure deletes nothing: the versions live before stay
+ * until a later deploy marks its own, so it is reported, and the deploy succeeds.
  */
-async function markLive(cli: Cli, target: Target, versionId: string) {
-  const later = `Version ${versionId} serves, and the next deploy deletes the files of the versions before it.`;
-  let result: string;
+async function markServedVersion(
+  cli: Cli,
+  url: string,
+  site: Pick<Assets, "versionId" | "markToken">,
+) {
+  const later = `Version ${site.versionId} serves, and the next deploy deletes the files of the versions before it.`;
+  let answer: unknown;
   try {
-    result = await runComponent(
-      cli,
-      target,
-      internal.lib.markLive,
-      { versionId },
-      z.enum(["marked", "live", "superseded", "uploading", "deleting", "missing"]),
-    );
+    // A redirect would carry the token to another origin, so it counts as other code answering.
+    const response = await cli.fetch(url + MARK_PATH, {
+      method: "POST",
+      headers: { [MARK_HEADER]: site.markToken },
+      redirect: "manual",
+    });
+    // Other code answers the path with a page or a 404, which is no mark.
+    answer = response.ok ? await response.json().catch(() => null) : null;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    cli.log(`Marking version ${versionId} live failed: ${message}. ${later}`);
+    cli.log(`Asking the site to mark version ${site.versionId} live failed: ${message}. ${later}`);
     return;
   }
+  const parsed = z.object({ versionId: z.string(), result: z.string() }).safeParse(answer);
+  if (!parsed.success || parsed.data.versionId !== site.versionId) {
+    cli.log(
+      `The site did not answer as version ${site.versionId}, so its code is not this deploy's.`,
+    );
+    return;
+  }
+  const { result } = parsed.data;
   if (result === "superseded") {
     cli.log(
-      `A version created after ${versionId} is live, so a deploy overlapped this one; ${later}`,
+      `A version created after ${site.versionId} is live, so a deploy overlapped this one; ${later}`,
     );
   } else if (result !== "marked" && result !== "live") {
-    cli.log(`Version ${versionId} could not be marked live: it is ${result}.`);
+    cli.log(`Version ${site.versionId} could not be marked live: it is ${result}.`);
   }
 }
 

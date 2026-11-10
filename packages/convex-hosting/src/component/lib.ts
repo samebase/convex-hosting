@@ -7,6 +7,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
   type QueryCtx,
 } from "./_generated/server.js";
 
@@ -232,17 +233,19 @@ export const finishVersion = internalMutation({
 });
 
 /**
- * Marks a `ready` version `live` and schedules `collect`, and says what it did. The CLI calls it
- * after the push that serves the version. An older upload never goes live over a newer one: the
- * mark does nothing when a live version was created after this one, so `collect` cannot delete the
- * new version's files. A version that is already live stays as it is, so a repeated mark is fine.
- * It never throws, so the CLI reads every outcome from the answer.
+ * Marks a `ready` version `live` and schedules `collect`, and says what it did. `serveSite` calls
+ * it for the request that the CLI sends after the push, with the site's mark token, so only the
+ * code that serves marks its own version. An older upload never goes live over a newer one: the
+ * mark does nothing when a live version was created after this one. So a request that runs on
+ * replaced code cannot make the old version newest, and `collect` cannot delete the new version's
+ * files. A version that is already live stays as it is, so a repeated mark is fine. It never
+ * throws, so the CLI reads every outcome from the answer.
  *
  * Precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
- * pushed last, its mark is refused: its version serves but stays `ready`, and nothing is deleted
- * until the next deploy.
+ * pushed last, its mark is refused like a mark of replaced code: its version serves but stays
+ * `ready`, and nothing is deleted until the next deploy.
  */
-export const markLive = internalMutation({
+export const markLive = mutation({
   args: { versionId: v.string() },
   returns: v.union(
     /** It was `ready` and is now the newest live version. */

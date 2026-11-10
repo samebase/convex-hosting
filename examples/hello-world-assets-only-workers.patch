@@ -12,19 +12,20 @@ index 41a6c4afe86dc311eed5da6e75804b73bdc4462f..00000000000000000000000000000000
 -export default app;
 diff --git a/convex/http.ts b/convex/http.ts
 deleted file mode 100644
-index d1037d726e70fbc4e75a7b2761bf64770e84adea..0000000000000000000000000000000000000000
+index 51996727a045edbc5b84557709e31b07a62c3bfb..0000000000000000000000000000000000000000
 --- a/convex/http.ts
 +++ /dev/null
-@@ -1,11 +0,0 @@
+@@ -1,12 +0,0 @@
 -import { httpRouter } from "convex/server";
 -import { routeAll } from "@samebase/convex-hosting";
+-import { components } from "./_generated/api.js";
 -import { assets } from "../.convex-hosting/version.js";
 -
 -const http = httpRouter();
 -
 -// Every method, every path, as a Cloudflare Worker without a script: a file for a path that has
 -// one, else 404; another method than GET or HEAD on a file answers 405.
--routeAll({ http, assets });
+-routeAll({ http, component: components.hosting, assets });
 -
 -export default http;
 diff --git a/convex/tsconfig.json b/convex/tsconfig.json

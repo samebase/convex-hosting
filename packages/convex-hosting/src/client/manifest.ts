@@ -12,6 +12,15 @@ import { CONTENT_HASH_SIZE } from "../workers-sdk/packages/workers-shared/utils/
 export const ASSETS_FORMAT = 1;
 
 /**
+ * The header with which the CLI, after the push, asks the served code to mark its version live. Its
+ * value is the site's `markToken`; a request without it is an ordinary request.
+ */
+export const MARK_HEADER = "Convex-Hosting-Mark";
+
+/** The path of that request, which names it in logs; the header alone decides. */
+export const MARK_PATH = "/.convex-hosting/mark";
+
+/**
  * The static assets of one version, as `.convex-hosting/version.js` exports them under `assets`,
  * Cloudflare's name for them: the version's id, and everything that serving reads, so that a
  * request reads no database. `files` is `null` in the code that a first install pushes before its
@@ -21,6 +30,11 @@ export type Assets = {
   /** `ASSETS_FORMAT` of the release that wrote it. */
   format: number;
   versionId: string;
+  /**
+   * The CLI sends it after the push, so that only the CLI makes the served code mark its version
+   * live; another request with the header pays nothing more than any other request.
+   */
+  markToken: string;
   files: AssetFiles | null;
 };
 

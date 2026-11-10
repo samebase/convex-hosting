@@ -22,4 +22,14 @@ import type { FunctionReference } from "convex/server";
  * ```
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
-  {};
+  {
+    lib: {
+      markLive: FunctionReference<
+        "mutation",
+        "internal",
+        { versionId: string },
+        "marked" | "live" | "superseded" | "uploading" | "deleting" | "missing",
+        Name
+      >;
+    };
+  };
