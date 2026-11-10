@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
-import { lookup, MARK_HEADER, MARK_PATH, storageUrl, type Site } from "../client/manifest.js";
+import { lookup, MARK_HEADER, MARK_PATH, storageUrl, type Assets } from "../client/manifest.js";
 import { deploymentSelector, type Cli } from "./convex.js";
 import { main, VERSION_FILE } from "./main.js";
 
@@ -155,9 +155,9 @@ function fake(
         events.push("mark");
         const token = new Headers(init?.headers).get(MARK_HEADER);
         if (options.mark !== undefined) return await options.mark(token, init);
-        const site = writtenSite(cwd);
-        return token === site.markToken
-          ? Response.json({ versionId: site.versionId, result: "marked" })
+        const assets = writtenAssets(cwd);
+        return token === assets.markToken
+          ? Response.json({ versionId: assets.versionId, result: "marked" })
           : new Response("<h1>Home</h1>");
       }
       const storageId = `storage-${stored.size}`;
@@ -184,12 +184,12 @@ function innerUpload(cli: Cli, args: string[]) {
 
 const versionFile = (cwd: string) => readFileSync(join(cwd, VERSION_FILE), "utf8");
 const writtenVersionId = (cwd: string) => /"([^"]+)"/.exec(versionFile(cwd))?.[1];
-/** The site of the version file, as `convex/http.ts` imports it. */
-function writtenSite(cwd: string): Site {
+/** The assets of the version file, as `convex/http.ts` imports them. */
+function writtenAssets(cwd: string): Assets {
   const line = versionFile(cwd)
     .split("\n")
-    .find((text) => text.startsWith("export const site = "));
-  return JSON.parse(line?.slice("export const site = ".length, -1) ?? "null");
+    .find((text) => text.startsWith("export const assets = "));
+  return JSON.parse(line?.slice("export const assets = ".length, -1) ?? "null");
 }
 
 const site = {
@@ -266,7 +266,7 @@ describe("deploy --dev", () => {
     const { cli, events, callArgs } = fake(cwd, {
       installed: () => pushed,
       push: async () => {
-        pushedFiles.push(writtenSite(cwd).files !== null);
+        pushedFiles.push(writtenAssets(cwd).files !== null);
         pushed = true;
         return 0;
       },
@@ -399,11 +399,11 @@ describe("deploy reports", () => {
       push: innerUpload,
       mark: async (token) => {
         tokens.push(token);
-        return Response.json({ versionId: writtenSite(cwd).versionId, result: "marked" });
+        return Response.json({ versionId: writtenAssets(cwd).versionId, result: "marked" });
       },
     });
     expect(await main(DEPLOY, cli)).toBe(0);
-    expect(tokens).toEqual([writtenSite(cwd).markToken]);
+    expect(tokens).toEqual([writtenAssets(cwd).markToken]);
     expect(logs[logs.length - 1]).toMatch(/^Deployed version /);
   });
 
@@ -441,7 +441,7 @@ describe("deploy reports", () => {
     const { cli, logs } = fake(cwd, {
       push: innerUpload,
       mark: async () =>
-        Response.json({ versionId: writtenSite(cwd).versionId, result: "superseded" }),
+        Response.json({ versionId: writtenAssets(cwd).versionId, result: "superseded" }),
     });
     expect(await main(DEPLOY, cli)).toBe(0);
     expect(logs.some((line) => line.includes("a deploy overlapped this one"))).toBe(true);
@@ -529,11 +529,11 @@ describe("deploy", () => {
         if (args.includes("--cmd")) {
           const exitCode = await innerUpload(cli, args);
           expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(true);
-          pushedFiles.push(writtenSite(cwd).files !== null);
+          pushedFiles.push(writtenAssets(cwd).files !== null);
           pushed = true;
           return exitCode;
         }
-        pushedFiles.push(writtenSite(cwd).files !== null);
+        pushedFiles.push(writtenAssets(cwd).files !== null);
         return 0;
       },
     });
@@ -669,9 +669,9 @@ describe("upload", () => {
     expect(versionFile(cwd).split("\n").slice(0, 2)).toEqual([
       'export const versionId = "v1";',
       // tsc reads the file itself in an app whose convex/tsconfig.json sets allowJs.
-      '/** @type {import("@samebase/convex-hosting").Site} */',
+      '/** @type {import("@samebase/convex-hosting").Assets} */',
     ]);
-    const written = writtenSite(cwd);
+    const written = writtenAssets(cwd);
     expect(written).toMatchObject({ format: 1, versionId: "v1", markToken: expect.any(String) });
     const files = written.files;
     if (files === null) throw new Error("The version file has no files.");
@@ -705,7 +705,7 @@ describe("upload", () => {
     const { cli, calls } = fake(cwd);
     expect(await main(upload(), cli)).toBe(0);
     expect(calls().filter((name) => name === "urls")).toHaveLength(2);
-    const written = writtenSite(cwd).files;
+    const written = writtenAssets(cwd).files;
     if (written === null) throw new Error("The version file has no files.");
     for (const i of [0, 1999, 2000, 2499]) {
       expect(await lookup(written, `/assets/${i}.js`)).not.toBeNull();

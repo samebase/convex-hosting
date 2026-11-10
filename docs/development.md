@@ -46,7 +46,7 @@ Two cases are transient:
   vi.mock("../dist/server/server.js", () => ({ default: { fetch: async () => new Response() } }));
   vi.mock("../.convex-hosting/version.js", () => ({
     versionId: "test",
-    site: { format: 1, versionId: "test", markToken: "test", files: null },
+    assets: { format: 1, versionId: "test", markToken: "test", files: null },
   }));
   ```
 

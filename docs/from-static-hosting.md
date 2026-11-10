@@ -31,9 +31,9 @@ and source on 2026-10-18, version 0.2.1.
    `httpPrefix: "/api"` from `defineApp`, and add `/api` to the paths of your own routes whose URLs
    must stay.
 3. In `convex/http.ts`, replace `registerStaticRoutes(...)` with
-   `routeAll(http, components.hosting, site)`, and import `site` from
+   `routeAll({ http, component: components.hosting, assets })`, and import `assets` from
    `../.convex-hosting/version.js`. Your exact routes keep winning. A server-rendered app passes its
-   server entry as the fourth argument.
+   server entry as `worker`.
 4. In the deploy scripts, replace `@convex-dev/static-hosting deploy`, or the pair
    `npx convex deploy` and `upload --prod`, with
    `convex-hosting deploy --build "<build command>" --dist <dir>`, which builds, uploads, and pushes

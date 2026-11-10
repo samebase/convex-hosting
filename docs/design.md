@@ -95,11 +95,11 @@ Bristol's production used it while hosting 0.3 and 0.4 ran side by side under tw
    6. reads the storage URL of every entry, with the deployment's `CONVEX_CLOUD_URL`, through inline
       queries in the component (`npx convex run --component <name> --inline-query`), which run
       whatever release of this package the component is, so an upgrade's upload works before its
-      push installs the new functions; then writes `.convex-hosting/version.js` with the site: the
-      id, a random mark token, and the files (see Serve), in the CLI's state folder at the project
-      root, like Wrangler's `.wrangler/`. It writes a temporary file and renames it, so a running
-      `npx convex dev` never reads half of it; the folder carries its own `.gitignore`, so nothing
-      of it reaches git and no tool writes into `convex/`. The file is a build artifact that
+      push installs the new functions; then writes `.convex-hosting/version.js` with the version's
+      `assets`: the id, a random mark token, and the files (see Serve), in the CLI's state folder at
+      the project root, like Wrangler's `.wrangler/`. It writes a temporary file and renames it, so
+      a running `npx convex dev` never reads half of it; the folder carries its own `.gitignore`, so
+      nothing of it reaches git and no tool writes into `convex/`. The file is a build artifact that
       `http.ts` imports, as a server-rendered app's `http.ts` already imports its server build; the
       package ships the declaration of that module (an ambient wildcard module in a script `.d.ts`
       that the package's types entry references), so a fresh clone typechecks with nothing added.
@@ -206,10 +206,16 @@ picks the longest matching prefix, so only an exact route reaches the app there.
 
 ```ts
 import { routeAll } from "@samebase/convex-hosting";
-import { site } from "../.convex-hosting/version.js";
+import { assets } from "../.convex-hosting/version.js";
 
-routeAll(http, components.hosting, site, server);
+routeAll({ http, component: components.hosting, assets, worker: server });
 ```
+
+Every input is named, after Cloudflare where Cloudflare has a name: `assets` is the static assets of
+Workers Static Assets (its `assets` setting and `ASSETS` binding), and `worker` is the Worker script
+(`has_user_worker`, `run_worker_first`). The export is not `site`, the setting of Workers Sites,
+which Cloudflare deprecated for Static Assets. The file stays `version.js`, since it holds one
+version, Cloudflare's unit of a deploy.
 
 `serveSite` answers with the file when one matches. Otherwise it answers with the page that the
 optional `worker.fetch()` returns, else 404, both with `Cache-Control: no-store`; the page keeps
@@ -548,8 +554,9 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
 
 - `packages/convex-hosting`
   - `src/component`: `schema.ts`, `lib.ts`, `convex.config.ts`, and its generated files.
-  - `src/client`: `routeAll`, the site's files (`manifest.ts`: the builder that the CLI runs and the
-    lookup that the action runs), and the shipped declaration of the version module.
+  - `src/client`: `routeAll`, Cloudflare's handler run against the assets (`answer.ts`), the assets'
+    files (`manifest.ts`: the builder that the CLI runs and the lookup that the action runs), and
+    the shipped declaration of the version module.
   - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, the inner step that
     `npx convex deploy --cmd` has to call as a program.
   - `src/workers-sdk`: Cloudflare's asset worker, its tests, and its html_handling and encoding

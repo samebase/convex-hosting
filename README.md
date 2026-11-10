@@ -56,14 +56,14 @@ server build for every other request, as a Cloudflare Worker with static assets 
 import { httpRouter } from "convex/server";
 import { routeAll } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
-import { site } from "../.convex-hosting/version.js";
+import { assets } from "../.convex-hosting/version.js";
 // Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
 const http = httpRouter();
 
-routeAll(http, components.hosting, site, server);
+routeAll({ http, component: components.hosting, assets, worker: server });
 
 export default http;
 ```
@@ -106,10 +106,10 @@ wires both.
 
 ## Files only
 
-A site without a server leaves the fourth argument out, `routeAll(http, components.hosting, site)`,
-needs no adapter package, and deploys its build directory: `--dist dist` after a `vite build`, or
-`--dist public` with no `--build` at all. A single-page app adds
-`--not-found-handling single-page-application`. The
+A site without a server leaves `worker` out,
+`routeAll({ http, component: components.hosting, assets })`, needs no adapter package, and deploys
+its build directory: `--dist dist` after a `vite build`, or `--dist public` with no `--build` at
+all. A single-page app adds `--not-found-handling single-page-application`. The
 [tanstack-spa](https://github.com/samebase/convex-hosting/tree/main/examples/tanstack-spa) and
 [hello-world-assets-only](https://github.com/samebase/convex-hosting/tree/main/examples/hello-world-assets-only)
 examples are such sites.

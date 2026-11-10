@@ -9,10 +9,10 @@ import {
 } from "../workers-sdk/packages/workers-shared/utils/constants.js";
 
 /**
- * The format of `Site`. `serveSite` refuses a site of another format, which only a deploy with
+ * The format of `Assets`. `serveSite` refuses assets of another format, which only a deploy with
  * another release of this package writes.
  */
-export const SITE_FORMAT = 1;
+export const ASSETS_FORMAT = 1;
 
 /**
  * The header with which the CLI, after the push, asks the served code to mark its version live. Its
@@ -24,12 +24,13 @@ export const MARK_HEADER = "Convex-Hosting-Mark";
 export const MARK_PATH = "/.convex-hosting/mark";
 
 /**
- * The site that one deploy pushes, as `.convex-hosting/version.js` exports it: the version's id,
- * and everything that serving reads, so that a request reads no database. `files` is `null` in the
- * code that a first install pushes before its upload, which serves nothing.
+ * The static assets of one version, as `.convex-hosting/version.js` exports them under `assets`,
+ * Cloudflare's name for them: the version's id, and everything that serving reads, so that a
+ * request reads no database. `files` is `null` in the code that a first install pushes before its
+ * upload, which serves nothing.
  */
-export type Site = {
-  /** `SITE_FORMAT` of the release that wrote it. */
+export type Assets = {
+  /** `ASSETS_FORMAT` of the release that wrote it. */
   format: number;
   versionId: string;
   /**
@@ -37,15 +38,15 @@ export type Site = {
    * live; another request with the header pays nothing more than any other request.
    */
   markToken: string;
-  files: SiteFiles | null;
+  files: AssetFiles | null;
 };
 
-export type SiteFiles = {
+export type AssetFiles = {
   /** The deployment's `CONVEX_CLOUD_URL` at the upload: the origin of every storage URL. */
   cloudUrl: string;
   /** Cloudflare's normalized `AssetConfig` for the version, as its handler takes it. */
   config: NormalizedAssetConfig;
-  /** The base64 of the manifest bytes; see `buildSiteFiles`. */
+  /** The base64 of the manifest bytes; see `buildAssetFiles`. */
   manifest: string;
   /** The content types of the entries, sorted; an entry holds an index into it. */
   contentTypes: string[];
@@ -57,7 +58,7 @@ export type SiteFiles = {
 };
 
 /** One file of a version, as the upload knows it. */
-export type SiteEntry = {
+export type AssetEntry = {
   /** The URL path, such as `/assets/index-a1b2.js`. */
   path: string;
   /** The hex SHA-256 of the bytes. */
@@ -78,7 +79,7 @@ const NO_CONTENT_TYPE = 0xffff;
 export type ManifestHit = {
   /** The hex of the manifest's content hash: the first 16 bytes of the SHA-256 of the bytes. */
   contentHash: string;
-  /** The index of the stored file in `SiteFiles.storage`. */
+  /** The index of the stored file in `AssetFiles.storage`. */
   file: number;
   /** The entry's content type, if it has one. */
   contentType: string | undefined;
@@ -135,7 +136,7 @@ function commonSuffixLength(a: string, b: string): number {
  * differ only in the file's key, but that is Convex's choice, so the split is computed, and every
  * URL is rebuilt from it and compared before it is used.
  */
-function compressUrls(urls: string[]): SiteFiles["storage"] {
+function compressUrls(urls: string[]): AssetFiles["storage"] {
   if (urls.length === 0) return { prefix: "", suffix: "", width: 0, keys: "" };
   let prefixLength = urls[0].length;
   for (const url of urls) prefixLength = Math.min(prefixLength, commonPrefixLength(urls[0], url));
@@ -167,11 +168,11 @@ function compressUrls(urls: string[]): SiteFiles["storage"] {
  * binary search. An entry is the path hash, the content hash, and a tail, which here holds the
  * index of the stored file and the index of the content type.
  */
-export async function buildSiteFiles(
+export async function buildAssetFiles(
   cloudUrl: string,
   config: NormalizedAssetConfig,
-  entries: SiteEntry[],
-): Promise<SiteFiles> {
+  entries: AssetEntry[],
+): Promise<AssetFiles> {
   const urls = [...new Set(entries.map(({ url }) => url))].sort();
   const contentTypes = [
     ...new Set(
@@ -233,7 +234,7 @@ function entryCount(manifest: string): number {
 }
 
 /** Finds the entry of `path` by binary search over the path hashes, or returns `null`. */
-export async function lookup(files: SiteFiles, path: string): Promise<ManifestHit | null> {
+export async function lookup(files: AssetFiles, path: string): Promise<ManifestHit | null> {
   const pathHash = await hashPath(path);
   let low = 0;
   let high = entryCount(files.manifest) - 1;
@@ -263,7 +264,7 @@ export async function lookup(files: SiteFiles, path: string): Promise<ManifestHi
 }
 
 /** The storage URL of stored file `file`. */
-export function storageUrl(storage: SiteFiles["storage"], file: number): string {
+export function storageUrl(storage: AssetFiles["storage"], file: number): string {
   const key = storage.keys.slice(file * storage.width, (file + 1) * storage.width).trimEnd();
   return storage.prefix + key + storage.suffix;
 }

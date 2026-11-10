@@ -3,8 +3,8 @@ import { siteConfig } from "../cli/site-config.js";
 import type { Config } from "../component/lib.js";
 import { encodingTestCases } from "../workers-sdk/fixtures/workers-shared-asset-config/test-cases/encoding-test-cases.js";
 import { htmlHandlingTestCases } from "../workers-sdk/fixtures/workers-shared-asset-config/test-cases/html-handling-test-cases.js";
-import { answer } from "./index.js";
-import { buildSiteFiles, storageUrl, type SiteFiles } from "./manifest.js";
+import { answer } from "./answer.js";
+import { buildAssetFiles, storageUrl, type AssetFiles } from "./manifest.js";
 
 type Files = Record<string, { body: string; contentType?: string }>;
 
@@ -31,12 +31,12 @@ async function siteFiles(files: Files, config: Config = {}) {
       url: await bodyUrl(body),
     })),
   );
-  return await buildSiteFiles(CLOUD_URL, siteConfig(config), entries);
+  return await buildAssetFiles(CLOUD_URL, siteConfig(config), entries);
 }
 
 /** Cloudflare's answer to one request, with the storage URL of its body, or `null` for a miss. */
 async function route(
-  files: SiteFiles,
+  files: AssetFiles,
   path: string,
   headers: Record<string, string> = {},
   hasUserWorker = true,
@@ -189,7 +189,7 @@ describe("answer", () => {
 // asset Worker with `exists` mocked; here the files are a site's manifest.
 describe("Cloudflare's conformance cases", () => {
   /** Requests `path` and follows redirects, as the upstream test's `fetch` does. */
-  async function follow(files: SiteFiles, path: string) {
+  async function follow(files: AssetFiles, path: string) {
     let url = ORIGIN + path;
     for (let hop = 0; hop < 8; hop++) {
       const asset = await answer(files, new Request(url), false);

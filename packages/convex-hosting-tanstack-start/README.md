@@ -29,11 +29,12 @@ other request goes to the server, as it goes to a Cloudflare Worker:
 
 ```ts
 import { routeAll } from "@samebase/convex-hosting";
+import { assets } from "../.convex-hosting/version.js";
 // Type only, nothing is bundled: the server build imported below.
 import type {} from "@samebase/convex-hosting-tanstack-start/server-build";
 import server from "../dist/server/server.js";
 
-routeAll(http, components.hosting, site, server);
+routeAll({ http, component: components.hosting, assets, worker: server });
 ```
 
 Import `@samebase/convex-hosting` before the server build: it defines `queueMicrotask` when it

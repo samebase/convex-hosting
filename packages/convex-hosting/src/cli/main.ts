@@ -13,12 +13,12 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import {
-  buildSiteFiles,
+  ASSETS_FORMAT,
+  buildAssetFiles,
   MARK_HEADER,
   MARK_PATH,
-  SITE_FORMAT,
-  type Site,
-  type SiteFiles,
+  type AssetFiles,
+  type Assets,
 } from "../client/manifest.js";
 import { internal } from "../component/_generated/api.js";
 import type { Config } from "../component/lib.js";
@@ -388,7 +388,7 @@ async function upload(
   const markToken = randomUUID();
   const missing = await probeComponent(cli, target);
   if (missing !== undefined) {
-    writeVersionFile(cli, { format: SITE_FORMAT, versionId, markToken, files: null });
+    writeVersionFile(cli, { format: ASSETS_FORMAT, versionId, markToken, files: null });
     return missing;
   }
 
@@ -477,8 +477,8 @@ async function upload(
     await record(uploaded);
   }
   await runComponent(cli, target, internal.lib.finishVersion, { versionId }, z.null());
-  const files = await siteFiles(cli, target, versionId, config, entries);
-  writeVersionFile(cli, { format: SITE_FORMAT, versionId, markToken, files });
+  const files = await assetFiles(cli, target, versionId, config, entries);
+  writeVersionFile(cli, { format: ASSETS_FORMAT, versionId, markToken, files });
   cli.log(`Uploaded version ${versionId} and wrote ${VERSION_FILE}.`);
   return undefined;
 }
@@ -488,13 +488,13 @@ async function upload(
  * component can make, read with inline queries in the component, which work whatever release of
  * this package its functions are, and the deployment's `CONVEX_CLOUD_URL`, their origin.
  */
-async function siteFiles(
+async function assetFiles(
   cli: Cli,
   target: Target,
   versionId: string,
   config: Config,
   entries: DistEntry[],
-): Promise<SiteFiles> {
+): Promise<AssetFiles> {
   const urls = new Map<string, string>();
   let cloudUrl = "";
   let after = "";
@@ -523,7 +523,7 @@ async function siteFiles(
     if (page.files.length < URL_PAGE) break;
     after = page.files[page.files.length - 1][0];
   }
-  return await buildSiteFiles(
+  return await buildAssetFiles(
     cloudUrl,
     siteConfig(config),
     entries.map(({ path, sha256, contentType }) => {
@@ -534,34 +534,34 @@ async function siteFiles(
   );
 }
 
-/** The line of the version file that holds the site. */
-const SITE_LINE = "export const site = ";
+/** The line of the version file that holds the assets. */
+const ASSETS_LINE = "export const assets = ";
 
 /**
  * Writes the version file. `versionId` is its own export too, for the app query that reloads
- * pages on a new version. The site carries its type as JSDoc: Convex's default
+ * pages on a new version. The assets carry their type as JSDoc: Convex's default
  * `convex/tsconfig.json` sets `allowJs`, so tsc reads this file instead of the package's
- * declaration, and would infer `string` where `Site` has a union of literals.
+ * declaration, and would infer `string` where `Assets` has a union of literals.
  */
-function writeVersionFile(cli: Cli, site: Site) {
+function writeVersionFile(cli: Cli, assets: Assets) {
   writeStateFile(
     cli,
     VERSION_FILE,
-    `export const versionId = ${JSON.stringify(site.versionId)};\n` +
-      `/** @type {import("@samebase/convex-hosting").Site} */\n` +
-      `${SITE_LINE}${JSON.stringify(site)};\n`,
+    `export const versionId = ${JSON.stringify(assets.versionId)};\n` +
+      `/** @type {import("@samebase/convex-hosting").Assets} */\n` +
+      `${ASSETS_LINE}${JSON.stringify(assets)};\n`,
   );
 }
 
-/** The id and the mark token of the site in the version file that the upload wrote. */
-function readVersionFile(cli: Cli): Pick<Site, "versionId" | "markToken"> {
+/** The id and the mark token of the assets in the version file that the upload wrote. */
+function readVersionFile(cli: Cli): Pick<Assets, "versionId" | "markToken"> {
   const line = readFileSync(join(cli.cwd, VERSION_FILE), "utf8")
     .split("\n")
-    .find((text) => text.startsWith(SITE_LINE));
-  if (line === undefined) throw new Error(`${VERSION_FILE} has no site.`);
+    .find((text) => text.startsWith(ASSETS_LINE));
+  if (line === undefined) throw new Error(`${VERSION_FILE} has no assets.`);
   return z
     .object({ versionId: z.string(), markToken: z.string() })
-    .parse(JSON.parse(line.slice(SITE_LINE.length, -1)));
+    .parse(JSON.parse(line.slice(ASSETS_LINE.length, -1)));
 }
 
 /**
@@ -572,7 +572,7 @@ function readVersionFile(cli: Cli): Pick<Site, "versionId" | "markToken"> {
 async function markServedVersion(
   cli: Cli,
   url: string,
-  site: Pick<Site, "versionId" | "markToken">,
+  site: Pick<Assets, "versionId" | "markToken">,
 ) {
   const later = `Version ${site.versionId} serves, and the next deploy deletes the files of the versions before it.`;
   let answer: unknown;
