@@ -49,7 +49,7 @@ export function buildAssetFiles(
   ].sort();
   const urlIndex = new Map(urls.map((url, index) => [url, index]));
   const urlPrefix = sharedStart(urls);
-  const urlSuffix = reversed(sharedStart(urls.map((url) => reversed(url.slice(urlPrefix.length)))));
+  const urlSuffix = sharedEnd(urls.map((url) => url.slice(urlPrefix.length)));
   const keys = urls.map((url) => url.slice(urlPrefix.length, url.length - urlSuffix.length));
   const urlKeyWidth = keys.reduce((width, key) => Math.max(width, key.length), 0);
   const contentTypeIndex = new Map(contentTypes.map((type, index) => [type, index]));
@@ -99,4 +99,13 @@ function sharedStart(texts: string[]): string {
   return start;
 }
 
-const reversed = (text: string) => [...text].reverse().join("");
+/** The longest end that all of `texts` share. */
+function sharedEnd(texts: string[]): string {
+  let end = texts[0] ?? "";
+  for (const text of texts) {
+    let length = 0;
+    while (length < end.length && end.at(-1 - length) === text.at(-1 - length)) length++;
+    end = end.slice(end.length - length);
+  }
+  return end;
+}
