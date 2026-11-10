@@ -1,0 +1,50 @@
+{
+  "target": "convex-hosting-0.14.0",
+  "dependencies": {
+    "@samebase/convex-hosting": "0.14.0"
+  },
+  "convex": "1.46.0",
+  "commit": "51d6f5027f3d22b60001d5e0f241d618fd2b7ae9",
+  "deployment": "frugal-ferret-267",
+  "files": 400,
+  "deploySeconds": null,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-10T23:33:17.464Z",
+  "case": "page",
+  "path": "/",
+  "client": {
+    "requests": 1501,
+    "rate": 24.9272766217917,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 205.427,
+      "p90": 230.424,
+      "p95": 253.623,
+      "p99": 421.854,
+      "max": 748.237
+    }
+  },
+  "server": {
+    "httpActionsLogged": 1501,
+    "logCompleteness": 1,
+    "functionsPerRequest": 2,
+    "downloadsPerRequest": 1,
+    "billedCallsPerRequest": 3,
+    "byFunction": {
+      "HttpAction GET /*": 1501,
+      "Query hosting/lib:route": 1501
+    },
+    "httpActionMs": {
+      "median": 68.827095,
+      "mean": 72.88403767554964,
+      "p95": 99.775712
+    },
+    "innerFunctionMs": {
+      "median": 18.722559999999998,
+      "p95": 24.977029
+    }
+  }
+}

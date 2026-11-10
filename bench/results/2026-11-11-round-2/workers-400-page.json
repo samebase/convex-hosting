@@ -1,0 +1,47 @@
+{
+  "target": "workers",
+  "dependencies": {
+    "wrangler": "4.160.0"
+  },
+  "convex": "1.46.0",
+  "commit": "51d6f5027f3d22b60001d5e0f241d618fd2b7ae9",
+  "deployment": "convex-hosting-bench-workers",
+  "files": 400,
+  "deploySeconds": null,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-10T23:44:26.321Z",
+  "case": "page",
+  "path": "/",
+  "client": {
+    "requests": 1501,
+    "rate": 25.002789285187077,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 16.05,
+      "p90": 26.692,
+      "p95": 36.22,
+      "p99": 118.744,
+      "max": 233.831
+    }
+  },
+  "server": {
+    "sampledWorkerRuns": 0,
+    "outcomes": {},
+    "functionsPerRequest": 0,
+    "downloadsPerRequest": 0,
+    "billedCallsPerRequest": 0,
+    "workerWallMs": {
+      "median": null,
+      "mean": null,
+      "p95": null
+    },
+    "workerCpuMs": {
+      "median": null,
+      "mean": null,
+      "p95": null
+    }
+  }
+}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Hosting benchmark</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --grid: #e1e0d9;
+  --axis: #c3c2b7; --accent: #2a78d6; --other: #a19f97; }
+* { box-sizing: border-box; margin: 0; }
+body { width: 1600px; height: 900px; background: var(--surface); color: var(--ink);
+  font-family: Inter, -apple-system, system-ui, sans-serif; padding: 48px 64px 0; position: relative; }
+h1 { font-size: 50px; font-weight: 700; letter-spacing: -0.02em; }
+.lede { font-size: 24px; color: var(--ink-2); margin-top: 8px; }
+.band { display: flex; align-items: baseline; gap: 16px; margin-top: 40px; padding-bottom: 8px; border-bottom: 1px solid var(--grid); }
+.band h3 { font-size: 17px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); }
+.band span { font-size: 17px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; margin-top: 16px; }
+.panel h2 { font-size: 23px; font-weight: 600; }
+.detail { font-size: 17px; color: var(--muted); margin-top: 2px; }
+.row { display: grid; grid-template-columns: 252px 1fr; align-items: center; height: 47px; }
+.panel h2 + .row, .panel .detail + .row { margin-top: 8px; }
+.name { font-size: 21px; color: var(--ink-2); }
+.name.strong { color: var(--ink); font-weight: 600; }
+.track { display: flex; align-items: center; height: 24px; border-left: 1px solid var(--axis); }
+.bar { flex: none; height: 24px; background: var(--other); border-radius: 0 4px 4px 0; margin-right: 12px; }
+.bar.accent { background: var(--accent); }
+.bar.zero { margin-right: 0; }
+.value { font-size: 21px; color: var(--ink); white-space: nowrap; font-feature-settings: "tnum"; padding-left: 0; }
+.bar.zero + .value { padding-left: 12px; }
+.empty { font-size: 20px; color: var(--muted); font-style: italic; padding-left: 12px; }
+footer { position: absolute; left: 64px; right: 64px; bottom: 30px; font-size: 15px; color: var(--muted); line-height: 1.5; }
+</style></head>
+<body>
+<h1>What one million requests cost</h1>
+<p class="lede">The same 400-file site on each, with every request reaching the server, as in a flood.</p>
+<div class="band"><h3>Dollars per million requests</h3><span>at list price, beyond each plan's included usage</span></div>
+<div class="grid"><section class="panel"><h2>A file of the build</h2><p class="detail">a script; index.html costs the same</p><div class="row"><div class="name">Cloudflare Workers</div><div class="track"><span class="bar zero" style="width:0px"></span><span class="value">$0 · static assets are free</span></div></div><div class="row"><div class="name strong">convex-hosting 0.15.0</div><div class="track"><span class="bar accent" style="width:167px"></span><span class="value">$4.00 · 2 calls</span></div></div><div class="row"><div class="name">convex-hosting 0.14.0</div><div class="track"><span class="bar" style="width:250px"></span><span class="value">$6.00 · 3 calls</span></div></div><div class="row"><div class="name">static-hosting 0.2.1</div><div class="track"><span class="bar" style="width:250px"></span><span class="value">$6.00 · 3 calls</span></div></div></section><section class="panel"><h2>A page the app renders</h2><p class="detail">a path with no file, answered by code</p><div class="row"><div class="name">Cloudflare Workers</div><div class="track"><span class="bar" style="width:12px"></span><span class="value">$0.30 · 1 request</span></div></div><div class="row"><div class="name strong">convex-hosting 0.15.0</div><div class="track"><span class="bar accent" style="width:83px"></span><span class="value">$2.00 · 1 call</span></div></div><div class="row"><div class="name">convex-hosting 0.14.0</div><div class="track"><span class="bar" style="width:167px"></span><span class="value">$4.00 · 2 calls</span></div></div><div class="row"><div class="name">static-hosting 0.2.1</div><div class="track"><span class="empty">renders no page</span></div></div></section></div>
+<div class="band"><h3>Time in the HTTP action</h3><span>median, from each deployment's logs; Convex only</span></div>
+<div class="grid"><section class="panel"><h2>A file of the build</h2><p class="detail"></p><div class="row"><div class="name strong">convex-hosting 0.15.0</div><div class="track"><span class="bar accent" style="width:165px"></span><span class="value">46.3 ms</span></div></div><div class="row"><div class="name">convex-hosting 0.14.0</div><div class="track"><span class="bar" style="width:237px"></span><span class="value">66.3 ms</span></div></div><div class="row"><div class="name">static-hosting 0.2.1</div><div class="track"><span class="bar" style="width:121px"></span><span class="value">34.0 ms</span></div></div></section><section class="panel"><h2>A page the app renders</h2><p class="detail"></p><div class="row"><div class="name strong">convex-hosting 0.15.0</div><div class="track"><span class="bar accent" style="width:15px"></span><span class="value">4.2 ms</span></div></div><div class="row"><div class="name">convex-hosting 0.14.0</div><div class="track"><span class="bar" style="width:95px"></span><span class="value">26.5 ms</span></div></div><div class="row"><div class="name">static-hosting 0.2.1</div><div class="track"><span class="empty">renders no page</span></div></div></section></div>
+<footer>Measured 2026-11-11: 25 requests/s for 60 s per case, two rounds, every response checked, calls counted from the platforms' logs. Convex Professional: $2 per million function calls beyond 25 million; a file's download from storage counts as a call. Workers Paid: $0.30 per million requests beyond 10 million. Not included: Convex action compute and egress, Workers CPU time. Convex deployments in US East; Workers answers from the nearest Cloudflare location. Method: github.com/samebase/convex-hosting/tree/nicu-hosting-bench/bench</footer>
+</body></html>

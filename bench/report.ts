@@ -23,9 +23,12 @@ type Result = {
     logCompleteness: number | null;
     functionsPerRequest: number | null;
     billedCallsPerRequest: number | null;
-    byFunction: Record<string, number>;
-    httpActionMs: { median: number | null; p95: number | null };
-    innerFunctionMs: { median: number | null };
+    byFunction?: Record<string, number>;
+    httpActionMs?: { median: number | null; p95: number | null };
+    innerFunctionMs?: { median: number | null };
+    /** A Cloudflare Workers target: the runs of its script that `wrangler tail` delivered. */
+    sampledWorkerRuns?: number;
+    workerWallMs?: { median: number | null; p95: number | null };
   };
 };
 
@@ -52,14 +55,18 @@ for (const run of runs) {
   );
   console.log("| --- | --- | --: | --: | --: | --: | --: | --: | --: | --- |");
   for (const r of results) {
-    const functions = Object.entries(r.server.byFunction)
-      .map(([name, count]) => `${name}: ${count}`)
-      .join("<br>");
+    const functions =
+      r.server.byFunction === undefined
+        ? `Worker runs sampled by wrangler tail: ${r.server.sampledWorkerRuns}`
+        : Object.entries(r.server.byFunction)
+            .map(([name, count]) => `${name}: ${count}`)
+            .join("<br>");
+    const action = r.server.httpActionMs ?? r.server.workerWallMs;
     console.log(
       `| ${r.case} | ${r.target} | ${r.client.requests} | ${fixed(r.client.checksPassed * 100, 1)}% | ` +
         `${fixed(r.server.functionsPerRequest, 2)} | ${fixed(r.server.billedCallsPerRequest, 2)} | ` +
-        `${fixed(r.server.httpActionMs.median, 1)} / ${fixed(r.server.httpActionMs.p95, 1)} | ` +
-        `${fixed(r.server.innerFunctionMs.median, 1)} | ` +
+        `${fixed(action?.median, 1)} / ${fixed(action?.p95, 1)} | ` +
+        `${fixed(r.server.innerFunctionMs?.median, 1)} | ` +
         `${fixed(r.client.latencyMs.median)} / ${fixed(r.client.latencyMs.p95)} / ${fixed(r.client.latencyMs.p99)} | ` +
         `${functions} |`,
     );

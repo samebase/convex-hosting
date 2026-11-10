@@ -1,0 +1,47 @@
+{
+  "target": "workers",
+  "dependencies": {
+    "wrangler": "4.160.0"
+  },
+  "convex": "1.46.0",
+  "commit": "51d6f5027f3d22b60001d5e0f241d618fd2b7ae9",
+  "deployment": "convex-hosting-bench-workers",
+  "files": 400,
+  "deploySeconds": null,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-10T23:45:49.651Z",
+  "case": "asset",
+  "path": "/assets/chunk-200-ICKA4Pr8.js",
+  "client": {
+    "requests": 1501,
+    "rate": 24.999474528033737,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 16.1,
+      "p90": 22.936,
+      "p95": 28.408,
+      "p99": 48.834,
+      "max": 154.605
+    }
+  },
+  "server": {
+    "sampledWorkerRuns": 0,
+    "outcomes": {},
+    "functionsPerRequest": 0,
+    "downloadsPerRequest": 0,
+    "billedCallsPerRequest": 0,
+    "workerWallMs": {
+      "median": null,
+      "mean": null,
+      "p95": null
+    },
+    "workerCpuMs": {
+      "median": null,
+      "mean": null,
+      "p95": null
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "target": "convex-hosting-0.14.0",
+  "dependencies": {
+    "@samebase/convex-hosting": "0.14.0"
+  },
+  "convex": "1.46.0",
+  "commit": "51d6f5027f3d22b60001d5e0f241d618fd2b7ae9",
+  "deployment": "frugal-ferret-267",
+  "files": 400,
+  "deploySeconds": 25.633,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-10T23:17:51.714Z",
+  "case": "asset",
+  "path": "/assets/chunk-200-ICKA4Pr8.js",
+  "client": {
+    "requests": 1501,
+    "rate": 24.922008723865304,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 383.348,
+      "p90": 454.488,
+      "p95": 516.284,
+      "p99": 738.878,
+      "max": 891.548
+    }
+  },
+  "server": {
+    "httpActionsLogged": 1501,
+    "logCompleteness": 1,
+    "functionsPerRequest": 2,
+    "downloadsPerRequest": 1,
+    "billedCallsPerRequest": 3,
+    "byFunction": {
+      "HttpAction GET /*": 1501,
+      "Query hosting/lib:route": 1501
+    },
+    "httpActionMs": {
+      "median": 66.688108,
+      "mean": 90.62681001665553,
+      "p95": 250.561492
+    },
+    "innerFunctionMs": {
+      "median": 17.753996,
+      "p95": 180.90928200000002
+    }
+  }
+}

@@ -6,6 +6,12 @@ What one request to a hosted site costs on Convex, for three ways to serve it:
   answers.
 - **convex-hosting 0.15.0**, this branch, packed: the HTTP action answers from the site's files,
   which the deploy writes into the pushed code.
+- **convex-hosting 0.15.0**, the same as published to npm (the 2026-11-11 runs install it from
+  npm, target `convex-hosting-0.15.0`).
+- **Cloudflare Workers**, target `workers`: the same site as a Worker's static assets, with a Worker
+  script that renders the same page, on workers.dev. Its server side comes from `wrangler tail`,
+  which samples; a request runs the script once or not at all, so a case with any run costs one
+  billed request per request.
 - **@convex-dev/static-hosting 0.2.1**, from npm, mounted at `/`
   (`app.use(staticHosting, { httpPrefix: "/" })`), the mode its README calls the fastest: the
   component's own HTTP action runs its `resolveAsset` query and reads the file from storage.
@@ -55,6 +61,29 @@ node bench/report.ts <name>
 The first run of a target creates its project in the team in `BENCH_TEAM` (default `nicu`) and
 deploys; `--no-deploy` reuses the deployed site. `bench/.work/` holds the apps and the packed branch
 build; `bench/results/<run>/` holds one JSON file per case and k6's own summary next to it.
+
+## Results, 2026-11-11
+
+The published packages and Cloudflare Workers, the same method: 400 files, two rounds at 25
+requests/s for 60 s per case, targets taking turns. Every response passed its checks; the Convex logs
+held every request. All three Convex deployments are in `aws-us-east-1`, class `s256`.
+
+| Case     | Workers: billed / $ per million | 0.15.0: billed / $ per million | 0.14.0: billed / $ per million | static-hosting 0.2.1: billed / $ per million |
+| -------- | ------------------------------: | -----------------------------: | -----------------------------: | -------------------------------------------: |
+| file     |                          0 / $0 |                     2 / $4.00 |                     3 / $6.00 |                                    3 / $6.00 |
+| rendered |                      1 / $0.30 |                     1 / $2.00 |                     2 / $4.00 |                                cannot render |
+
+Prices beyond each paid plan's included usage: Convex Professional, $2 per million function calls;
+Workers Paid, $0.30 per million requests, static asset requests free. Not counted: Convex action
+compute and egress, Workers CPU time.
+
+HTTP action median, the mean of the two rounds: a file 46.3 ms on 0.15.0, 66.3 ms on 0.14.0, 34.0 ms
+on static-hosting; a rendered page 4.2 ms on 0.15.0, 26.5 ms on 0.14.0. Client latency from
+Chișinău, where Cloudflare answered from Chișinău itself and Convex from US East: about 16 ms for
+Workers and 140 to 380 ms for the Convex targets, which measures the distance more than the hosting.
+
+`node bench/graphic.ts 2026-11-11-comparison 2026-11-11-round-1 2026-11-11-round-2` draws
+`results/2026-11-11-comparison.png`.
 
 ## Results, 2026-11-04
 

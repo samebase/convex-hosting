@@ -1,0 +1,51 @@
+{
+  "target": "convex-hosting-0.14.0",
+  "dependencies": {
+    "@samebase/convex-hosting": "0.14.0"
+  },
+  "convex": "1.46.0",
+  "commit": "51d6f5027f3d22b60001d5e0f241d618fd2b7ae9",
+  "deployment": "frugal-ferret-267",
+  "files": 400,
+  "deploySeconds": 25.633,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-10T23:16:28.190Z",
+  "case": "page",
+  "path": "/",
+  "client": {
+    "requests": 1501,
+    "rate": 24.932847420209406,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 207.956,
+      "p90": 238.151,
+      "p95": 279.995,
+      "p99": 439.637,
+      "max": 583.585
+    }
+  },
+  "server": {
+    "httpActionsLogged": 1501,
+    "logCompleteness": 1,
+    "functionsPerRequest": 2.0039973351099265,
+    "downloadsPerRequest": 1,
+    "billedCallsPerRequest": 3.0039973351099265,
+    "byFunction": {
+      "HttpAction GET /*": 1501,
+      "Query hosting/lib:route": 1501,
+      "Mutation hosting/lib:markLive": 6
+    },
+    "httpActionMs": {
+      "median": 69.814107,
+      "mean": 77.54952906795465,
+      "p95": 110.833121
+    },
+    "innerFunctionMs": {
+      "median": 19.470036999999998,
+      "p95": 39.014197
+    }
+  }
+}

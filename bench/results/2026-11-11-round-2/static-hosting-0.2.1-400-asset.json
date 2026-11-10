@@ -1,0 +1,50 @@
+{
+  "target": "static-hosting-0.2.1",
+  "dependencies": {
+    "@convex-dev/static-hosting": "0.2.1"
+  },
+  "convex": "1.46.0",
+  "commit": "51d6f5027f3d22b60001d5e0f241d618fd2b7ae9",
+  "deployment": "handsome-rooster-935",
+  "files": 400,
+  "deploySeconds": null,
+  "rate": 25,
+  "duration": "60s",
+  "date": "2026-11-10T23:43:02.731Z",
+  "case": "asset",
+  "path": "/assets/chunk-200-ICKA4Pr8.js",
+  "client": {
+    "requests": 1500,
+    "rate": 24.89942830414625,
+    "checksPassed": 1,
+    "failed": 0,
+    "dropped": 0,
+    "latencyMs": {
+      "median": 350.656,
+      "p90": 415.1187,
+      "p95": 444.01424999999995,
+      "p99": 586.2356699999998,
+      "max": 19636.579
+    }
+  },
+  "server": {
+    "httpActionsLogged": 1500,
+    "logCompleteness": 1,
+    "functionsPerRequest": 2,
+    "downloadsPerRequest": 1,
+    "billedCallsPerRequest": 3,
+    "byFunction": {
+      "HttpAction GET /*": 1500,
+      "Query staticHosting/lib:resolveAsset": 1500
+    },
+    "httpActionMs": {
+      "median": 34.765910999999996,
+      "mean": 51.73820528466675,
+      "p95": 87.50382900000001
+    },
+    "innerFunctionMs": {
+      "median": 0.031622000000000004,
+      "p95": 0.045145000000000005
+    }
+  }
+}
