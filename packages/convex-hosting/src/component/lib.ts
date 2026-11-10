@@ -1,29 +1,15 @@
 import { ConvexError, v } from "convex/values";
 import { z } from "zod";
-import { Analytics } from "../workers-sdk/packages/workers-shared/asset-worker/src/analytics.js";
-import { normalizeConfiguration } from "../workers-sdk/packages/workers-shared/asset-worker/src/configuration.js";
-import {
-  canFetch,
-  handleRequest,
-} from "../workers-sdk/packages/workers-shared/asset-worker/src/handler.js";
-import { mockJaegerBinding } from "../workers-sdk/packages/workers-shared/utils/tracing.js";
 import { AssetConfigSchema } from "../workers-sdk/packages/workers-shared/utils/types.js";
 import { internal } from "./_generated/api.js";
-import type { Doc, Id } from "./_generated/dataModel.js";
+import type { Id } from "./_generated/dataModel.js";
 import {
   internalAction,
   internalMutation,
   internalQuery,
   mutation,
-  query,
   type QueryCtx,
 } from "./_generated/server.js";
-
-/**
- * The compatibility date of Cloudflare's handler. From 2025-04-01 on, Cloudflare applies
- * `not_found_handling` to a request with `Sec-Fetch-Mode: navigate` when a Worker exists.
- */
-const COMPATIBILITY_DATE = "2025-04-01";
 
 /**
  * A version that never became live, and a stored file that no entry references, are garbage once
@@ -247,37 +233,50 @@ export const finishVersion = internalMutation({
 });
 
 /**
- * Marks a `ready` version `live` and schedules `collect`. `serveSite` calls it at each request that
- * finds the version `ready`. An older upload never goes live over a newer one: the mark does nothing
- * when a live version was created after this one. So a request that started on replaced code, and
- * reaches its lookup or its mark after the new code's first request marked the new version, cannot
- * make the old version newest, and `collect` cannot delete the new version's files. A version that
- * is already live stays as it is, so concurrent first requests are fine.
+ * Marks a `ready` version `live` and schedules `collect`, and says what it did. `serveSite` calls
+ * it for the request that the CLI sends after the push, with the site's mark token, so only the
+ * code that serves marks its own version. A version that is already live stays as it is, so a
+ * repeated mark is fine. It never throws, so the CLI reads every outcome from the answer.
  *
- * Precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
- * pushed last, its requests look like requests of replaced code: its version serves but stays
- * `ready`, and nothing is deleted until the next deploy.
+ * The request may still run when its code is replaced, so two rules refuse a mark of replaced code.
+ * An older upload never goes live over a newer one: the mark does nothing when a live version was
+ * created after this one. And a mark is late when another version went live after its request
+ * arrived, at `arrivedAt`: that version's code has served since. `arrivedAt` is the HTTP action's
+ * clock and the live time is this mutation's, so the rule holds as far as the two agree.
+ *
+ * Precondition: deploys to one deployment do not overlap. When two overlap, the mark of the
+ * version that serves may be refused: it then stays `ready`, and nothing is deleted until the next
+ * deploy. The limits are in `docs/design.md`, "Stated, not solved".
  */
 export const markLive = mutation({
-  args: { versionId: v.string() },
-  returns: v.null(),
-  handler: async (ctx, { versionId }) => {
-    const version = await getVersionOrThrow(ctx, versionId);
-    if (version.state.kind === "live") return null;
-    if (version.state.kind === "uploading") {
-      throw new ConvexError(`Version ${versionId} is still uploading.`);
-    }
-    if (version.state.kind === "deleting") {
-      throw new ConvexError(`Version ${versionId} is being deleted.`);
-    }
+  args: {
+    versionId: v.string(),
+    /** `Date.now()` when the mark's request reached the code that serves. */
+    arrivedAt: v.number(),
+  },
+  returns: v.union(
+    /** It was `ready` and is now the newest live version. */
+    v.literal("marked"),
+    v.literal("live"),
+    /** A live version was created after it, or went live after `arrivedAt`: it stays as it is. */
+    v.literal("superseded"),
+    v.literal("uploading"),
+    v.literal("deleting"),
+    v.literal("missing"),
+  ),
+  handler: async (ctx, { versionId, arrivedAt }) => {
+    const version = await getVersion(ctx, versionId);
+    if (version === null) return "missing";
+    if (version.state.kind !== "ready") return version.state.kind;
     const newest = await getNewestLive(ctx);
-    if (newest !== null && newest.createdAt > version._creationTime) return null;
+    if (newest !== null && newest.createdAt > version._creationTime) return "superseded";
+    if (newest !== null && newest.at > arrivedAt) return "superseded";
     // Later than every live `at`, also within one millisecond or when the clock moves back, so that
     // `at` follows creation order and `collect` deletes the versions live before this one.
     const at = newest === null ? Date.now() : Math.max(Date.now(), newest.at + 1);
     await ctx.db.patch("versions", version._id, { state: { kind: "live", at } });
     await ctx.scheduler.runAfter(0, internal.lib.collect, { step: { kind: "files" } });
-    return null;
+    return "marked";
   },
 });
 
@@ -380,7 +379,7 @@ export const collect = internalMutation({
         for (const entry of entries) await ctx.db.delete("entries", entry._id);
         if (entries.length === budget) {
           // The version may have more entries: the next call reads it again. Until its row goes,
-          // it is `deleting`, so that no request serves it or marks it live between the pages.
+          // it is `deleting`, so that no mark makes it live between the pages.
           if (state.kind !== "deleting") {
             await ctx.db.patch("versions", version._id, { state: { kind: "deleting" } });
           }
@@ -413,130 +412,9 @@ function advance<DocumentId extends string>(
     : { at: document._creationTime, seen: [document._id] };
 }
 
-const routeHeaders = v.record(v.string(), v.string());
-
-/**
- * Runs Cloudflare's asset handler for one request against one version. `state` is the kind of the
- * version's state, or `null` when the version does not exist. `asset` is `null` when the version is
- * uploading, being deleted, or does not exist, or when no asset answers.
- *
- * `hasUserWorker` is Cloudflare's `has_user_worker`: whether the app has code that answers a miss.
- * With it, Cloudflare's router asks `canFetch` first, which keeps `not_found_handling` for
- * navigations only, and the app answers the other misses. Without it, every request goes to
- * `handleRequest`, so `not_found_handling` applies to all of them, and an asset always answers.
- */
-export const route = query({
-  args: {
-    versionId: v.string(),
-    method: v.string(),
-    url: v.string(),
-    headers: routeHeaders,
-    hasUserWorker: v.boolean(),
-  },
-  returns: v.object({
-    state: v.union(
-      v.literal("uploading"),
-      v.literal("ready"),
-      v.literal("live"),
-      v.literal("deleting"),
-      v.null(),
-    ),
-    asset: v.union(
-      v.null(),
-      v.object({
-        status: v.number(),
-        headers: v.array(v.object({ name: v.string(), value: v.string() })),
-        /** The storage URL of the body, when the response has one. */
-        bodyUrl: v.union(v.string(), v.null()),
-      }),
-    ),
-  }),
-  handler: async (ctx, { versionId, method, url, headers, hasUserWorker }) => {
-    const version = await getVersion(ctx, versionId);
-    if (version === null) return { state: null, asset: null };
-    const state = version.state.kind;
-    if (state === "uploading" || state === "deleting") {
-      return { state, asset: null };
-    }
-
-    const configuration = normalizeConfiguration({
-      ...AssetConfigSchema.parse(JSON.parse(version.config)),
-      compatibility_date: COMPATIBILITY_DATE,
-    });
-    const request = new Request(url, { method, headers });
-    const env = { JAEGER: mockJaegerBinding() };
-
-    // `exists` returns an ETag; `getByETag` gets the entry back for that ETag.
-    const found = new Map<string, Doc<"entries">>();
-    const exists = async (pathname: string) => {
-      const entry = await getEntry(ctx, versionId, pathname);
-      if (entry === null) return null;
-      const eTag = entry.sha256 + (await shortHash(entry.contentType ?? ""));
-      found.set(eTag, entry);
-      return eTag;
-    };
-    let bodyEntry: Doc<"entries"> | undefined;
-    const getByETag = async (eTag: string) => {
-      bodyEntry = found.get(eTag);
-      if (bodyEntry === undefined) throw new Error(`No entry has the ETag ${eTag}.`);
-      return {
-        // `serveSite` replaces this placeholder with the stored file.
-        readableStream: new ReadableStream(),
-        contentType: bodyEntry.contentType,
-        cacheStatus: "MISS" as const,
-      };
-    };
-
-    if (hasUserWorker && !(await canFetch(request, env, configuration, exists))) {
-      return { state, asset: null };
-    }
-    const response = await handleRequest(
-      request,
-      env,
-      configuration,
-      exists,
-      getByETag,
-      new Analytics(),
-    );
-    // It describes Cloudflare's cache, which does not exist here.
-    response.headers.delete("CF-Cache-Status");
-    // The deployment's Cloudflare front caches 404 answers on static paths.
-    if (response.status === 404) response.headers.set("Cache-Control", "no-store");
-
-    let bodyUrl: string | null = null;
-    if (response.body !== null && bodyEntry !== undefined) {
-      bodyUrl = await ctx.storage.getUrl(bodyEntry.storageId);
-      // The file is gone from storage. As in `serveSite` when storage answers 404, the answer must
-      // not stay in a cache.
-      if (bodyUrl === null) {
-        return {
-          state,
-          asset: { status: 404, headers: [{ name: "cache-control", value: "no-store" }], bodyUrl },
-        };
-      }
-    }
-    return {
-      state,
-      asset: {
-        status: response.status,
-        headers: [...response.headers].map(([name, value]) => ({ name, value })),
-        bodyUrl,
-      },
-    };
-  },
-});
-
 /** Convex's `_storage` table holds the sha256 in base64; entries hold it in hex. */
 function base64ToHex(base64: string) {
   return Array.from(atob(base64), (char) => char.charCodeAt(0).toString(16).padStart(2, "0")).join(
     "",
   );
-}
-
-/** The first 8 hex digits of the SHA-256 of `text`. */
-async function shortHash(text: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(digest, 0, 4), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
 }

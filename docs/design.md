@@ -23,27 +23,30 @@ gone from the production hostname.
 
 On Convex, two systems hold the two halves: `npx convex deploy` pushes the app code, and the site
 files live in a component's storage. The design binds them the way Cloudflare does: the pushed code
-carries the id of the asset version it was built with, and asks the component for exactly that
-version. The push is the switch. There is no pointer that a second step must move, so there is no
-moment when new code serves old files.
+carries the asset version it was built with, its id and its files, as a Worker carries its asset
+manifest: each path's content hash, content type, and stored file. The push is the switch. There is
+no pointer that a second step must move, so there is no moment when new code serves old files. A
+request reads no database: the HTTP action answers from the files in its own code, and downloads the
+bytes of a file from storage.
 
-Only the pushed code knows which version a deployment runs, so the serving code reports it: the
-first request that new code serves finds its version in state `ready` and marks it `live`. An older
-upload never goes live over a newer one: a version is marked only when no live version was created
-after it, so a request still running on replaced code cannot take the site back. Marking a version
-live deletes the versions that were live before it, because their code is gone by definition.
-Nothing is deleted by the clock alone: deletion runs only at a switch, when a new version becomes
-live, so a deployment that gets no request deletes nothing and keeps its version intact for its
-first request, whenever it comes. At a switch, a version that never became live is dead too, from a
-push that failed, with one exception: a slower deploy whose push has not landed yet. So a never-live
-version is deleted at a switch only when it is more than a day old; the day bounds how late a push
-may follow its upload, and it is the only time constant in the design.
+Only the pushed code knows which version a deployment runs, so the serving code reports it: after
+the push, the CLI sends one request with the version's mark token, which only that version's code
+holds, and the code that answers marks its version `live`. An older upload never goes live over a
+newer one: a version is marked only when no live version was created after it. And a mark is late
+when another version went live after its request arrived: the request carries its arrival time, and
+that version's code has served since. So a request still running on replaced code cannot take the
+site back. Marking a version live deletes the versions that were live before it, because their code
+is gone by definition. Nothing is deleted by the clock alone: deletion runs only at a switch, when a
+new version becomes live, so a version stays intact until a newer one has served. At a switch, a
+version that never became live is dead too, from a push that failed, with one exception: a slower
+deploy whose push has not landed yet. So a never-live version is deleted at a switch only when it is
+more than a day old; the day bounds how late a push may follow its upload, and it is the only time
+constant in the design.
 
-The precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
-pushed last, the component cannot tell its requests from requests still running on replaced code:
-its version serves, but it never becomes live, and nothing is deleted until the next deploy. So run
-one deploy at a time per deployment; the example workflows queue them, with one `concurrency` group
-per deployment.
+The precondition: deploys to one deployment do not overlap. When two overlap, the mark of the
+version that serves may be refused: it then serves without being live. Its files stay, within the
+two limits in "Stated, not solved". So run one deploy at a time per deployment; the example
+workflows queue them, with one `concurrency` group per deployment.
 
 ## Deploy
 
@@ -74,7 +77,8 @@ Bristol's production used it while hosting 0.3 and 0.4 ran side by side under tw
       Wrangler does (a link to nothing, or to a folder that contains it, is skipped with a message;
       a link to another folder uploads its files under both paths), and computes each file's sha256
       and content type; refuses a file above 25 MiB, Cloudflare's limit per asset (the HTTP action
-      that serves a file could not answer more than Convex's 100 MiB response limit anyway); reads
+      that serves a file could not answer more than Convex's 100 MiB response limit anyway), and
+      more than 100,000 files, Cloudflare's limit per Worker version on its Paid plan; reads
       `_headers` and `_redirects` with Cloudflare's parsers into the version's config;
    2. stores the config as one file through an upload URL, because `npx convex run` passes arguments
       on the command line, which the operating system limits, and a `_redirects` file can be large;
@@ -90,26 +94,38 @@ Bristol's production used it while hosting 0.3 and 0.4 ran side by side under tw
    5. calls `finishVersion`, which puts the version in state `ready`. The CLI calls it only after
       every batch succeeded; a crashed upload leaves an `uploading` version, and a retry reuses
       every file the crashed run recorded, through step 3;
-   6. writes `.convex-hosting/version.js` with the id, in the CLI's state folder at the project
-      root, like Wrangler's `.wrangler/`; the folder carries its own `.gitignore`, so nothing of it
-      reaches git and no tool writes into `convex/`. The file is a build artifact that `http.ts`
-      imports, as a server-rendered app's `http.ts` already imports its server build; the package
-      ships the declaration of that module (an ambient wildcard module in a script `.d.ts` that the
-      package's types entry references), so a fresh clone typechecks with nothing added. Then, still
-      inside `npx convex deploy`, Convex bundles `convex/` with the new id and pushes. The push is
-      the switch, and the command ends.
+   6. reads the storage URL of every entry, with the deployment's `CONVEX_CLOUD_URL`, through inline
+      queries in the component (`npx convex run --component <name> --inline-query`), which run
+      whatever release of this package the component is, so an upgrade's upload works before its
+      push installs the new functions; then writes `.convex-hosting/version.js` with the version's
+      `assets`: the id, a random mark token, and the files (see Serve), in the CLI's state folder at
+      the project root, like Wrangler's `.wrangler/`. It writes a temporary file and renames it, so
+      a running `npx convex dev` never reads half of it; the folder carries its own `.gitignore`, so
+      nothing of it reaches git and no tool writes into `convex/`. The file is a build artifact that
+      `http.ts` imports, as a server-rendered app's `http.ts` already imports its server build; the
+      package ships the declaration of that module (an ambient wildcard module in a script `.d.ts`
+      that the package's types entry references), so a fresh clone typechecks with nothing added.
+      Then, still inside `npx convex deploy`, Convex bundles `convex/` with the new id and pushes.
+      The push is the switch, and the command ends.
 3. `--dev`: the same steps, in one process: the CLI runs the build itself (Vite reads the
    deployment's URL from `.env.local`, so no nesting is needed), uploads, writes the version file,
    and pushes with `npx convex run --push`.
 
-**The site URL.** When the push, and on a first install the upload after it, have ended, the CLI
-asks the deployment for its site URL: `npx convex run --inline-query process.env.CONVEX_SITE_URL`,
-with the selector of its other calls, which needs only the permission of the first-install probe. It
-prints the URL and, when `GITHUB_OUTPUT` is set, appends `url=<site URL>` to that file, so a
-workflow step reads it as a step output. The value is the one the deployment gives its own
-functions, so it is right for every kind of deployment (production, a preview, development, local,
-self-hosted) and is the custom domain when the dashboard's "Override Environment Variables" sets
-one; the CLI never builds it from a deployment name.
+**The mark.** When the last push has ended, the CLI reads the site URL (below) and sends
+`POST <site URL>/.convex-hosting/mark` with the header `Convex-Hosting-Mark: <mark token>`. The code
+that answers calls `markLive` for its own version and answers the result. A failure, or an answer
+from other code, is reported, and the deploy succeeds: nothing is deleted until a later version is
+marked, so the cost is old files kept until the next deploy.
+
+**The site URL.** When the push, and on a first install the upload and the push after it, have
+ended, the CLI asks the deployment for its site URL:
+`npx convex run --inline-query process.env.CONVEX_SITE_URL`, with the selector of its other calls,
+which needs only the permission of the first-install probe. It prints the URL and, when
+`GITHUB_OUTPUT` is set, appends `url=<site URL>` to that file, so a workflow step reads it as a step
+output. The value is the one the deployment gives its own functions, so it is right for every kind
+of deployment (production, a preview, development, local, self-hosted) and is the custom domain when
+the dashboard's "Override Environment Variables" sets one; the CLI never builds it from a deployment
+name.
 
 **First install.** The component's functions exist only after a push, and a new preview deployment
 exists only once `npx convex deploy` has created it, which happens before it runs the command. So
@@ -117,11 +133,12 @@ the upload decides. Its first call is a probe, `npx convex run --component <name
 because that path of the Convex CLI looks the component up before it runs anything and prints the
 exact message `Component path "<name>" was not found.` when the deployment does not have it (a
 function run against a missing component answers only a generic server error, which must not count).
-On that exact message, the production and preview upload writes the version file and a marker file
-in `.convex-hosting/` and exits without uploading, so the push that follows installs the component;
-`deploy` sees the marker after `npx convex deploy` returns and runs the upload then. For `--dev`, in
-one process, it writes the version file, pushes, and uploads. Until that upload ends, the site
-answers 404 (see Serve). Once per deployment.
+On that exact message, the production and preview upload writes a version file without files and a
+marker file in `.convex-hosting/` and exits without uploading, so the push that follows installs the
+component; `deploy` sees the marker after `npx convex deploy` returns, runs the upload then, and
+pushes again with `npx convex deploy`. For `--dev`, in one process, it writes the version file,
+pushes, uploads, and pushes again. Until the second push, the site answers 404 naming the version
+(see Serve). Once per deployment.
 
 **The development loop.** Local work uses Vite's dev server, with hot reload, against the
 development deployment's URL, while `npx convex dev` pushes function changes, as in any Convex app.
@@ -168,16 +185,16 @@ chain started, because the sweep runs before the version deletion in each chain.
 deleted version's unshared files, a file stored but never recorded, and the config files. An upload
 in progress that took a stored file from `knownFiles` loses it only if two switches happen during
 that one upload; it then fails with a message that says so, and a retry works. A push that the
-command reports as failed may still have landed; the site then serves the new version, which marks
-itself live at its first request, and the next deploy is a normal one. No resume logic. Two first
-deploys at once are an overlap, which the precondition rules out: both push and upload, and the last
-push serves.
+command reports as failed may still have landed; the site then serves the new version, which stays
+`ready` because the CLI sent no mark, and the next deploy is a normal one: its mark deletes the
+versions before it. No resume logic. Two first deploys at once are an overlap, which the
+precondition rules out: both push and upload, and the last push serves.
 
 **Browsers.** A page opened before a deploy keeps asking for its hashed files, which the new version
 does not have, exactly as on Cloudflare: they answer 404, or the shell on a files-only single-page
 app. An app that wants to reload on a new version adds one query that returns the bundled
-`versionId` and reloads when its value changes. The README shows it. The component has no part in
-it.
+`assets.versionId` and reloads when its value changes. The README shows it. The component has no
+part in it.
 
 ## Serve
 
@@ -191,10 +208,16 @@ picks the longest matching prefix, so only an exact route reaches the app there.
 
 ```ts
 import { routeAll } from "@samebase/convex-hosting";
-import { versionId } from "../.convex-hosting/version.js";
+import { assets } from "../.convex-hosting/version.js";
 
-routeAll(http, components.hosting, versionId, server);
+routeAll({ http, component: components.hosting, assets, worker: server });
 ```
+
+Every input is named, after Cloudflare where Cloudflare has a name: `assets` is the static assets of
+Workers Static Assets (its `assets` setting and `ASSETS` binding), and `worker` is the Worker script
+(`has_user_worker`, `run_worker_first`). The export is not `site`, the setting of Workers Sites,
+which Cloudflare deprecated for Static Assets. The file stays `version.js`, since it holds one
+version, Cloudflare's unit of a deploy.
 
 `serveSite` answers with the file when one matches. Otherwise it answers with the page that the
 optional `worker.fetch()` returns, else 404, both with `Cache-Control: no-store`; the page keeps
@@ -207,67 +230,87 @@ upload ends. `worker` is the Worker script, the object with `fetch(request)` tha
 exports: the code that runs on a miss. Its absence is the files-only Worker, so `serveSite` is the
 one entry.
 
-`serveSite` calls the component query `route` with the method, the URL, the four request headers
-that Cloudflare's handler reads (`If-None-Match`, `Sec-Fetch-Mode`, and the presence of
-`Authorization` and `Range`), and `hasUserWorker`. As on Cloudflare, the presence of code decides,
-and `hasUserWorker` is Cloudflare's `has_user_worker`: `serveSite` passes `true` with `worker` and
-`false` without it; the app sets no option. With code, the app is the Worker, and Cloudflare's
-routing with a Worker applies: inside the query, Cloudflare's `canFetch` decides whether an asset
+`serveSite` runs Cloudflare's handler in the action, on the request as it came, against the site's
+files, so a request calls no function of the component. As on Cloudflare, the presence of code
+decides, and `hasUserWorker` is Cloudflare's `has_user_worker`: `serveSite` passes `true` with
+`worker` and `false` without it; the app sets no option. With code, the app is the Worker, and
+Cloudflare's routing with a Worker applies: Cloudflare's `canFetch` decides whether an asset
 answers, a request that does not resolve to a file goes to the app, and `not_found_handling` (the
 404 page, the single-page fallback) applies to navigation requests only. Without code, the site is a
-Worker without a script, whose router sends every request to the asset handler: the query skips
+Worker without a script, whose router sends every request to the asset handler: `serveSite` skips
 `canFetch` and runs `handleRequest`, so `not_found_handling` applies to every request, and a missing
 hashed file on a single-page app gets the shell with 200. One difference from Cloudflare follows
 from Convex's router and is stated, not fixed: an exact app route wins over an asset at the same
 path.
 
-The component runs the handler with a fixed compatibility date at or after 2025-04-01, the date from
-which Cloudflare treats `Sec-Fetch-Mode: navigate` requests this way; the date is package code, not
-configuration. When an asset answers, Cloudflare's `handleRequest` computes the status and headers:
-`Cache-Control: public, max-age=0, must-revalidate` (Cloudflare omits it when the request carries
-`Authorization` or `Range`, and so do we), `ETag`, 304 for `If-None-Match`, `_headers` rules,
-`_redirects`, `html_handling`, and the custom 404 page with its body. Cloudflare's own cases for
-`html_handling` and path encoding (the test-cases files of `fixtures/workers-shared-asset-config` in
-workers-sdk, copied by the same sync script as the handler) run through `route` in
-`src/component/conformance.test.ts`, with each case's files as a version's entries. Cloudflare's
-integration fixtures for static assets (`fixtures/workers-with-assets-only` in workers-sdk, copied
-at the same pinned commit with their `public/` folders, their imports pointed at this package) run
-against the whole path an app takes: our implementation of the helper they import to start
-`wrangler dev` starts an anonymous local Convex deployment, deploys the fixture's assets with
-`convex-hosting deploy --dev`, and returns the site's address.
-`scripts/fixtures-expected-failures.json` lists each test that fails by a stated difference from
-Cloudflare, and the run fails when the list and the outcome disagree. The query drops
-`CF-Cache-Status`, which describes a cache we do not run, sets `Cache-Control: no-store` on every
-404, because the deployment's Cloudflare front caches 404 answers on static paths, and returns the
-status, the headers, and the storage URL of the body when the response has one, whatever the status.
-`serveSite` fetches that body and returns the response. When the query finds no storage URL for the
-entry, or storage answers 404, because a deletion pass removed the file, the answer is 404 with
-`Cache-Control: no-store`; any other fetch failure answers 502 with no caching. An app cannot read a
-component's storage, so each asset hit costs that one fetch.
+The handler runs with a fixed compatibility date at or after 2025-04-01, the date from which
+Cloudflare treats `Sec-Fetch-Mode: navigate` requests this way; the date is package code, which the
+CLI writes into each site's config, not configuration. When an asset answers, Cloudflare's
+`handleRequest` computes the status and headers: `Cache-Control: public, max-age=0, must-revalidate`
+(Cloudflare omits it when the request carries `Authorization` or `Range`, and so do we), `ETag`, 304
+for `If-None-Match`, `_headers` rules, `_redirects`, `html_handling`, and the custom 404 page with
+its body. Cloudflare's own cases for `html_handling` and path encoding (the test-cases files of
+`fixtures/workers-shared-asset-config` in workers-sdk, copied by the same sync script as the
+handler) run through the action's handler in `src/client/answer.test.ts`, with each case's files as
+a site's manifest. Cloudflare's integration fixtures for static assets
+(`fixtures/workers-with-assets-only` in workers-sdk, copied at the same pinned commit with their
+`public/` folders, their imports pointed at this package) run against the whole path an app takes:
+our implementation of the helper they import to start `wrangler dev` starts an anonymous local
+Convex deployment, deploys the fixture's assets with `convex-hosting deploy --dev`, and returns the
+site's address. `scripts/fixtures-expected-failures.json` lists each test that fails by a stated
+difference from Cloudflare, and the run fails when the list and the outcome disagree. `serveSite`
+drops `CF-Cache-Status`, which describes a cache we do not run, sets `Cache-Control: no-store` on
+every 404, because the deployment's Cloudflare front caches 404 answers on static paths, and, when
+the response has a body, downloads the file from its storage URL. When storage answers 404, because
+a deletion pass removed the file, the answer is 404 with `Cache-Control: no-store`; any other fetch
+failure answers 502 with no caching. An app cannot read a component's storage, so each answer with a
+body costs that one download, which Convex counts as a function call; a redirect, a 304, a 405, and
+a 404 without a page download nothing.
 
-When the version does not exist, is still `uploading`, or is `deleting`, `serveSite` answers a 404
-response that names the version, with `Cache-Control: no-store`, so a half-installed site answers
-404 rather than rendering pages without their files. The deployment's Cloudflare front keeps
-`no-store` for a path without an extension and gives a path with one a four-hour browser `max-age`
-anyway; the deploy order keeps that moot, because no page refers to a file that is not uploaded yet.
-A `null` asset means one thing: no asset matched, and `worker` answers.
+The site's `files` are `null` in the code that a first install pushes before its upload: `serveSite`
+then answers 404 naming the version, with `Cache-Control: no-store`, without calling `worker`, so a
+half-installed site answers 404 rather than rendering pages without their files. The storage URLs
+name the deployment they came from, so when the site's `cloudUrl` is not the deployment's
+`CONVEX_CLOUD_URL` (a version file that a deploy elsewhere wrote, pushed by a running
+`npx convex dev`), it answers 404 naming both, without rendering. A site of another format, which
+only another release writes, answers 500 and asks for a deploy. The deployment's Cloudflare front
+keeps `no-store` for a path without an extension and gives a path with one a four-hour browser
+`max-age` anyway; the deploy order keeps that moot, because no page refers to a file that is not
+uploaded yet. A `null` asset means one thing: no asset matched, and `worker` answers.
 
-When `route` reports the version in state `ready`, `serveSite` calls `markLive` once, before it
-answers. `markLive` marks the version only when no live version was created after it, inside its own
-transaction, so a request whose code was replaced, whenever it reaches its lookup or its mark,
-cannot make its version newest, and concurrent first requests mark once. That is the only write the
-serving path ever makes, once per deploy.
+A request with the header `Convex-Hosting-Mark` set to the site's mark token is the CLI's mark:
+before anything else, `serveSite` calls `markLive` for its version and answers the result as JSON,
+with `Cache-Control: no-store`. `markLive` marks the version only when no live version was created
+after it and none went live after the request arrived, inside its own transaction, so code that was
+replaced cannot make its version newest, and a repeated mark changes nothing. It never throws: it
+answers `marked`, `live`, `superseded`, `uploading`, `deleting`, or `missing`, and the CLI reports
+the last four. That is the only write the serving path ever makes, once per deploy. Any other
+request, with another token or none, calls no function.
 
-`route` and `markLive` are the component's only public functions, because `serveSite` runs in the
-app and an app can call only a component's public functions; clients cannot call them at all. The
-CLI calls the other functions, which are internal, with `npx convex run --component`.
+`markLive` is the component's only public function, because `serveSite` runs in the app and an app
+can call only a component's public functions; clients cannot call it at all. The CLI calls the other
+functions, which are internal, with `npx convex run --component`.
 
-The two callbacks that Cloudflare's code takes map to the version's entries: `exists(path)` reads
-one index entry and returns its ETag, the sha256 followed by a short hash of the content type, so
-that identical bytes stored under two content types stay distinct; `getByETag` returns the content
-type of the entry that `exists` found and a placeholder stream, which `serveSite` replaces with the
-body. Nothing is added to Cloudflare's headers besides `no-store` on a 404. Long caching of hashed
-files is a `_headers` rule, as on Cloudflare.
+The two callbacks that Cloudflare's code takes map to the site's manifest: `exists(path)` finds the
+path's entry and returns its ETag, the content hash, as on Cloudflare; `getByETag` returns the
+content type of the entry that `exists` found and a placeholder stream, which `serveSite` replaces
+with the body. Nothing is added to Cloudflare's headers besides `no-store` on a 404. Long caching of
+hashed files is a `_headers` rule, as on Cloudflare.
+
+**The site's files.** The manifest is Cloudflare's asset manifest, and Cloudflare's own reader
+(`asset-worker/src/assets-manifest.ts`, vendored) searches it: a 20-byte header, then one 40-byte
+entry per path, sorted by the path hash, the first 16 bytes of the SHA-256 of the path. The CLI
+(`src/cli/manifest.ts`) encodes it as Miniflare does for `wrangler dev`. The content hash covers the
+bytes and the content type, as Cloudflare's covers the bytes and the extension, so the same bytes
+under two types have two ETags. The tail, which Cloudflare leaves zero, holds the index of the
+storage URL (a big-endian u32) and of the content type (a big-endian u16, `0xffff` for none). Convex
+modules carry no binary data, so the manifest is a base64 string, decoded once per request with
+Convex's native `Uint8Array.fromBase64`. The storage URLs differ only in a key, so the start and the
+end that they share are written once, and the keys are one string of fixed width: Convex evaluates
+the module for every request, and an array of 100,000 strings cost 5 ms and 9 MB more than that one
+string. Measured on a cloud deployment on 2026-11-10, against 3.8 ms for an empty action: 4.2 ms per
+request at 10,000 files (a 0.9 MB module), 7.5 ms at 100,000 (8.9 MB), where the assets take about 7
+MB of the 64 MB that an action has, which the app's `worker` shares.
 
 Other HTTP routes of the app (auth, APIs) win over the site route when they are exact paths or
 longer prefixes, by Convex's router rules for the same method.
@@ -286,41 +329,46 @@ entries go, so a version half deleted cannot become live. Creation times come fr
 field per rule and Convex limits an object to 1,024 fields. A document is limited to 1 MiB, so the
 CLI refuses a config above 900 KiB, leaving room for the other fields and the encoding, and names
 the file that causes it. An entry keeps its own content type because the type belongs to the path,
-not to the bytes: paths with identical bytes share one stored file but keep their own types, and
-`route` serves without reading `_storage`.
+not to the bytes: paths with identical bytes share one stored file but keep their own types, and the
+site's manifest carries each type, so serving reads no `_storage` metadata. Serving does not read
+`config` either; it makes a retried upload of the same id refuse another config.
 
-The package sets one limit of its own, 25 MiB per file, for the reason above. Convex's limits apply:
-1 MiB per document, and the transaction limits (16,000 writes, 32,000 documents scanned, 16 MiB read
-and written, 8,192 array elements, 4,096 index ranges, argument and result sizes) shape the batches.
+The package sets two limits of its own, Cloudflare's: 25 MiB per file, for the reason above, and
+100,000 files per site, the most that the site's files were measured with in the pushed code.
+Convex's limits apply: 1 MiB per document, and the transaction limits (16,000 writes, 32,000
+documents scanned, 16 MiB read and written, 8,192 array elements, 4,096 index ranges, argument and
+result sizes) shape the batches.
 
 ## Orderings and timing
 
 Every interleaving worked through for 0.4, what happens, and what checks it. "Component test" is a
 convex-test run of the exact order of transactions; "runtime" is a run against a local backend.
 
-| What happens                                                                                                 | Outcome                                                                                                                                         | Checked by                               |
-| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| A deploy pushes; the first request arrives                                                                   | The version is marked live; the versions live before it are deleted                                                                             | Component test, runtime                  |
-| Two deploys overlap; the pushes land in creation order                                                       | Both complete; the last push's version is marked live at its first request; the other was never live and goes at a later switch when a day old  | Component test (age rule)                |
-| Two deploys overlap; the earlier-created one pushes last                                                     | Outside the precondition. Its version serves but is never marked, because the other is newer and live; nothing is deleted until the next deploy | Component test (stale request)           |
-| A request on old code is in flight when a push lands, and reaches `markLive` after the new code's first mark | Its version is older than the live one, so the mark is refused; the new version stays live and keeps its files                                  | Component test (stale request)           |
-| Two first requests of one version                                                                            | One mark; the second is a no-op                                                                                                                 | Component test                           |
-| Two marks in one millisecond                                                                                 | The second is strictly later                                                                                                                    | Component test                           |
-| A deploy dies before its push                                                                                | A never-live version; deleted at a later switch when a day old                                                                                  | Component test (age rule)                |
-| An upload dies midway                                                                                        | An `uploading` version; same fate; a retry reuses its recorded files                                                                            | Component test, runtime (reuse)          |
-| The push is reported as failed but landed                                                                    | The version is `ready` and is marked live at its first request                                                                                  | Inherent; stated                         |
-| No request for days, weeks                                                                                   | Nothing is deleted; the first request marks the version live                                                                                    | Inherent: deletion runs only at a switch |
-| Many deploys, no requests in between                                                                         | The first request marks the newest; older never-live versions go when a day old, younger ones at the next switch                                | Component test (age rule)                |
-| A push lands more than a day after its upload, after another switch                                          | Its version is gone; the site answers 404 naming it; redeploy                                                                                   | Stated                                   |
-| An upload borrows a stored file; a switch deletes the lending version                                        | The file survives: files go only when unreferenced, a day old, and already unreferenced when the chain started                                  | Component test (sweep order)             |
-| Two switches during one upload                                                                               | The borrowed file can go; `recordFiles` says so; a retry works                                                                                  | Stated                                   |
-| A first request reaches a version while its entries are being deleted in pages                               | The version is `deleting`: 404, no mark                                                                                                         | Component test                           |
-| Documents share a creation time at a page boundary                                                           | The cursor carries the ids seen at that time; none is skipped                                                                                   | Component test (crafted cursor)          |
-| First install: the component does not exist yet                                                              | Push first, then upload; 404 until the upload ends                                                                                              | Runtime (both flows)                     |
-| Two first installs at once                                                                                   | Outside the precondition. Both push and upload; the last push serves                                                                            | Stated                                   |
-| Two commands from one checkout at once                                                                       | They overwrite each other's build output and version file                                                                                       | Stated, unsupported                      |
-| A production deploy from a checkout where `npx convex dev` runs                                              | Production's id is pushed to development until the next `deploy --dev`                                                                          | Stated                                   |
-| `deploy --dev` against an anonymous local deployment without `npx convex dev`                                | Each Convex CLI call starts and stops its own backend; the upload fails with `fetch failed`                                                     | Runtime; stated in the README            |
+| What happens                                                                                              | Outcome                                                                                                                                         | Checked by                               |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| A deploy pushes; the CLI's mark reaches the new code                                                      | The version is marked live; the versions live before it are deleted                                                                             | Component test, runtime                  |
+| Two deploys overlap; the pushes land in creation order                                                    | Both complete; the last push's version is marked live by its deploy's mark; the other was never live and goes at a later switch when a day old  | Component test (age rule)                |
+| Two deploys overlap; the earlier-created one pushes last                                                  | Outside the precondition. Its version serves but is never marked, because the other is newer and live; nothing is deleted until the next deploy | Component test (stale request)           |
+| Two deploys overlap; the newer one's mark is still running while the older one is pushed and marked       | The late mark is refused, because a version went live after its request arrived; the version that serves stays live                             | Component test, `overlap.test.ts`        |
+| A mark for an older version reaches its code after the new version was marked, from an overlapping deploy | Its version is older than the live one, so the mark answers `superseded`; the new version stays live and keeps its files                        | Component test, CLI test                 |
+| Two marks of one version                                                                                  | One mark; the second answers `live`                                                                                                             | Component test                           |
+| Two marks in one millisecond                                                                              | The second is strictly later                                                                                                                    | Component test                           |
+| A deploy dies before its push                                                                             | A never-live version; deleted at a later switch when a day old                                                                                  | Component test (age rule)                |
+| An upload dies midway                                                                                     | An `uploading` version; same fate; a retry reuses its recorded files                                                                            | Component test, runtime (reuse)          |
+| The push is reported as failed but landed                                                                 | The version serves, `ready`, since the CLI sent no mark; the next deploy's mark deletes the versions before it                                  | Inherent; stated                         |
+| No request for days, weeks                                                                                | Nothing changes: the deploy marked its version, and deletion waits for the next mark                                                            | Inherent: deletion runs only at a switch |
+| Many deploys in a row                                                                                     | Each deploy marks its version; the one before goes at that mark, never-live versions when a day old                                             | Component test (age rule)                |
+| A push lands more than a day after its upload, after another switch                                       | Its files are gone: pages render, and its files answer 404 from storage; redeploy                                                               | Stated                                   |
+| An upload borrows a stored file; a switch deletes the lending version                                     | The file survives: files go only when unreferenced, a day old, and already unreferenced when the chain started                                  | Component test (sweep order)             |
+| Two switches during one upload                                                                            | The borrowed file can go; `recordFiles` says so; a retry works                                                                                  | Stated                                   |
+| A request on replaced code reaches a version while it is being deleted                                    | Its files answer 404 from storage; a mark answers `deleting`                                                                                    | Component test, client test              |
+| Documents share a creation time at a page boundary                                                        | The cursor carries the ids seen at that time; none is skipped                                                                                   | Component test (crafted cursor)          |
+| The CLI's mark fails, or other code answers it                                                            | Reported; the deploy succeeds; nothing is deleted until the next deploy's mark                                                                  | CLI test                                 |
+| First install: the component does not exist yet                                                           | Push a site without files, upload, push the site; 404 naming the version until the second push                                                  | CLI test, runtime (both flows)           |
+| Two first installs at once                                                                                | Outside the precondition. Both push and upload; the last push serves                                                                            | Stated                                   |
+| Two commands from one checkout at once                                                                    | They overwrite each other's build output and version file                                                                                       | Stated, unsupported                      |
+| A production deploy from a checkout where `npx convex dev` runs                                           | Production's site is pushed to development, which answers 404 naming production's deployment until the next `deploy --dev`                      | Client test; stated                      |
+| `deploy --dev` against an anonymous local deployment without `npx convex dev`                             | Each Convex CLI call starts and stops its own backend; the upload fails with `fetch failed`                                                     | Runtime; stated in the README            |
 
 Not reproducible in the test runtime and not yet run against a cloud deployment: two real pushes in
 a chosen order, a preview deployment, an old HTTP action kept running across a push. A smoke script
@@ -329,10 +377,13 @@ place for those.
 
 ## Stated, not solved
 
-- Deploys to one deployment do not overlap. When two overlap and the older upload is pushed last,
-  the component cannot tell its requests from requests still running on replaced code, so its
-  version serves but is never marked live, each of its requests calls `markLive` for nothing, and
-  nothing is deleted until the next deploy.
+- Deploys to one deployment do not overlap. When two overlap, the mark of the version that serves
+  may be refused, so it serves without being live and nothing is deleted until the next deploy. The
+  version that serves keeps its entries and its files (`src/client/overlap.test.ts`), within two
+  limits. The arrival time is read in the HTTP action and compared with a time set in the mutation,
+  so a late mark is refused as far as those two clocks agree. And the day is a bound, not a margin:
+  an upload pushed just under a day later, after a newer version went live, is deleted as never live
+  by a `collect` call that runs past the day.
 - An upload that took a stored file from `knownFiles` loses it only if two switches happen during
   that one upload; it fails with a message that says so, and a retry works.
 - No `run_worker_first`, no `base_path`, no selectable compatibility date: an app that needs its
@@ -342,11 +393,11 @@ place for those.
 
 ## Not here, and why
 
-- No live pointer that a command moves, no `activate`, no `getLiveVersion`: the pushed code names
-  its version, and the serving code reports it.
-- No lock, no heartbeat, no cron, no call after the push besides the read of the site URL: a version
-  is deleted only after another version has served in its place. A one-day age bounds garbage from
-  failed deploys; it decides nothing about what is served.
+- No live pointer that a command moves, no `activate`, no `getLiveVersion`: the pushed code carries
+  its version, and the served code marks it when the CLI asks.
+- No lock, no heartbeat, no cron, no call after the push besides the read of the site URL and the
+  mark: a version is deleted only after another version has served in its place. A one-day age
+  bounds garbage from failed deploys; it decides nothing about what is served.
 - No marking of hashed files, no one-year `Cache-Control`: Cloudflare has neither. A site that wants
   them writes one `_headers` rule.
 - No component HTTP route, no `httpPrefix` mount, no second serving helper: one way for static and
@@ -363,6 +414,23 @@ place for those.
 Approaches that were built or proposed during the 0.4 design and dropped, with the reason, so they
 are not proposed again.
 
+- **A component query per request (`route`, 0.4 to 0.14).** An HTTP action reads the database only
+  through a query, so every request cost two function calls, and an answer with a body a third, its
+  download. On samebase.com in one billing period, `route` ran 109,000 times for 72,000 site
+  requests and 35,000 session refreshes, which the `/auth` exact routes sent through the site's
+  action and which never match a file. The pushed code now carries the site's files.
+- **Marking live once per isolate, from the serving code.** Convex evaluates the HTTP module for
+  every request: on a cloud deployment on 2026-11-04, a module-level counter read 1 on every one of
+  52 requests, 40 of them concurrent, while the module's own random id stayed the same. A
+  module-level flag would have called `markLive` on every request.
+- **Marking live from the CLI with `npx convex run lib:markLive`.** When deploys overlap, the CLI
+  can mark a version whose code does not serve, and the mark deletes the files of the code that
+  does. The mark request reaches the code that serves, and its token makes only that deploy's code
+  mark. `src/client/overlap.test.ts` runs an order of two deploys in which the CLI's mark deletes
+  the entries of the version that serves, with no request still running.
+- **Marking live on a random share of requests.** It kept the mark in the serving code for about one
+  call per hundred requests, but a site with little traffic would keep its old versions for days,
+  and every request would pay the draw.
 - **Deletion driven by the CLI after the push.** The order in which overlapping deploys report back
   is not the order in which their pushes landed, so a CLI could delete the version that is live.
 - **A deploy lock in the component, with a heartbeat and a two-minute expiry, and a kill of the push
@@ -379,7 +447,7 @@ are not proposed again.
   between a request's lookup and its mark, not the gap between the request's start and its lookup: a
   request on replaced code whose lookup came after the new code's first mark passed it, made its old
   version newest, and `collect` deleted the new version's files. Creation order decides the mark
-  instead, and deploys that do not overlap are the precondition.
+  instead, with the arrival time of the mark's request, which needs no lookup.
 - **A committed version file in `convex/`.** Its value is set by the deploy that pushes it, so the
   committed value is never used by a correct deploy; it left stale ids and merge conflicts in git,
   and a plain `npx convex deploy` from a clean checkout would push a stale id and take the site
@@ -495,9 +563,10 @@ or ChessMerge goes; the list is checked at every release. At 0.8.0 and 0.5.0 tha
 
 - `packages/convex-hosting`
   - `src/component`: `schema.ts`, `lib.ts`, `convex.config.ts`, and its generated files.
-  - `src/client`: `routeAll` and the shipped declaration of the version module.
+  - `src/client`: `routeAll`, Cloudflare's handler run against the assets (`answer.ts`), the assets'
+    types and lookup (`manifest.ts`), and the shipped declaration of the version module.
   - `src/cli`: the `convex-hosting` command: `deploy`, and `upload`, the inner step that
-    `npx convex deploy --cmd` has to call as a program.
+    `npx convex deploy --cmd` has to call as a program; `manifest.ts` encodes the manifest.
   - `src/workers-sdk`: Cloudflare's asset worker, its tests, and its html_handling and encoding
     cases, copied by `scripts/sync-workers-sdk.ts` from cloudflare/workers-sdk at the commit in
     `UPSTREAM`, each file at its upstream path, so the folder mirrors that repository. Only the sync

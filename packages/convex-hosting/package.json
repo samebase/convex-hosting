@@ -1,6 +1,6 @@
 {
   "name": "@samebase/convex-hosting",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Serves a web app from its own Convex deployment: the files of a build, and the pages the app renders.",
   "keywords": [
     "component",
@@ -59,6 +59,7 @@
     "@types/node": "catalog:",
     "convex": "catalog:",
     "convex-test": "catalog:",
+    "fast-check": "catalog:",
     "typescript": "catalog:",
     "undici": "catalog:",
     "vite-plus": "catalog:"

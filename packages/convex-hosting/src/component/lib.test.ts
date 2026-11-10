@@ -71,25 +71,8 @@ const site: Files = {
   "/assets/app-a1.js": { body: "console.log(1)", contentType: "text/javascript; charset=utf-8" },
 };
 
-function route(
-  t: ReturnType<typeof convexTest>,
-  versionId: string,
-  path: string,
-  headers: Record<string, string> = {},
-  hasUserWorker = true,
-  method = "GET",
-) {
-  return t.query(api.lib.route, {
-    versionId,
-    method,
-    url: `https://example.convex.site${path}`,
-    headers,
-    hasUserWorker,
-  });
-}
-
 async function markLive(t: ReturnType<typeof convexTest>, versionId: string) {
-  await t.mutation(api.lib.markLive, { versionId });
+  return await t.mutation(api.lib.markLive, { versionId, arrivedAt: Date.now() });
 }
 
 /** The kind of each version's state, and the number of `collect` chains that `markLive` started. */
@@ -102,10 +85,6 @@ async function liveness(t: ReturnType<typeof convexTest>) {
       (job) => job.args[0].step.kind === "files" && job.args[0].step.after === undefined,
     ).length,
   }));
-}
-
-function header(asset: { headers: { name: string; value: string }[] } | null, name: string) {
-  return asset?.headers.find((h) => h.name === name)?.value;
 }
 
 afterEach(() => {
@@ -201,7 +180,7 @@ describe("markLive", () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await uploadVersion(t, "v1", site);
-    await markLive(t, "v1");
+    expect(await markLive(t, "v1")).toBe("marked");
     const state = async () =>
       await t.run(
         async (ctx) =>
@@ -215,33 +194,50 @@ describe("markLive", () => {
     const live = await state();
     expect(live).toEqual({ kind: "live", at: Date.now() });
     vi.advanceTimersByTime(1000);
-    await markLive(t, "v1");
+    expect(await markLive(t, "v1")).toBe("live");
     expect(await state()).toEqual(live);
-    expect((await route(t, "v1", "/")).state).toBe("live");
   });
 
-  test("refuses a version that is uploading or does not exist", async () => {
+  test("does not mark a version that is uploading or does not exist, and says so", async () => {
     const t = convexTest(schema, modules);
     await createVersion(t, "v1");
-    await expect(markLive(t, "v1")).rejects.toThrow("Version v1 is still uploading.");
-    await expect(markLive(t, "v2")).rejects.toThrow("Version v2 does not exist.");
+    expect(await markLive(t, "v1")).toBe("uploading");
+    expect(await markLive(t, "v2")).toBe("missing");
+    expect((await liveness(t)).versions).toEqual({ v1: "uploading" });
   });
 
-  test("an older upload never goes live over a newer one: a stale request's mark is refused", async () => {
+  test("an older upload never goes live over a newer one: a mark of replaced code is refused", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await uploadVersion(t, "a", site);
     await uploadVersion(t, "b", site);
-    // B's code replaces A's and its first request marks B live.
-    await markLive(t, "b");
+    // B's code replaces A's, and B's deploy marks B live.
+    expect(await markLive(t, "b")).toBe("marked");
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    // A request that started on A's code reaches its mark after that.
+    // A's mark arrives after that, from an overlapping deploy of A.
     vi.advanceTimersByTime(1000);
-    await markLive(t, "a");
+    expect(await markLive(t, "a")).toBe("superseded");
     expect(await liveness(t)).toEqual({ versions: { a: "ready", b: "live" }, collects: 1 });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    expect((await route(t, "b", "/assets/app-a1.js")).asset?.status).toBe(200);
     expect((await tables(t)).entries).toContain("b/assets/app-a1.js");
+  });
+
+  test("a mark whose request arrived before another version went live is late, and refused", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    vi.advanceTimersByTime(1000);
+    await uploadVersion(t, "b", site);
+    // B's code serves when B's mark request arrives. Then A is pushed and marked, and B's mark
+    // runs last, on replaced code.
+    const arrivedAt = Date.now();
+    vi.advanceTimersByTime(1000);
+    expect(await markLive(t, "a")).toBe("marked");
+    vi.advanceTimersByTime(1000);
+    expect(await t.mutation(api.lib.markLive, { versionId: "b", arrivedAt })).toBe("superseded");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await liveness(t)).versions).toEqual({ a: "live", b: "ready" });
+    expect((await tables(t)).entries).toContain("a/assets/app-a1.js");
   });
 
   test("a mark in the same millisecond as the newest is still strictly newer", async () => {
@@ -265,7 +261,7 @@ describe("markLive", () => {
     expect((await liveness(t)).versions).toEqual({ b: "live" });
   });
 
-  test("two first requests of one version mark it live once", async () => {
+  test("two marks of one version mark it live once", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
     await uploadVersion(t, "a", site);
@@ -373,9 +369,8 @@ describe("collect", () => {
     const after = await tables(t);
     expect(after.versions).toEqual([["large", "deleting"]]);
     expect(after.entries).toHaveLength(1);
-    // A request between the pages answers 404 and cannot mark the version live.
-    expect(await route(t, "large", "/0.txt")).toEqual({ state: "deleting", asset: null });
-    await expect(markLive(t, "large")).rejects.toThrow("Version large is being deleted.");
+    // A mark between the pages cannot make the version live.
+    expect(await markLive(t, "large")).toBe("deleting");
     // The next call reads the same version again and ends it.
     expect(await pendingSteps(t)).toEqual([{ kind: "versions" }]);
     await runNext(t);
@@ -448,166 +443,5 @@ describe("collect", () => {
       ["young", "ready"],
       ["v3", "live"],
     ]);
-  });
-});
-
-describe("route", () => {
-  test("a hit has Cloudflare's headers and an ETag; If-None-Match answers 304", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site);
-    const { state, asset } = await route(t, "v1", "/assets/app-a1.js");
-    expect(state).toBe("ready");
-    expect(asset?.status).toBe(200);
-    expect(header(asset, "content-type")).toBe("text/javascript; charset=utf-8");
-    expect(header(asset, "cache-control")).toBe("public, max-age=0, must-revalidate");
-    expect(header(asset, "cf-cache-status")).toBeUndefined();
-    const eTag = header(asset, "etag");
-    expect(eTag).toMatch(new RegExp(`^"${await sha256Hex("console.log(1)")}[0-9a-f]{8}"$`));
-    expect(asset?.bodyUrl).toEqual(expect.any(String));
-
-    const revalidated = await route(t, "v1", "/assets/app-a1.js", { "if-none-match": eTag ?? "" });
-    expect(revalidated.asset?.status).toBe(304);
-    expect(revalidated.asset?.bodyUrl).toBeNull();
-  });
-
-  test("the same bytes under two content types have two ETags", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", {
-      "/a.txt": { body: "same", contentType: "text/plain" },
-      "/a.js": { body: "same", contentType: "text/javascript" },
-    });
-    const txt = await route(t, "v1", "/a.txt");
-    const js = await route(t, "v1", "/a.js");
-    expect(header(txt.asset, "etag")).not.toBe(header(js.asset, "etag"));
-    expect(header(js.asset, "content-type")).toBe("text/javascript");
-  });
-
-  test("with code, single-page-application answers navigations only", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site, { not_found_handling: "single-page-application" });
-    const navigation = await route(t, "v1", "/settings/profile", { "sec-fetch-mode": "navigate" });
-    const index = await route(t, "v1", "/");
-    expect(navigation.asset?.status).toBe(200);
-    expect(header(navigation.asset, "etag")).toBe(header(index.asset, "etag"));
-
-    expect(await route(t, "v1", "/settings/profile")).toEqual({ state: "ready", asset: null });
-  });
-
-  test("without code, single-page-application answers every request, as a files-only Worker", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site, { not_found_handling: "single-page-application" });
-    const index = await route(t, "v1", "/");
-    // No `Sec-Fetch-Mode`, as from curl, a monitor, or a link-preview bot.
-    const filesOnly = await route(t, "v1", "/about", {}, false);
-    expect(filesOnly.asset?.status).toBe(200);
-    expect(header(filesOnly.asset, "content-type")).toBe("text/html; charset=utf-8");
-    expect(header(filesOnly.asset, "etag")).toBe(header(index.asset, "etag"));
-    // With code, the same request is a miss, which the app answers.
-    expect(await route(t, "v1", "/about", {}, true)).toEqual({ state: "ready", asset: null });
-  });
-
-  test("without code and with html_handling none, / answers index.html through the fallback", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site, {
-      html_handling: "none",
-      not_found_handling: "single-page-application",
-    });
-    const { asset } = await route(t, "v1", "/", {}, false);
-    const index = await route(t, "v1", "/index.html", {}, false);
-    expect(asset?.status).toBe(200);
-    expect(header(asset, "etag")).toBe(header(index.asset, "etag"));
-  });
-
-  test("another method than GET or HEAD on a file answers 405; on a miss, the code or 404", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site);
-    for (const hasUserWorker of [true, false]) {
-      const post = await route(t, "v1", "/index.html", {}, hasUserWorker, "POST");
-      expect(post.asset?.status).toBe(405);
-      expect(post.asset?.bodyUrl).toBeNull();
-    }
-    expect(await route(t, "v1", "/missing", {}, true, "POST")).toEqual({
-      state: "ready",
-      asset: null,
-    });
-    const miss = await route(t, "v1", "/missing", {}, false, "POST");
-    expect(miss.asset?.status).toBe(404);
-  });
-
-  test("without code, a miss with not_found_handling none answers 404 with no-store", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site);
-    const miss = await route(t, "v1", "/missing", {}, false);
-    expect(miss.asset).toEqual({
-      status: 404,
-      headers: [{ name: "cache-control", value: "no-store" }],
-      bodyUrl: null,
-    });
-  });
-
-  test("the custom 404 page answers with its body and no-store", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site, { not_found_handling: "404-page" });
-    const { asset } = await route(t, "v1", "/missing", { "sec-fetch-mode": "navigate" });
-    expect(asset?.status).toBe(404);
-    expect(asset?.bodyUrl).toEqual(expect.any(String));
-    expect(header(asset, "cache-control")).toBe("no-store");
-    const filesOnly = await route(t, "v1", "/missing", {}, false);
-    expect(filesOnly.asset?.status).toBe(404);
-    expect(header(filesOnly.asset, "etag")).toBe(header(asset, "etag"));
-  });
-
-  test("a file that is gone from storage answers 404 with no-store", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site);
-    await t.run(async (ctx) => {
-      const entry = await ctx.db
-        .query("entries")
-        .withIndex("by_version_path", (q) => q.eq("versionId", "v1").eq("path", "/index.html"))
-        .unique();
-      if (entry !== null) await ctx.storage.delete(entry.storageId);
-    });
-    expect(await route(t, "v1", "/")).toEqual({
-      state: "ready",
-      asset: {
-        status: 404,
-        headers: [{ name: "cache-control", value: "no-store" }],
-        bodyUrl: null,
-      },
-    });
-  });
-
-  test("a _headers rule applies", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site, {
-      headers: {
-        version: 2,
-        rules: { "/assets/*": { set: { "Cache-Control": "public, max-age=31536000, immutable" } } },
-      },
-    });
-    const { asset } = await route(t, "v1", "/assets/app-a1.js");
-    expect(header(asset, "cache-control")).toBe("public, max-age=31536000, immutable");
-  });
-
-  test("a _redirects rule applies", async () => {
-    const t = convexTest(schema, modules);
-    await uploadVersion(t, "v1", site, {
-      redirects: {
-        version: 1,
-        staticRules: { "/old": { status: 301, to: "/", lineNumber: 1 } },
-        rules: {},
-      },
-    });
-    const { asset } = await route(t, "v1", "/old?x=1");
-    expect(asset?.status).toBe(301);
-    expect(header(asset, "location")).toBe("/?x=1");
-    expect(asset?.bodyUrl).toBeNull();
-  });
-
-  test("a version that is uploading or does not exist reports its state", async () => {
-    const t = convexTest(schema, modules);
-    await createVersion(t, "v1");
-    expect(await route(t, "v1", "/")).toEqual({ state: "uploading", asset: null });
-    expect(await route(t, "v2", "/")).toEqual({ state: null, asset: null });
   });
 });

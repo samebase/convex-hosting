@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.15.0
+
+- A request reads no database. The deploy writes the version's assets into
+  `.convex-hosting/version.js` (each path's content hash, content type, and stored file, in the
+  layout of Cloudflare's asset manifest), and the HTTP action answers from them. A page, a miss, a
+  redirect, a 304, and a session refresh cost one function call, the HTTP action, where they cost
+  two; an answer with a body costs two, the action and the download of the file, where it cost
+  three. The component's `route` query is gone.
+- Breaking: `routeAll` takes one object, with every input named, and the assets in place of the
+  version id:
+
+  ```ts
+  import { assets } from "../.convex-hosting/version.js";
+
+  routeAll({ http, component: components.hosting, assets, worker: server });
+  ```
+
+  A files-only site leaves `worker` out. `assets` and `worker` are Cloudflare's names: the static
+  assets of a Worker, and the Worker script. The file exports only `assets`: the query that reloads
+  open tabs reads `assets.versionId` in place of `versionId`. A test that mocks the version module
+  adds `assets: { format: 1, versionId: "test", markToken: "test", files: null }`.
+
+- After the push, `deploy` sends one request with the version's mark token, and the code that
+  answers marks its version live; before, the first request did. `markLive` answers what it did and
+  never throws. It takes the time the request arrived and refuses a mark when another version went
+  live after it: a mark that was still running when another deploy's push and mark landed deleted
+  the entries of the version that serves.
+- A first install pushes twice: once to install the component, and once after the upload, to serve
+  the site.
+- A version file uploaded to another deployment, such as production's pushed to development by a
+  running `npx convex dev`, answers 404 naming that deployment.
+
 ## 0.14.0
 
 - The README, which this package ships, starts with what the component is, who it is for, and the

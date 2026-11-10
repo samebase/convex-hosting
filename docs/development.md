@@ -44,7 +44,9 @@ Two cases are transient:
 
   ```ts
   vi.mock("../dist/server/server.js", () => ({ default: { fetch: async () => new Response() } }));
-  vi.mock("../.convex-hosting/version.js", () => ({ versionId: "test" }));
+  vi.mock("../.convex-hosting/version.js", () => ({
+    assets: { format: 1, versionId: "test", markToken: "test", files: null },
+  }));
   ```
 
 - `npx convex codegen` bundles `convex/http.ts`, so before the first `deploy --dev` it fails with
@@ -62,9 +64,9 @@ open tabs on a new version, add a query that returns the bundled version:
 // convex/siteVersion.ts
 import { v } from "convex/values";
 import { query } from "./_generated/server.js";
-import { versionId } from "../.convex-hosting/version.js";
+import { assets } from "../.convex-hosting/version.js";
 
-export const get = query({ args: {}, returns: v.string(), handler: () => versionId });
+export const get = query({ args: {}, returns: v.string(), handler: () => assets.versionId });
 ```
 
 and reload when its value changes after the first one:

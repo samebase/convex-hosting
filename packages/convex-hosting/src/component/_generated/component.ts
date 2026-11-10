@@ -27,28 +27,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       markLive: FunctionReference<
         "mutation",
         "internal",
-        { versionId: string },
-        null,
-        Name
-      >;
-      route: FunctionReference<
-        "query",
-        "internal",
-        {
-          hasUserWorker: boolean;
-          headers: Record<string, string>;
-          method: string;
-          url: string;
-          versionId: string;
-        },
-        {
-          asset: null | {
-            bodyUrl: string | null;
-            headers: Array<{ name: string; value: string }>;
-            status: number;
-          };
-          state: "uploading" | "ready" | "live" | "deleting" | null;
-        },
+        { arrivedAt: number; versionId: string },
+        "marked" | "live" | "superseded" | "uploading" | "deleting" | "missing",
         Name
       >;
     };

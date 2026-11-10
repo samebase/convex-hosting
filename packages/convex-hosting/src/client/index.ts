@@ -2,36 +2,80 @@ import "./runtime.js";
 import {
   httpActionGeneric,
   ROUTABLE_HTTP_METHODS,
-  type GenericActionCtx,
-  type GenericDataModel,
   type HttpRouter,
   type PublicHttpAction,
 } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
+import { answer, type Answer } from "./answer.js";
+import { ASSETS_FORMAT, MARK_HEADER, type Assets } from "./manifest.js";
+
+export type { Assets } from "./manifest.js";
+
+/** What `routeAll` routes, each named as Cloudflare and Convex name it. */
+export type RouteAllOptions = {
+  /** The app's router, from `httpRouter()`. */
+  http: HttpRouter;
+  /** The installed component: `components.hosting`. */
+  component: ComponentApi;
+  /** `assets` from `.convex-hosting/version.js`, which `convex-hosting deploy` writes. */
+  assets: Assets;
+  /**
+   * The Worker script: the object with `fetch(request)` that the app's server entry exports, the
+   * code that runs on a miss. Without it, the site is assets only.
+   */
+  worker?: { fetch(request: Request): Promise<Response> };
+};
 
 /**
- * The HTTP action that serves the site, for `routeAll`: it answers a request with the file of
- * version `versionId` (another method than GET or HEAD on a file answers 405), else with what
- * `worker` answers, else 404. `worker` is the Worker script, the object with `fetch(request)`
- * that the app's server entry exports: the code that runs on a miss. As on Cloudflare, the presence
- * of code decides how `not_found_handling` applies: with `worker`, it applies to navigations only
- * and `worker` answers the other misses; without it, the site is files only, so it applies to every
- * request.
+ * The HTTP action that serves the site, for `routeAll`: it answers a request with an asset (another
+ * method than GET or HEAD on an asset answers 405), else with what `worker` answers, else 404. As on
+ * Cloudflare, the presence of a Worker script decides how `not_found_handling` applies: with
+ * `worker`, it applies to navigations only and `worker` answers the other misses; without it, it
+ * applies to every request.
+ *
+ * The assets are in the pushed code, so a request calls no function of the component: a file costs
+ * this action and the download of its bytes, any other answer this action alone.
  *
  * A page and a 404 answer `Cache-Control: no-store`. The deployment's Cloudflare front keeps that
  * for a path without an extension and replaces it with a four-hour browser `max-age` for a path
  * with one, so a browser that asks for a script before its upload ended keeps the 404; the deploy
  * order prevents that case, because no page refers to a file that is not uploaded yet.
  */
-function serveSite(
-  component: ComponentApi,
-  versionId: string,
-  worker?: { fetch(request: Request): Promise<Response> },
-): PublicHttpAction {
+function serveSite({ component, assets, worker }: RouteAllOptions): PublicHttpAction {
   return httpActionGeneric(async (ctx, request) => {
-    const asset = await answer(ctx, component, request, versionId, worker !== undefined);
-    if (asset !== null) return asset;
-    // `route` answers every files-only request itself, so this 404 only fails closed.
+    // Read first: a mark says when its request reached this code.
+    const arrivedAt = Date.now();
+    if (assets.format !== ASSETS_FORMAT) {
+      return notServed(
+        500,
+        `.convex-hosting/version.js has format ${assets.format}, and this release of ` +
+          `@samebase/convex-hosting reads format ${ASSETS_FORMAT}. Deploy again.`,
+      );
+    }
+    if (request.headers.get(MARK_HEADER) === assets.markToken) {
+      const result = await ctx.runMutation(component.lib.markLive, {
+        versionId: assets.versionId,
+        arrivedAt,
+      });
+      return Response.json({ versionId: assets.versionId, result }, { headers: NO_STORE });
+    }
+    const { files } = assets;
+    // A first install pushes before its upload; the deploy pushes again when the upload ends.
+    if (files === null) {
+      return notServed(404, `Version ${assets.versionId} of the site is not uploaded yet.`);
+    }
+    // The storage URLs name the deployment they were taken from.
+    if (files.cloudUrl !== process.env.CONVEX_CLOUD_URL) {
+      return notServed(
+        404,
+        `Version ${assets.versionId} of the site was uploaded to ${files.cloudUrl}, not to this ` +
+          `deployment. Deploy to this deployment with convex-hosting deploy.`,
+      );
+    }
+
+    const asset = await answer(files, request, worker !== undefined);
+    if (asset !== null) return await withBody(asset);
+    // `answer` answers every assets-only request itself, so this 404 only fails closed.
     if (worker === undefined) return new Response(null, { status: 404, headers: NO_STORE });
     const page = await worker.fetch(request);
     const headers = new Headers(page.headers);
@@ -45,95 +89,37 @@ function serveSite(
  * every path, as every request reaches a Cloudflare Worker with static assets. Convex answers HEAD
  * through GET.
  *
+ * ```ts
+ * routeAll({ http, component: components.hosting, assets, worker: server });
+ * ```
+ *
  * Returns the action, for the paths that a component's HTTP prefix would otherwise take: Convex
  * picks an exact route first, then the longest prefix, so an app whose session routes sit under a
  * component's prefix registers them with `http.route({ path, method, handler })`.
  */
-export function routeAll(
-  http: HttpRouter,
-  component: ComponentApi,
-  versionId: string,
-  worker?: { fetch(request: Request): Promise<Response> },
-): PublicHttpAction {
-  const site = serveSite(component, versionId, worker);
+export function routeAll(options: RouteAllOptions): PublicHttpAction {
+  const action = serveSite(options);
   for (const method of ROUTABLE_HTTP_METHODS) {
-    http.route({ pathPrefix: "/", method, handler: site });
+    options.http.route({ pathPrefix: "/", method, handler: action });
   }
-  return site;
+  return action;
 }
 
-/**
- * Answers `request` with the asset of version `versionId` that Cloudflare's asset handler picks,
- * or returns `null` when no asset matches. `hasUserWorker` is Cloudflare's `has_user_worker`.
- *
- * A version that does not exist, is still uploading, or is being deleted answers 404, so a
- * half-installed site does not render pages without their files. The first request for a `ready`
- * version marks it live, which deletes the versions that were live before it; a version older than
- * the live one is never marked.
- */
-async function answer(
-  ctx: Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "runMutation">,
-  component: ComponentApi,
-  request: Request,
-  versionId: string,
-  hasUserWorker: boolean,
-): Promise<Response | null> {
-  const { state, asset } = await ctx.runQuery(component.lib.route, {
-    versionId,
-    method: request.method,
-    url: request.url,
-    headers: handlerHeaders(request.headers),
-    hasUserWorker,
-  });
-  if (state === null || state === "uploading" || state === "deleting") {
-    const problem =
-      state === null
-        ? "does not exist"
-        : state === "uploading"
-          ? "is still uploading"
-          : "is being deleted";
-    return new Response(`Version ${versionId} of the site ${problem}.`, {
-      status: 404,
-      headers: NO_STORE,
-    });
-  }
-  // Only the pushed code knows which version the deployment runs, so its first request reports it.
-  if (state === "ready") {
-    await ctx.runMutation(component.lib.markLive, { versionId });
-  }
-  if (asset === null) return null;
-
-  const headers = new Headers();
-  for (const { name, value } of asset.headers) headers.append(name, value);
-  if (asset.bodyUrl === null) return new Response(null, { status: asset.status, headers });
-
+/** The response of `asset`, with the stored file as its body when it has one. */
+async function withBody(asset: Answer): Promise<Response> {
+  if (asset.url === null)
+    return new Response(null, { status: asset.status, headers: asset.headers });
   // An app cannot read a component's storage, so the body comes from the storage URL.
   let stored: Response;
   try {
-    stored = await fetch(asset.bodyUrl);
+    stored = await fetch(asset.url);
   } catch {
-    return badGateway();
+    return new Response(null, { status: 502, headers: NO_STORE });
   }
-  // A deploy deleted the file between the query and the fetch.
+  // A deploy deleted the file: this code was replaced, and a later version's mark deleted it.
   if (stored.status === 404) return new Response(null, { status: 404, headers: NO_STORE });
-  if (!stored.ok) return badGateway();
-  return new Response(stored.body, { status: asset.status, headers });
-}
-
-/**
- * The request headers that Cloudflare's handler reads. It reads only the presence of
- * `Authorization` and `Range`, so their values (a credential, for one) stay out of the query.
- */
-function handlerHeaders(headers: Headers): Record<string, string> {
-  const picked: Record<string, string> = {};
-  for (const name of ["if-none-match", "sec-fetch-mode"]) {
-    const value = headers.get(name);
-    if (value !== null) picked[name] = value;
-  }
-  for (const name of ["authorization", "range"]) {
-    if (headers.has(name)) picked[name] = "";
-  }
-  return picked;
+  if (!stored.ok) return new Response(null, { status: 502, headers: NO_STORE });
+  return new Response(stored.body, { status: asset.status, headers: asset.headers });
 }
 
 /**
@@ -143,6 +129,7 @@ function handlerHeaders(headers: Headers): Record<string, string> {
  */
 const NO_STORE = { "Cache-Control": "no-store" };
 
-function badGateway() {
-  return new Response(null, { status: 502, headers: NO_STORE });
+/** A site that cannot serve this request, named in the body. */
+function notServed(status: number, message: string) {
+  return new Response(message, { status, headers: NO_STORE });
 }

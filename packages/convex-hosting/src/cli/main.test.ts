@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
+import { manifestLookup, MARK_HEADER, MARK_PATH, type Assets } from "../client/manifest.js";
 import { deploymentSelector, type Cli } from "./convex.js";
 import { main, VERSION_FILE } from "./main.js";
 
@@ -21,6 +22,12 @@ const missing = (component: string) =>
 
 /** The site URL that the fake deployment gives its functions in `CONVEX_SITE_URL`. */
 const SITE_URL = "https://happy-cat-123.convex.site";
+
+/** The fake deployment's `CONVEX_CLOUD_URL`, the origin of its storage URLs. */
+const CLOUD_URL = "https://happy-cat-123.convex.cloud";
+
+/** The storage URL that the fake deployment gives a stored file. */
+const fileUrl = (storageId: string) => `${CLOUD_URL}/api/storage/${storageId}?component=c1`;
 
 /** An app directory with `convex/` and the given files. */
 function app(files: Record<string, string>) {
@@ -33,19 +40,25 @@ function app(files: Record<string, string>) {
   return cwd;
 }
 
-/** What a `npx convex run` call is: the probe, the site URL query, or a function's name. */
+/**
+ * What a `npx convex run` call is: the probe, the site URL query, the storage URL query, or a
+ * function's name.
+ */
 const callName = (args: string[]) =>
   args.includes("process.env.CONVEX_SITE_URL")
     ? "site url"
-    : args.includes("--inline-query")
-      ? "probe"
-      : args[3];
+    : args.some((arg) => arg.includes("ctx.storage.getUrl"))
+      ? "urls"
+      : args.includes("--inline-query")
+        ? "probe"
+        : args[3];
 
 /**
  * A fake `Cli`: `npx convex run` answers like a deployment with the component, the build calls
- * `build`, and `npx convex deploy` or `npx convex run --push` calls `push`. No processes, no
- * network. `events` lists the builds, the probes, the site URL queries, the function calls, and the
- * pushes in order.
+ * `build`, `npx convex deploy` or `npx convex run --push` calls `push`, and the site answers the
+ * mark request with `mark`. No processes, no network. `events` lists the builds, the probes, the
+ * site URL queries, the storage URL queries, the function calls, the pushes, and the marks in
+ * order.
  */
 function fake(
   cwd: string,
@@ -58,6 +71,8 @@ function fake(
     failing?: Record<string, string>;
     build?: () => Promise<number>;
     push?: (cli: Cli, args: string[]) => Promise<number>;
+    /** The site's answer to the mark request; by default it marks the version of the file. */
+    mark?: (token: string | null, init: RequestInit | undefined) => Promise<Response>;
   } = {},
 ) {
   const runs: string[][] = [];
@@ -65,6 +80,8 @@ function fake(
   const builds: string[] = [];
   const events: string[] = [];
   const stored = new Map<string, string>();
+  /** The entries that `recordFiles` recorded, by version. */
+  const recorded = new Map<string, { path: string; storageId: string }[]>();
   const logs: string[] = [];
   const ok = (value: unknown) => ({
     exitCode: 0,
@@ -80,6 +97,19 @@ function fake(
         events.push("site url");
         return ok(SITE_URL);
       }
+      if (callName(args) === "urls") {
+        events.push("urls");
+        const code = args[args.indexOf("--inline-query") + 1];
+        const [, versionId, after] =
+          /q\.eq\("versionId", ("[^"]*")\)\.gt\("path", ("[^"]*")\)/.exec(code) ?? [];
+        const take = Number(/\.take\((\d+)\)/.exec(code)?.[1]);
+        const files = (recorded.get(JSON.parse(versionId)) ?? [])
+          .filter(({ path }) => path > JSON.parse(after))
+          .sort((a, b) => (a.path < b.path ? -1 : 1))
+          .slice(0, take)
+          .map(({ path, storageId }) => [path, fileUrl(storageId)]);
+        return ok({ cloudUrl: CLOUD_URL, files });
+      }
       if (args.includes("--inline-query")) {
         events.push("probe");
         return (options.installed?.() ?? true)
@@ -91,6 +121,12 @@ function fake(
       if (failure !== undefined) return { exitCode: 1, stdout: "", stderr: failure };
       const fnArgs = JSON.parse(args[4]);
       switch (args[3]) {
+        case "lib:recordFiles":
+          recorded.set(fnArgs.versionId, [
+            ...(recorded.get(fnArgs.versionId) ?? []),
+            ...fnArgs.entries,
+          ]);
+          return ok(null);
         case "lib:generateUploadUrls":
           return ok(Array.from({ length: fnArgs.count }, (_, i) => `https://upload/${i}`));
         case "lib:knownFiles":
@@ -114,7 +150,16 @@ function fake(
       events.push("build");
       return (await options.build?.()) ?? 0;
     },
-    fetch: async (_url, init) => {
+    fetch: async (url, init) => {
+      if (url === SITE_URL + MARK_PATH) {
+        events.push("mark");
+        const token = new Headers(init?.headers).get(MARK_HEADER);
+        if (options.mark !== undefined) return await options.mark(token, init);
+        const assets = writtenAssets(cwd);
+        return token === assets.markToken
+          ? Response.json({ versionId: assets.versionId, result: "marked" })
+          : new Response("<h1>Home</h1>");
+      }
       const storageId = `storage-${stored.size}`;
       stored.set(storageId, await new Response(init?.body).text());
       return Response.json({ storageId });
@@ -138,7 +183,14 @@ function innerUpload(cli: Cli, args: string[]) {
 }
 
 const versionFile = (cwd: string) => readFileSync(join(cwd, VERSION_FILE), "utf8");
-const writtenVersionId = (cwd: string) => /"([^"]+)"/.exec(versionFile(cwd))?.[1];
+const writtenVersionId = (cwd: string) => writtenAssets(cwd).versionId;
+/** The assets of the version file, as `convex/http.ts` imports them. */
+function writtenAssets(cwd: string): Assets {
+  const line = versionFile(cwd)
+    .split("\n")
+    .find((text) => text.startsWith("export const assets = "));
+  return JSON.parse(line?.slice("export const assets = ".length, -1) ?? "null");
+}
 
 const site = {
   "dist/index.html": "<h1>Home</h1>",
@@ -171,7 +223,7 @@ describe("help", () => {
 });
 
 describe("deploy --dev", () => {
-  test("builds, uploads, writes the version file, pushes with npx convex run --push, and reports the site URL", async () => {
+  test("builds, uploads, writes the version file, pushes with npx convex run --push, marks, and reports the site URL", async () => {
     const cwd = app(site);
     let pushedVersionId: string | undefined;
     const { cli, events, builds, pushes, runs, logs } = fake(cwd, {
@@ -193,8 +245,10 @@ describe("deploy --dev", () => {
       "lib:generateUploadUrls",
       "lib:recordFiles",
       "lib:finishVersion",
+      "urls",
       "push: run",
       "site url",
+      "mark",
     ]);
     // An inline query at the app's root, which exists before a first install.
     expect(pushes).toEqual([["run", "--push", "--inline-query", "null"]]);
@@ -205,13 +259,14 @@ describe("deploy --dev", () => {
     expect(logs[logs.length - 1]).toBe(`Deployed version ${versionId} to ${SITE_URL}.`);
   });
 
-  test("on a first install, writes the version file, pushes, then uploads", async () => {
+  test("on a first install, pushes a site without files, uploads, then pushes the site", async () => {
     const cwd = app(site);
     let pushed = false;
+    const pushedFiles: boolean[] = [];
     const { cli, events, callArgs } = fake(cwd, {
       installed: () => pushed,
       push: async () => {
-        expect(existsSync(join(cwd, VERSION_FILE))).toBe(true);
+        pushedFiles.push(writtenAssets(cwd).files !== null);
         pushed = true;
         return 0;
       },
@@ -224,7 +279,14 @@ describe("deploy --dev", () => {
       "probe",
       "lib:generateUploadUrls",
     ]);
-    expect(events.slice(-2)).toEqual(["lib:finishVersion", "site url"]);
+    expect(events.slice(-5)).toEqual([
+      "lib:finishVersion",
+      "urls",
+      "push: run",
+      "site url",
+      "mark",
+    ]);
+    expect(pushedFiles).toEqual([false, true]);
     expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
     expect(callArgs("lib:createVersion")[0].versionId).toBe(writtenVersionId(cwd));
   });
@@ -330,6 +392,80 @@ describe("deploy reports", () => {
     );
   });
 
+  test("the mark carries the site's token, so only the code of this deploy marks", async () => {
+    const tokens: (string | null)[] = [];
+    const cwd = app(site);
+    const { cli, logs } = fake(cwd, {
+      push: innerUpload,
+      mark: async (token) => {
+        tokens.push(token);
+        return Response.json({ versionId: writtenAssets(cwd).versionId, result: "marked" });
+      },
+    });
+    expect(await main(DEPLOY, cli)).toBe(0);
+    expect(tokens).toEqual([writtenAssets(cwd).markToken]);
+    expect(logs[logs.length - 1]).toMatch(/^Deployed version /);
+  });
+
+  test("a mark that fails or reaches other code is reported, and the deploy succeeds", async () => {
+    const answers: Record<string, () => Promise<Response>> = {
+      "failed: fetch failed": async () => {
+        throw new TypeError("fetch failed");
+      },
+      "did not answer as version": async () => new Response("<h1>Home</h1>"),
+    };
+    for (const [message, answer] of Object.entries(answers)) {
+      const { cli, logs } = fake(app(site), { push: innerUpload, mark: answer });
+      expect(await main(DEPLOY, cli)).toBe(0);
+      expect(logs.some((line) => line.includes(message))).toBe(true);
+      expect(logs[logs.length - 1]).toMatch(/^Deployed version /);
+    }
+  });
+
+  test("the mark follows no redirect, which would carry the token to another origin", async () => {
+    const redirects: (RequestRedirect | undefined)[] = [];
+    const { cli, logs } = fake(app(site), {
+      push: innerUpload,
+      mark: async (_token, init) => {
+        redirects.push(init?.redirect);
+        return new Response(null, { status: 307, headers: { Location: "https://other.example/" } });
+      },
+    });
+    expect(await main(DEPLOY, cli)).toBe(0);
+    expect(redirects).toEqual(["manual"]);
+    expect(logs.some((line) => line.includes("did not answer as version"))).toBe(true);
+  });
+
+  test("a mark refused because a newer version is live says that deploys overlapped", async () => {
+    const cwd = app(site);
+    const { cli, logs } = fake(cwd, {
+      push: innerUpload,
+      mark: async () =>
+        Response.json({ versionId: writtenAssets(cwd).versionId, result: "superseded" }),
+    });
+    expect(await main(DEPLOY, cli)).toBe(0);
+    expect(logs.some((line) => line.includes("a deploy overlapped this one"))).toBe(true);
+  });
+
+  test("a stored file that is gone before the version file is written fails the upload", async () => {
+    const cwd = app(site);
+    const { cli, logs } = fake(cwd);
+    const convex = cli.convex;
+    cli.convex = async (args) =>
+      callName(args) === "urls"
+        ? {
+            exitCode: 0,
+            stdout: JSON.stringify({ cloudUrl: CLOUD_URL, files: [["/index.html", null]] }),
+            stderr: "",
+          }
+        : convex(args);
+    expect(await main(["upload", "--dist", "dist", "--version-id", "v1"], cli)).toBe(1);
+    expect(logs[logs.length - 1]).toBe(
+      "The stored file of /index.html is gone, deleted by the age rule; run the deploy again.",
+    );
+    expect(existsSync(join(cwd, VERSION_FILE))).toBe(false);
+  });
+
   test("a failed upload names the file", async () => {
     const { cli, logs } = fake(app(site));
     // The config, a string, stores; the files, bytes, do not.
@@ -350,7 +486,7 @@ describe("deploy without --build", () => {
     expect(await main(["deploy", "--dev", "--dist", "dist"], cli)).toBe(0);
     expect(builds).toEqual([]);
     expect(events[0]).toBe("probe");
-    expect(events.slice(-2)).toEqual(["push: run", "site url"]);
+    expect(events.slice(-3)).toEqual(["push: run", "site url", "mark"]);
   });
 
   test("production runs only the upload inside npx convex deploy --cmd", async () => {
@@ -358,7 +494,7 @@ describe("deploy without --build", () => {
     expect(await main(["deploy", "--dist", "dist"], cli)).toBe(0);
     expect(pushes[0][2]).toMatch(/^'.+' '.+' 'upload' '--dist' 'dist' '--version-id' '/);
     expect(events[0]).toBe("push: deploy");
-    expect(events.slice(-2)).toEqual(["lib:finishVersion", "site url"]);
+    expect(events.slice(-4)).toEqual(["lib:finishVersion", "urls", "site url", "mark"]);
   });
 });
 
@@ -377,29 +513,37 @@ describe("deploy", () => {
     // `npx convex deploy` goes to production by default and has no --prod flag; every run gets it.
     expect(pushes[0]).not.toContain("--prod");
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
-    // The upload runs inside the push, and only the site URL query runs after it.
+    // The upload runs inside the push; after it, the site URL query and the mark.
     expect(events[0]).toBe("push: deploy");
-    expect(events.slice(-2)).toEqual(["lib:finishVersion", "site url"]);
+    expect(events.slice(-4)).toEqual(["lib:finishVersion", "urls", "site url", "mark"]);
     expect(callArgs("lib:createVersion")[0].versionId).toBe(writtenVersionId(cwd));
   });
 
-  test("on a first install, uploads after the push", async () => {
+  test("on a first install, uploads after the push, then pushes again", async () => {
     const cwd = app(site);
     let pushed = false;
-    const { cli, calls } = fake(cwd, {
+    const pushedFiles: boolean[] = [];
+    const { cli, calls, pushes } = fake(cwd, {
       installed: () => pushed,
       push: async (cli, args) => {
-        const exitCode = await innerUpload(cli, args);
-        expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(true);
-        expect(existsSync(join(cwd, VERSION_FILE))).toBe(true);
-        pushed = true;
-        return exitCode;
+        if (args.includes("--cmd")) {
+          const exitCode = await innerUpload(cli, args);
+          expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(true);
+          pushedFiles.push(writtenAssets(cwd).files !== null);
+          pushed = true;
+          return exitCode;
+        }
+        pushedFiles.push(writtenAssets(cwd).files !== null);
+        return 0;
       },
     });
     expect(await main(DEPLOY, cli)).toBe(0);
 
     expect(calls().slice(0, 3)).toEqual(["probe", "probe", "lib:generateUploadUrls"]);
-    expect(calls().slice(-2)).toEqual(["lib:finishVersion", "site url"]);
+    expect(calls().slice(-3)).toEqual(["lib:finishVersion", "urls", "site url"]);
+    expect(pushes.map((args) => args[0])).toEqual(["deploy", "deploy"]);
+    expect(pushes[1]).toEqual(["deploy"]);
+    expect(pushedFiles).toEqual([false, true]);
     expect(existsSync(join(cwd, ".convex-hosting", "first-install"))).toBe(false);
   });
 
@@ -411,7 +555,7 @@ describe("deploy", () => {
       },
     });
     expect(await main(DEPLOY, cli)).toBe(1);
-    expect(events[events.length - 1]).toBe("lib:finishVersion");
+    expect(events[events.length - 1]).toBe("urls");
     expect(logs[logs.length - 1]).toBe("npx convex deploy failed with exit code 1.");
   });
 
@@ -484,6 +628,7 @@ describe("upload", () => {
       "lib:generateUploadUrls",
       "lib:recordFiles",
       "lib:finishVersion",
+      "urls",
     ]);
     // Inside `npx convex deploy` to production, every run gets --prod.
     expect(runs.every((args) => args.includes("--prod"))).toBe(true);
@@ -521,8 +666,55 @@ describe("upload", () => {
       home.storageId,
     );
 
-    expect(versionFile(cwd)).toBe('export const versionId = "v1";\n');
+    // tsc reads the file itself in an app whose convex/tsconfig.json sets allowJs.
+    expect(versionFile(cwd).split("\n")[0]).toBe(
+      '/** @type {import("@samebase/convex-hosting").Assets} */',
+    );
+    const written = writtenAssets(cwd);
+    expect(written).toMatchObject({ format: 1, versionId: "v1", markToken: expect.any(String) });
+    const files = written.files;
+    if (files === null) throw new Error("The version file has no files.");
+    expect(files.cloudUrl).toBe(CLOUD_URL);
+    expect(files.config).toMatchObject({
+      compatibility_date: "2025-04-01",
+      html_handling: "auto-trailing-slash",
+      not_found_handling: "single-page-application",
+    });
+    expect(files.contentTypes).toEqual([
+      "text/html; charset=utf-8",
+      "text/javascript; charset=utf-8",
+    ]);
+    // Every path finds its stored file and its type; the two copies share one stored file and ETag.
+    const contentType = "text/html; charset=utf-8";
+    const lookup = manifestLookup(files);
+    const found = await lookup("/copy.html");
+    expect(found).toEqual({
+      eTag: createHash("sha256")
+        .update(`${home.sha256}\n${contentType}`)
+        .digest("hex")
+        .slice(0, 32),
+      url: fileUrl(home.storageId),
+      contentType,
+    });
+    expect(await lookup("/index.html")).toEqual(found);
+    expect(await lookup("/private/notes.txt")).toBeNull();
     expect(readFileSync(join(cwd, ".convex-hosting", ".gitignore"), "utf8")).toBe("*\n");
+  });
+
+  test("reads the storage URLs a page at a time, and every path finds its stored file", async () => {
+    const files = Object.fromEntries(
+      Array.from({ length: 2500 }, (_, i) => [`dist/assets/${i}.js`, `console.log(${i})`]),
+    );
+    const cwd = app(files);
+    const { cli, calls } = fake(cwd);
+    expect(await main(upload(), cli)).toBe(0);
+    expect(calls().filter((name) => name === "urls")).toHaveLength(2);
+    const written = writtenAssets(cwd).files;
+    if (written === null) throw new Error("The version file has no files.");
+    const lookup = manifestLookup(written);
+    for (const i of [0, 1999, 2000, 2499]) {
+      expect(await lookup(`/assets/${i}.js`)).not.toBeNull();
+    }
   });
 
   test("does not upload the files that knownFiles knows, and records them with their stored file", async () => {

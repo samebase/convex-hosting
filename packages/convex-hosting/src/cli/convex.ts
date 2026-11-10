@@ -46,7 +46,8 @@ export const nodeCli: Cli = {
       execFile(
         process.execPath,
         [convexBin(process.cwd()), ...args],
-        { encoding: "utf8" },
+        // A page of storage URLs can pass Node's default of 1 MiB.
+        { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
         (error, stdout, stderr) => {
           const exitCode = error === null ? 0 : typeof error.code === "number" ? error.code : 1;
           resolve({ exitCode, stdout, stderr });
@@ -148,6 +149,33 @@ export async function siteUrl(cli: Cli, flags: string[]): Promise<string> {
     throw new Error(stderr.trim() || stdout.trim() || `npx convex run exited with ${exitCode}.`);
   }
   return z.string().parse(JSON.parse(stdout));
+}
+
+/**
+ * Evaluates `code` as an inline query in the component and validates its result. An inline query
+ * runs whatever release of this package the component's functions are, so the upload of a new
+ * release reads with it before the push has installed the new functions.
+ */
+export async function runComponentQuery<T>(
+  cli: Cli,
+  target: Target,
+  code: string,
+  result: z.ZodType<T>,
+): Promise<T> {
+  const { exitCode, stdout, stderr } = await cli.convex([
+    "run",
+    "--component",
+    target.component,
+    "--inline-query",
+    code,
+    ...target.flags,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(
+      stderr.trim() || stdout.trim() || `npx convex run --inline-query exited with ${exitCode}.`,
+    );
+  }
+  return result.parse(JSON.parse(stdout));
 }
 
 /**

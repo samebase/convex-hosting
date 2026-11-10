@@ -6,7 +6,7 @@ export default defineSchema({
   versions: defineTable({
     versionId: v.string(),
     /**
-     * `live` carries the time the first request of the version's pushed code marked it live, so a
+     * `live` carries the time the version's pushed code marked it live, at its deploy's mark, so a
      * version cannot have a live time without being live.
      */
     state: v.union(
@@ -38,7 +38,7 @@ export default defineSchema({
     sha256: v.string(),
     /**
      * The type belongs to the path, not to the bytes: paths with identical bytes share one stored
-     * file but keep their own types, and `route` serves without reading `_storage`. Absent when
+     * file but keep their own types, and the site's manifest carries each type. Absent when
      * the `mime` package has no type for the file name.
      */
     contentType: v.optional(v.string()),
