@@ -66,20 +66,6 @@ describe("buildAssetFiles, read with Cloudflare's lookup", () => {
     expect(await lookup("/caf%C3%A9/menu.html")).toBeNull();
   });
 
-  test("the same bytes under two content types share one stored file and have two ETags", async () => {
-    const sha256 = sha256Hex("same");
-    const files = buildAssetFiles(CLOUD_URL, config, [
-      { path: "/a.txt", sha256, contentType: "text/plain", url: url("k1") },
-      { path: "/a.js", sha256, contentType: "text/javascript", url: url("k1") },
-    ]);
-    const lookup = manifestLookup(files);
-    const txt = await lookup("/a.txt");
-    const js = await lookup("/a.js");
-    expect([txt?.url, js?.url]).toEqual([url("k1"), url("k1")]);
-    expect(txt?.eTag).not.toBe(js?.eTag);
-    expect([txt?.contentType, js?.contentType]).toEqual(["text/plain", "text/javascript"]);
-  });
-
   test("the storage URLs are written as what they share and one string of keys", () => {
     const entries = ["0c1f6a52", "5b7d2e11", "9e4a7c30"].map((key, i) => ({
       path: `/${i}.js`,

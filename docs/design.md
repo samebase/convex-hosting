@@ -378,15 +378,12 @@ place for those.
 ## Stated, not solved
 
 - Deploys to one deployment do not overlap. When two overlap, the mark of the version that serves
-  may be refused, so it serves without being live and nothing is deleted until the next deploy.
-  `src/client/overlap.test.ts` runs the deploys on the real component and serving code, and the
-  version that serves keeps its entries and its files in every order of two deploys' steps and
-  `collect` calls, every order of three deploys' steps, and random orders of three with their
-  `collect` calls. Two limits remain, both with overlapping deploys only. The arrival time is read
-  in the HTTP action and compared with a time set in the mutation, so a late mark is refused as far
-  as those two clocks agree. And the day is a bound, not a margin: an upload pushed just under a day
-  later, after a newer version went live, is deleted as never live by a `collect` call that runs
-  past the day.
+  may be refused, so it serves without being live and nothing is deleted until the next deploy. The
+  version that serves keeps its entries and its files (`src/client/overlap.test.ts`), within two
+  limits. The arrival time is read in the HTTP action and compared with a time set in the mutation,
+  so a late mark is refused as far as those two clocks agree. And the day is a bound, not a margin:
+  an upload pushed just under a day later, after a newer version went live, is deleted as never live
+  by a `collect` call that runs past the day.
 - An upload that took a stored file from `knownFiles` loses it only if two switches happen during
   that one upload; it fails with a message that says so, and a retry works.
 - No `run_worker_first`, no `base_path`, no selectable compatibility date: an app that needs its

@@ -48,7 +48,6 @@ export type AssetFiles = {
    * entry, which Cloudflare leaves zero, holds the indexes of its URL and its content type.
    */
   manifest: string;
-  /** The content types of the entries. */
   contentTypes: string[];
   /**
    * The storage URL of each stored file is `urlPrefix`, its key, and `urlSuffix`. The keys are one
@@ -68,7 +67,6 @@ export const TAIL_CONTENT_TYPE = 4;
 /** The content type index of an entry without a content type. */
 export const NO_CONTENT_TYPE = 0xffff;
 
-/** The entry of a path. */
 export type ManifestHit = {
   /** The hex of the content hash, which is the ETag, as on Cloudflare. */
   eTag: string;

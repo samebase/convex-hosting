@@ -22,7 +22,6 @@ export type AssetEntry = {
   /** The hex SHA-256 of the bytes. */
   sha256: string;
   contentType: string | undefined;
-  /** The storage URL of the bytes. */
   url: string;
 };
 
@@ -88,7 +87,6 @@ export function buildAssetFiles(
   };
 }
 
-/** The longest start that all of `texts` share. */
 function sharedStart(texts: string[]): string {
   let start = texts[0] ?? "";
   for (const text of texts) {
@@ -99,7 +97,6 @@ function sharedStart(texts: string[]): string {
   return start;
 }
 
-/** The longest end that all of `texts` share. */
 function sharedEnd(texts: string[]): string {
   let end = texts[0] ?? "";
   for (const text of texts) {
