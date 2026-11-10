@@ -32,20 +32,21 @@ bytes of a file from storage.
 Only the pushed code knows which version a deployment runs, so the serving code reports it: after
 the push, the CLI sends one request with the version's mark token, which only that version's code
 holds, and the code that answers marks its version `live`. An older upload never goes live over a
-newer one: a version is marked only when no live version was created after it, so a request still
-running on replaced code cannot take the site back. Marking a version live deletes the versions that
-were live before it, because their code is gone by definition. Nothing is deleted by the clock
-alone: deletion runs only at a switch, when a new version becomes live, so a version stays intact
-until a newer one has served. At a switch, a version that never became live is dead too, from a push
-that failed, with one exception: a slower deploy whose push has not landed yet. So a never-live
-version is deleted at a switch only when it is more than a day old; the day bounds how late a push
-may follow its upload, and it is the only time constant in the design.
+newer one: a version is marked only when no live version was created after it. And a mark is late
+when another version went live after its request arrived: the request carries its arrival time, and
+that version's code has served since. So a request still running on replaced code cannot take the
+site back. Marking a version live deletes the versions that were live before it, because their code
+is gone by definition. Nothing is deleted by the clock alone: deletion runs only at a switch, when a
+new version becomes live, so a version stays intact until a newer one has served. At a switch, a
+version that never became live is dead too, from a push that failed, with one exception: a slower
+deploy whose push has not landed yet. So a never-live version is deleted at a switch only when it is
+more than a day old; the day bounds how late a push may follow its upload, and it is the only time
+constant in the design.
 
-The precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
-pushed last, its mark is refused like a mark of replaced code: its version serves, but it never
-becomes live, and nothing is deleted until the next deploy, but for one order in "Stated, not
-solved". So run one deploy at a time per deployment; the example workflows queue them, with one
-`concurrency` group per deployment.
+The precondition: deploys to one deployment do not overlap. When two overlap, the mark of the
+version that serves may be refused: it then serves without being live. Its files stay, within the
+two limits in "Stated, not solved". So run one deploy at a time per deployment; the example
+workflows queue them, with one `concurrency` group per deployment.
 
 ## Deploy
 
@@ -280,11 +281,11 @@ uploaded yet. A `null` asset means one thing: no asset matched, and `worker` ans
 A request with the header `Convex-Hosting-Mark` set to the site's mark token is the CLI's mark:
 before anything else, `serveSite` calls `markLive` for its version and answers the result as JSON,
 with `Cache-Control: no-store`. `markLive` marks the version only when no live version was created
-after it, inside its own transaction, so code that was replaced cannot make its version newest, and
-a repeated mark changes nothing. It never throws: it answers `marked`, `live`, `superseded`,
-`uploading`, `deleting`, or `missing`, and the CLI reports the last four. That is the only write the
-serving path ever makes, once per deploy. Any other request, with another token or none, calls no
-function.
+after it and none went live after the request arrived, inside its own transaction, so code that was
+replaced cannot make its version newest, and a repeated mark changes nothing. It never throws: it
+answers `marked`, `live`, `superseded`, `uploading`, `deleting`, or `missing`, and the CLI reports
+the last four. That is the only write the serving path ever makes, once per deploy. Any other
+request, with another token or none, calls no function.
 
 `markLive` is the component's only public function, because `serveSite` runs in the app and an app
 can call only a component's public functions; clients cannot call it at all. The CLI calls the other
@@ -348,7 +349,7 @@ convex-test run of the exact order of transactions; "runtime" is a run against a
 | A deploy pushes; the CLI's mark reaches the new code                                                      | The version is marked live; the versions live before it are deleted                                                                             | Component test, runtime                  |
 | Two deploys overlap; the pushes land in creation order                                                    | Both complete; the last push's version is marked live by its deploy's mark; the other was never live and goes at a later switch when a day old  | Component test (age rule)                |
 | Two deploys overlap; the earlier-created one pushes last                                                  | Outside the precondition. Its version serves but is never marked, because the other is newer and live; nothing is deleted until the next deploy | Component test (stale request)           |
-| Two deploys overlap; the newer one's mark is still running while the older one is pushed and marked       | Outside the precondition. The version that serves loses its entries to the late mark, and a day-old file if the two cleanups interleave         | Stated; `overlap.test.ts`                |
+| Two deploys overlap; the newer one's mark is still running while the older one is pushed and marked       | The late mark is refused, because a version went live after its request arrived; the version that serves stays live                             | Component test, `overlap.test.ts`        |
 | A mark for an older version reaches its code after the new version was marked, from an overlapping deploy | Its version is older than the live one, so the mark answers `superseded`; the new version stays live and keeps its files                        | Component test, CLI test                 |
 | Two marks of one version                                                                                  | One mark; the second answers `live`                                                                                                             | Component test                           |
 | Two marks in one millisecond                                                                              | The second is strictly later                                                                                                                    | Component test                           |
@@ -376,17 +377,16 @@ place for those.
 
 ## Stated, not solved
 
-- Deploys to one deployment do not overlap. When two overlap and the older upload is pushed last,
-  its mark is refused like a mark of replaced code, so its version serves but is never marked live,
-  and nothing is deleted until the next deploy. One order does delete: the newer upload's mark
-  request is still running while the older upload is pushed and marked, which takes seconds. The
-  older version becomes live, the late mark makes the newer one live over it, and the version that
-  serves loses its entries. Its stored files stay, unless the two marks' cleanups interleave: when a
-  file step of the first mark's `collect` runs after the second mark's `collect` deleted the
-  entries, it deletes a day-old file that only the serving version had. `src/client/overlap.test.ts`
-  runs every order of the steps of two deploys, and of three with each mark run as it arrives, on
-  the real component and serving code, each `collect` run to its end before the next step, and finds
-  this order alone.
+- Deploys to one deployment do not overlap. When two overlap, the mark of the version that serves
+  may be refused, so it serves without being live and nothing is deleted until the next deploy.
+  `src/client/overlap.test.ts` runs the deploys on the real component and serving code, and the
+  version that serves keeps its entries and its files in every order of two deploys' steps and
+  `collect` calls, every order of three deploys' steps, and random orders of three with their
+  `collect` calls. Two limits remain, both with overlapping deploys only. The arrival time is read
+  in the HTTP action and compared with a time set in the mutation, so a late mark is refused as far
+  as those two clocks agree. And the day is a bound, not a margin: an upload pushed just under a day
+  later, after a newer version went live, is deleted as never live by a `collect` call that runs
+  past the day.
 - An upload that took a stored file from `knownFiles` loses it only if two switches happen during
   that one upload; it fails with a message that says so, and a retry works.
 - No `run_worker_first`, no `base_path`, no selectable compatibility date: an app that needs its
@@ -450,7 +450,7 @@ are not proposed again.
   between a request's lookup and its mark, not the gap between the request's start and its lookup: a
   request on replaced code whose lookup came after the new code's first mark passed it, made its old
   version newest, and `collect` deleted the new version's files. Creation order decides the mark
-  instead, and deploys that do not overlap are the precondition.
+  instead, with the arrival time of the mark's request, which needs no lookup.
 - **A committed version file in `convex/`.** Its value is set by the deploy that pushes it, so the
   committed value is never used by a correct deploy; it left stale ids and merge conflicts in git,
   and a plain `npx convex deploy` from a clean checkout would push a stale id and take the site

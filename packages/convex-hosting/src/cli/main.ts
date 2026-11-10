@@ -598,7 +598,7 @@ async function markServedVersion(
   const { result } = parsed.data;
   if (result === "superseded") {
     cli.log(
-      `A version created after ${site.versionId} is live, so a deploy overlapped this one; ${later}`,
+      `Another version went live over ${site.versionId}, so a deploy overlapped this one; ${later}`,
     );
   } else if (result !== "marked" && result !== "live") {
     cli.log(`Version ${site.versionId} could not be marked live: it is ${result}.`);

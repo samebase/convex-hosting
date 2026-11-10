@@ -43,6 +43,8 @@ export type RouteAllOptions = {
  */
 function serveSite({ component, assets, worker }: RouteAllOptions): PublicHttpAction {
   return httpActionGeneric(async (ctx, request) => {
+    // Read first: a mark says when its request reached this code.
+    const arrivedAt = Date.now();
     if (assets.format !== ASSETS_FORMAT) {
       return notServed(
         500,
@@ -51,7 +53,10 @@ function serveSite({ component, assets, worker }: RouteAllOptions): PublicHttpAc
       );
     }
     if (request.headers.get(MARK_HEADER) === assets.markToken) {
-      const result = await ctx.runMutation(component.lib.markLive, { versionId: assets.versionId });
+      const result = await ctx.runMutation(component.lib.markLive, {
+        versionId: assets.versionId,
+        arrivedAt,
+      });
       return Response.json({ versionId: assets.versionId, result }, { headers: NO_STORE });
     }
     const { files } = assets;

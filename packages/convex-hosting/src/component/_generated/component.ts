@@ -27,7 +27,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       markLive: FunctionReference<
         "mutation",
         "internal",
-        { versionId: string },
+        { arrivedAt: number; versionId: string },
         "marked" | "live" | "superseded" | "uploading" | "deleting" | "missing",
         Name
       >;

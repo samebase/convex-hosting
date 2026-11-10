@@ -24,7 +24,9 @@
 
 - After the push, `deploy` sends one request with the version's mark token, and the code that
   answers marks its version live; before, the first request did. `markLive` answers what it did and
-  never throws.
+  never throws. It takes the time the request arrived and refuses a mark when another version went
+  live after it: a mark that was still running when another deploy's push and mark landed deleted
+  the entries of the version that serves.
 - A first install pushes twice: once to install the component, and once after the upload, to serve
   the site.
 - A version file uploaded to another deployment, such as production's pushed to development by a

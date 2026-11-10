@@ -235,35 +235,42 @@ export const finishVersion = internalMutation({
 /**
  * Marks a `ready` version `live` and schedules `collect`, and says what it did. `serveSite` calls
  * it for the request that the CLI sends after the push, with the site's mark token, so only the
- * code that serves marks its own version. An older upload never goes live over a newer one: the
- * mark does nothing when a live version was created after this one. So a request that runs on
- * replaced code cannot make the old version newest, and `collect` cannot delete the new version's
- * files. A version that is already live stays as it is, so a repeated mark is fine. It never
- * throws, so the CLI reads every outcome from the answer.
+ * code that serves marks its own version. A version that is already live stays as it is, so a
+ * repeated mark is fine. It never throws, so the CLI reads every outcome from the answer.
  *
- * Precondition: deploys to one deployment do not overlap. When two overlap and the older upload is
- * pushed last, its mark is refused like a mark of replaced code: its version serves but stays
- * `ready`, and nothing is deleted until the next deploy. The one order that deletes, a mark still
- * running across the other deploy's push and mark, is in `docs/design.md`, "Stated, not solved".
+ * The request may still run when its code is replaced, so two rules refuse a mark of replaced code.
+ * An older upload never goes live over a newer one: the mark does nothing when a live version was
+ * created after this one. And a mark is late when another version went live after its request
+ * arrived, at `arrivedAt`: that version's code has served since. `arrivedAt` is the HTTP action's
+ * clock and the live time is this mutation's, so the rule holds as far as the two agree.
+ *
+ * Precondition: deploys to one deployment do not overlap. When two overlap, the mark of the
+ * version that serves may be refused: it then stays `ready`, and nothing is deleted until the next
+ * deploy. The limits are in `docs/design.md`, "Stated, not solved".
  */
 export const markLive = mutation({
-  args: { versionId: v.string() },
+  args: {
+    versionId: v.string(),
+    /** `Date.now()` when the mark's request reached the code that serves. */
+    arrivedAt: v.number(),
+  },
   returns: v.union(
     /** It was `ready` and is now the newest live version. */
     v.literal("marked"),
     v.literal("live"),
-    /** A live version was created after it, so it stays as it is. */
+    /** A live version was created after it, or went live after `arrivedAt`: it stays as it is. */
     v.literal("superseded"),
     v.literal("uploading"),
     v.literal("deleting"),
     v.literal("missing"),
   ),
-  handler: async (ctx, { versionId }) => {
+  handler: async (ctx, { versionId, arrivedAt }) => {
     const version = await getVersion(ctx, versionId);
     if (version === null) return "missing";
     if (version.state.kind !== "ready") return version.state.kind;
     const newest = await getNewestLive(ctx);
     if (newest !== null && newest.createdAt > version._creationTime) return "superseded";
+    if (newest !== null && newest.at > arrivedAt) return "superseded";
     // Later than every live `at`, also within one millisecond or when the clock moves back, so that
     // `at` follows creation order and `collect` deletes the versions live before this one.
     const at = newest === null ? Date.now() : Math.max(Date.now(), newest.at + 1);

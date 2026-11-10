@@ -72,7 +72,7 @@ const site: Files = {
 };
 
 async function markLive(t: ReturnType<typeof convexTest>, versionId: string) {
-  return await t.mutation(api.lib.markLive, { versionId });
+  return await t.mutation(api.lib.markLive, { versionId, arrivedAt: Date.now() });
 }
 
 /** The kind of each version's state, and the number of `collect` chains that `markLive` started. */
@@ -220,6 +220,24 @@ describe("markLive", () => {
     expect(await liveness(t)).toEqual({ versions: { a: "ready", b: "live" }, collects: 1 });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect((await tables(t)).entries).toContain("b/assets/app-a1.js");
+  });
+
+  test("a mark whose request arrived before another version went live is late, and refused", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    await uploadVersion(t, "a", site);
+    vi.advanceTimersByTime(1000);
+    await uploadVersion(t, "b", site);
+    // B's code serves when B's mark request arrives. Then A is pushed and marked, and B's mark
+    // runs last, on replaced code.
+    const arrivedAt = Date.now();
+    vi.advanceTimersByTime(1000);
+    expect(await markLive(t, "a")).toBe("marked");
+    vi.advanceTimersByTime(1000);
+    expect(await t.mutation(api.lib.markLive, { versionId: "b", arrivedAt })).toBe("superseded");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await liveness(t)).versions).toEqual({ a: "live", b: "ready" });
+    expect((await tables(t)).entries).toContain("a/assets/app-a1.js");
   });
 
   test("a mark in the same millisecond as the newest is still strictly newer", async () => {
