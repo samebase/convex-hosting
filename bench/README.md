@@ -132,7 +132,7 @@ What the numbers say:
   above use the deployment's own times.
 
 **Large sites.** 0.15.0 carries the site's files in the pushed code, so its cost grows with the
-number of files. The release's numbers are in [design](../docs/design.md), under "The site's files":
+number of files. The release's numbers are in [design on main](https://github.com/samebase/convex-hosting/blob/main/docs/design.md), under "The site's files":
 4.2 ms per request at 10,000 files and 7.5 ms at 100,000, against 3.8 ms for an empty action.
 Measured here, on the build from before the release:
 
