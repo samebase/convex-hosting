@@ -49,16 +49,15 @@ routeAll({ http, component: components.hosting, assets, worker: ${WORKER} });
 export default http;
 `;
 
-const hostingHttp = (
-  siteExport: "versionId" | "site",
-) => `import { httpRouter } from "convex/server";
+/** The same for 0.14.0, whose `routeAll` takes its arguments in order, with the version's id. */
+const hostingHttpVersionId = `import { httpRouter } from "convex/server";
 import { routeAll } from "@samebase/convex-hosting";
 import { components } from "./_generated/api.js";
-import { ${siteExport} } from "../.convex-hosting/version.js";
+import { versionId } from "../.convex-hosting/version.js";
 
 const http = httpRouter();
 // A worker that renders one small page, so the rendered case measures hosting, not a framework.
-routeAll(http, components.hosting, ${siteExport}, ${WORKER});
+routeAll(http, components.hosting, versionId, ${WORKER});
 export default http;
 `;
 
@@ -129,7 +128,7 @@ const targets: Record<string, () => Target> = {
     platform: "convex",
     project: "convex-hosting-bench-014",
     dependencies: { "@samebase/convex-hosting": "0.14.0" },
-    files: { "convex/convex.config.ts": hostingConfig, "convex/http.ts": hostingHttp("versionId") },
+    files: { "convex/convex.config.ts": hostingConfig, "convex/http.ts": hostingHttpVersionId },
     cases: ["page", "asset", "rendered"],
     deploy: (cwd) => sh(cwd, "npx", ["convex-hosting", "deploy", "--dev", "--dist", "site"]),
   }),
@@ -137,7 +136,7 @@ const targets: Record<string, () => Target> = {
     platform: "convex",
     project: "convex-hosting-bench",
     dependencies: { "@samebase/convex-hosting": `file:${packBranch()}` },
-    files: { "convex/convex.config.ts": hostingConfig, "convex/http.ts": hostingHttp("site") },
+    files: { "convex/convex.config.ts": hostingConfig, "convex/http.ts": hostingHttpAssets },
     cases: ["page", "asset", "rendered"],
     deploy: (cwd) => sh(cwd, "npx", ["convex-hosting", "deploy", "--dev", "--dist", "site"]),
   }),

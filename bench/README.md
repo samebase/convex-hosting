@@ -1,6 +1,6 @@
 # Benchmark
 
-What one request to a hosted site costs on Convex, for three ways to serve it:
+What one request to a hosted site costs, for these targets:
 
 - **convex-hosting 0.14.0**, from npm: the HTTP action asks the component's `route` query which file
   answers.
@@ -75,7 +75,9 @@ held every request. All three Convex deployments are in `aws-us-east-1`, class `
 
 Prices beyond each paid plan's included usage: Convex Professional, $2 per million function calls;
 Workers Paid, $0.30 per million requests, static asset requests free. Not counted: Convex action
-compute and egress, Workers CPU time.
+compute and egress, Workers CPU time. The Convex counts are measured, from logs that held every
+request. The Workers counts follow from its routing and Cloudflare's pricing: `wrangler tail`
+samples, so it showed that the script ran for the rendered page and never for a file, not how often.
 
 HTTP action median, the mean of the two rounds: a file 46.3 ms on 0.15.0, 66.3 ms on 0.14.0, 34.0 ms
 on static-hosting; a rendered page 4.2 ms on 0.15.0, 26.5 ms on 0.14.0. Client latency from
@@ -90,6 +92,7 @@ Workers and 140 to 380 ms for the Convex targets, which measures the distance mo
 400 files. Two rounds at 25 requests/s for 60 s per case (1,500 requests each), one at 100
 requests/s (6,000 each), targets taking turns. Every response passed its checks, k6 dropped no
 request, and the logs held every request. `node bench/report.ts <run>` prints the full tables.
+"0.15.0" in this section is a build from before the release, at commit `e4b3e7f`; see Provenance.
 
 **Calls per request.** The same in every round:
 
@@ -129,12 +132,10 @@ What the numbers say:
   above use the deployment's own times.
 
 **Large sites.** 0.15.0 carries the site's files in the pushed code, so its cost grows with the
-number of files. Measured on the same cloud deployment:
+number of files. The release's numbers are in [design](../docs/design.md), under "The site's files":
+4.2 ms per request at 10,000 files and 7.5 ms at 100,000, against 3.8 ms for an empty action.
+Measured here, on the build from before the release:
 
-- a site object of 100,000 files is an 8.9 MB module; it pushed in 4 s, and each request ran about 2
-  ms longer (median 5.6 ms against 3.6 ms for a minimal action, 40 sequential requests each);
-- memory: a request could hold 86 MiB of arrays without the 100,000-file site and 77 MiB with it,
-  the same on two runs each, so the site takes about 9 MiB;
 - a real 10,000-file site (a 0.89 MB `version.js`) served the same as 400 files: HTTP action median
   51.1 ms for the page, 51.3 ms for the asset, 6.7 ms for the rendered page, one function per
   request, every check passed (`2026-11-04-files-10000`);
@@ -144,7 +145,8 @@ number of files. Measured on the same cloud deployment:
   serving does not;
 - 100,000 files is the most that the CLI accepts, Cloudflare's limit per Worker version.
 
-**Provenance.** The 0.15.0 deployment of the 400-file runs was built at commit `e4b3e7f`; the
-`commit` field of those results is the checkout's HEAD when each case ran. The serving code
-(`src/client/index.ts`, and `lookup` in `src/client/manifest.ts`) is the same at the head of the
-pull request; later commits changed the CLI and the builder only.
+**Provenance.** The 0.15.0 deployment of the 2026-11-04 runs was built at commit `e4b3e7f`, a week
+before the release; the `commit` field of those results is the checkout's HEAD when each case ran.
+The release serves the same way, one HTTP action and no query, but reads the site's files
+differently: that build decoded only the entries of the manifest that a lookup touched, and the
+release decodes the whole manifest for each request. The 2026-11-11 runs measure the release.
