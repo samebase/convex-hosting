@@ -1,0 +1,115 @@
+{
+  "runs": ["2026-11-11-round-1", "2026-11-11-round-2"],
+  "prices": {
+    "convexCall": 0.000002,
+    "workerRequest": 3e-7
+  },
+  "cases": {
+    "asset": {
+      "workers": {
+        "rounds": 2,
+        "requests": 3002,
+        "billedPerRequest": 0,
+        "dollarsPerMillion": 0,
+        "httpActionMedianMs": null,
+        "httpActionMedianMsByRound": null,
+        "clientMedianMs": 16.9905
+      },
+      "convex-hosting-0.15.0": {
+        "rounds": 2,
+        "requests": 3001,
+        "billedPerRequest": 2,
+        "dollarsPerMillion": 4,
+        "httpActionMedianMs": 46.2500515,
+        "httpActionMedianMsByRound": [46.197262, 46.302841],
+        "clientMedianMs": 357.6
+      },
+      "convex-hosting-0.14.0": {
+        "rounds": 2,
+        "requests": 3002,
+        "billedPerRequest": 3,
+        "dollarsPerMillion": 6,
+        "httpActionMedianMs": 66.28908799999999,
+        "httpActionMedianMsByRound": [66.688108, 65.890068],
+        "clientMedianMs": 380.97950000000003
+      },
+      "static-hosting-0.2.1": {
+        "rounds": 2,
+        "requests": 3000,
+        "billedPerRequest": 3,
+        "dollarsPerMillion": 6,
+        "httpActionMedianMs": 34.0004885,
+        "httpActionMedianMsByRound": [33.235066, 34.765910999999996],
+        "clientMedianMs": 350.879
+      }
+    },
+    "rendered": {
+      "workers": {
+        "rounds": 2,
+        "requests": 3001,
+        "billedPerRequest": 1,
+        "dollarsPerMillion": 0.3,
+        "httpActionMedianMs": null,
+        "httpActionMedianMsByRound": null,
+        "clientMedianMs": 12.932
+      },
+      "convex-hosting-0.15.0": {
+        "rounds": 2,
+        "requests": 3001,
+        "billedPerRequest": 1,
+        "dollarsPerMillion": 2,
+        "httpActionMedianMs": 4.2168995,
+        "httpActionMedianMsByRound": [4.186783, 4.247016],
+        "clientMedianMs": 140.34625
+      },
+      "convex-hosting-0.14.0": {
+        "rounds": 2,
+        "requests": 3001,
+        "billedPerRequest": 2,
+        "dollarsPerMillion": 4,
+        "httpActionMedianMs": 26.4774485,
+        "httpActionMedianMsByRound": [27.088506, 25.866391],
+        "clientMedianMs": 162.82375000000002
+      },
+      "static-hosting-0.2.1": null
+    },
+    "page": {
+      "workers": {
+        "rounds": 2,
+        "requests": 3001,
+        "billedPerRequest": 0,
+        "dollarsPerMillion": 0,
+        "httpActionMedianMs": null,
+        "httpActionMedianMsByRound": null,
+        "clientMedianMs": 16.285249999999998
+      },
+      "convex-hosting-0.15.0": {
+        "rounds": 2,
+        "requests": 3002,
+        "billedPerRequest": 2,
+        "dollarsPerMillion": 4,
+        "httpActionMedianMs": 44.896046,
+        "httpActionMedianMsByRound": [43.69691400000001, 46.095178],
+        "clientMedianMs": 182.72199999999998
+      },
+      "convex-hosting-0.14.0": {
+        "rounds": 2,
+        "requests": 3002,
+        "billedPerRequest": 3,
+        "dollarsPerMillion": 6,
+        "httpActionMedianMs": 69.32060100000001,
+        "httpActionMedianMsByRound": [69.814107, 68.827095],
+        "clientMedianMs": 206.6915
+      },
+      "static-hosting-0.2.1": {
+        "rounds": 2,
+        "requests": 3000,
+        "billedPerRequest": 3,
+        "dollarsPerMillion": 6,
+        "httpActionMedianMs": 32.520264,
+        "httpActionMedianMsByRound": [32.670474, 32.370054],
+        "clientMedianMs": 170.94600000000003
+      }
+    }
+  }
+}
