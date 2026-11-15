@@ -11,6 +11,7 @@
 // away when that exists.
 
 import { useAuthActions } from "@convex-dev/auth/react";
+import type { IsAuthenticatedFn } from "@convex-dev/auth/ssr";
 // The `convexAuth()` Vite plugin resolves this specifier to the file that holds the provider.
 import { ConvexAuthNextjsProvider } from "@convex-dev/auth/ssr/nextjs/client";
 import type { ConvexQueryClient } from "@convex-dev/react-query";
@@ -31,6 +32,7 @@ import {
 // generated route tree, which is what makes the augmentation visible to it.
 import type {} from "@tanstack/react-start";
 import { useConvexAuth, type ConvexReactClient } from "convex/react";
+import { getFunctionName } from "convex/server";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import { oauthKeepingHistoryState } from "./oauth.js";
 
@@ -76,14 +78,20 @@ const SessionToken = createContext<string | null | undefined>(undefined);
  * subscription until a token arrives, so a page rendered as the user gets the user's live answer.
  * Convex's provider never releases that hold for a visitor without a session, so this releases it
  * when the provider reports none. The provider reads `initialToken` once, when it mounts.
+ *
+ * `isAuthenticated` is the app's `isAuthenticated` query, which `setupConvexAuth` returns. The
+ * provider subscribes to it while signed in, so a session that ends on the deployment, such as one
+ * that a password recovery revokes, signs the browser out at once.
  */
 export function SessionProvider({
   client,
   token,
+  isAuthenticated,
   children,
 }: {
   client: ConvexReactClient;
   token: string | null | undefined;
+  isAuthenticated: IsAuthenticatedFn;
   children: ReactNode;
 }) {
   return (
@@ -91,6 +99,7 @@ export function SessionProvider({
       <ConvexAuthNextjsProvider
         client={client}
         initialToken={token}
+        isAuthenticatedFunctionName={getFunctionName(isAuthenticated)}
         // Convex Auth's OAuth client, the default, with a URL cleanup that keeps TanStack Router's
         // history state in place of the provider's cleanup for Next's router.
         ambientSignIns={[oauthKeepingHistoryState()]}

@@ -15,7 +15,7 @@ export function convexAuth(): Plugin {
       return {
         resolve: {
           alias: [
-            // Convex Auth 2.0.0-beta.0 keeps its SSR provider in a file that its exports map does
+            // Convex Auth 2.0.0 keeps its SSR provider in a file that its exports map does
             // not expose. The upstream fix is an export (convex/convex-auth#350 and #126).
             {
               find: /^@convex-dev\/auth\/ssr\/nextjs\/client$/,
@@ -39,6 +39,7 @@ export function convexAuth(): Plugin {
                 include: [
                   "convex/browser",
                   "convex/react",
+                  "convex/server",
                   "convex/values",
                   "@convex-dev/auth/methods/oauth/react",
                   "@convex-dev/auth/react",
