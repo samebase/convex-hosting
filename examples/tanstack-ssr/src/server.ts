@@ -22,7 +22,7 @@ const server = {
         convexUrl,
         refreshSession: api.auth.refreshSession,
         signOut: api.auth.signOut,
-        signIn: [api.auth.signInAnonymously],
+        signIn: [api.auth.signInWithUsernamePassword, api.auth.signUpWithUsernamePassword],
         cookieOptions,
       });
       switch (url.pathname) {

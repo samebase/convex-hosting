@@ -1,17 +1,12 @@
 import { defineApp } from "convex/server";
-import { v } from "convex/values";
 import auth from "@convex-dev/auth/convex.config";
-import anonymous from "@convex-dev/auth/components/anonymous/convex.config";
+import authPassword from "@convex-dev/auth/components/password/convex.config";
+import authUsername from "@convex-dev/auth/components/username/convex.config";
 import hosting from "@samebase/convex-hosting/convex.config";
 
-// A push fails while either variable is missing on the deployment.
-const app = defineApp({
-  env: { AUTH_PRIVATE_KEY: v.string(), AUTH_JWKS: v.string() },
-});
-app.use(auth, {
-  httpPrefix: "/auth",
-  env: { AUTH_PRIVATE_KEY: app.env.AUTH_PRIVATE_KEY, AUTH_JWKS: app.env.AUTH_JWKS },
-});
-app.use(anonymous);
+const app = defineApp();
+app.use(auth);
+app.use(authPassword);
+app.use(authUsername);
 app.use(hosting);
 export default app;

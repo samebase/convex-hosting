@@ -12,9 +12,9 @@ example has its own schema, so it needs its own Convex project.
 
 ## Kinds of pages
 
-The demo data is a to-do list in `convex/todos.ts`, after the one in `samebase/base`: each anonymous
-user gets a readable name when it is created, todos have an author and a done state, and a public
-site needs caps on text length and todos per user.
+The demo data is a to-do list in `convex/todos.ts`, after the one in `samebase/base`: each user is
+named by the username they signed up with, todos have an author and a done state, and a public site
+needs caps on text length and todos per user.
 
 - `/about`: a static file from the build. `vite.config.ts` has TanStack Start prerender this page
   only, into `dist/client/about/index.html`, and `routeAll` serves it like any other file. As on
@@ -30,7 +30,8 @@ site needs caps on text length and todos per user.
   `todos.list`, the form adds one with `todos.add`, and a checkbox toggles `todos.toggle`. The page
   sits behind the pathless layout in `src/routes/_authed.tsx`: without a session, the server
   redirects to `/signin`, and the browser does the same when the session ends.
-- `/signin`: a button that signs in anonymously and opens `/todos`.
+- `/signin`: a username and a password, with a button that signs in and one that signs up, and then
+  opens `/todos`.
 - `/stream`: the loader returns a promise that resolves two seconds later, without awaiting it. The
   document goes out at once with a fallback, and the value follows in a later chunk, as on a Worker;
   the header's link requests the document, because a navigation inside the app would run the loader
@@ -62,10 +63,16 @@ Convex's AuthKit template decides `expectAuth` on the server per request; TanSta
 client before the page knows the session, so `SessionProvider` releases it when the provider reports
 none. `expectAuth` holds queries only before the first authentication, so sign-out reloads the page.
 
-The example signs in anonymously: each sign-in creates a user. Password sign-in changes the provider
-in `convex/convex.config.ts` and `convex/auth.ts`, the `signIn: [...]` list in `src/server.ts`, and
-the button on `/signin`. The other routes stay the same. OAuth sign-in adds a provider's component,
-its functions, its `completeSignIn*` function in the `signIn` list, and a button, as that package's
+The provider also subscribes to the app's `isAuthenticated` query while signed in, so a session that
+ends on the deployment signs the browser out at once, and the gate leaves `/todos`.
+
+The example signs in with Convex Auth's username and password method: its `authPassword` and
+`authUsername` components in `convex/convex.config.ts`, and its sign-up and sign-in functions in
+`convex/auth.ts` and in the `signIn: [...]` list of `src/server.ts`. Another method changes those
+three places and the form on `/signin`. The other routes stay the same. The deployment signs the
+tokens with its own key (`convexAuthProvider()` in `convex/auth.config.ts`), so no deployment needs
+a key pair. OAuth sign-in adds a provider's component, its functions, its `completeSignIn*` function
+in the `signIn` list, and a button, as that package's
 [OAuth sign-in](../../packages/convex-auth-tanstack-start/README.md#oauth-sign-in) says.
 
 ## Where code goes
@@ -101,7 +108,6 @@ npx convex dev                    # creates your dev deployment and .env.local; 
 In another:
 
 ```sh
-npx @convex-dev/auth              # new deployment only: sets AUTH_PRIVATE_KEY and AUTH_JWKS on it
 pnpm run deploy:dev               # builds, uploads, writes .convex-hosting/version.js, pushes
 ```
 
@@ -117,8 +123,6 @@ URL when it ends.
 Local deployment (anonymous or `--local`): the backend runs inside `npx convex dev`, so the first
 terminal must stay open while `deploy:dev` uploads, else the upload fails with `fetch failed`.
 
-Production needs its own key pair on the production deployment before the first `pnpm run deploy`.
-
 ## Previews
 
 `.github/workflows/preview-examples.yml` deploys each pull request to a Convex preview deployment
@@ -126,15 +130,9 @@ named after its branch, through [`actions/preview`](../../actions/preview/action
 request shows the site URL as a deployment. A second push reuses the deployment, and closing the
 pull request deletes it ([`actions/cleanup`](../../actions/cleanup/action.yml)). Convex deletes a
 preview deployment some days after its creation (five on the free plan), and the hosting component's
-files go with it. The workflow needs two things once per project:
-
-- A preview deploy key, as the repository secret `CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SSR`. The
-  dashboard creates one under Project Settings, and so does the platform API
-  (`POST /v1/projects/<id>/create_preview_deploy_key`).
-- The signing keys as the project's defaults for preview deployments, which Convex copies into each
-  new preview before the first push:
-  `npx convex env default set --type preview AUTH_PRIVATE_KEY ...` and the same for `AUTH_JWKS`. Use
-  a pair of their own, not the production pair.
+files go with it. The workflow needs a preview deploy key once per project, as the repository secret
+`CONVEX_PREVIEW_DEPLOY_KEY_TANSTACK_SSR`. The dashboard creates one under Project Settings, and so
+does the platform API (`POST /v1/projects/<id>/create_preview_deploy_key`).
 
 ## Commands
 
