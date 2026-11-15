@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0
+
+- Convex Auth 2.0.0, the stable release. The `@convex-dev/auth` peer is pinned to `2.0.0`, and
+  `convex` is `^1.48.0`, which 2.0.0 needs. Convex Auth 2.0.0-beta.0 stays on 0.1.x.
+- `SessionProvider` takes a required `isAuthenticated` prop, the app's `isAuthenticated` query,
+  which `setupConvexAuth` returns in 2.0.0. The provider subscribes to it while signed in, so a
+  session that ends on the deployment signs the browser out at once.
+- What an app changes, besides Convex Auth's own
+  [upgrade steps](https://github.com/convex/convex-auth/releases/tag/v2.0.0):
+  - `convex/auth.ts` exports `isAuthenticated` next to `signOut` and `refreshSession`.
+  - The root route passes it:
+    `<SessionProvider client={...} token={token} isAuthenticated={api.auth.isAuthenticated}>`.
+  - `convex/auth.config.ts` is `providers: [convexAuthProvider()]`, and the core component is
+    mounted as `app.use(auth)`. The deployment signs the tokens, so the key pair variables go from
+    every deployment, the app's `defineApp({ env })`, its scripts, and its CI.
+  - The core serves no HTTP routes. On Convex, `convex/http.ts` drops its exact routes for
+    `/auth/signin`, `/auth/refresh`, and `/auth/signout`: the catch-all of `routeAll` sends them to
+    the app's server. An OAuth component's `httpPrefix`, such as `/auth/github`, still wins for its
+    callback.
+  - `useOauth().flowError` has no `REJECTED` any more: a `ConvexError` from `createUser` or
+    `onSignIn` comes back as `OTHER_ERROR` with that error as `cause`.
+- `convexAuth()` pre-bundles `convex/server` for the dev server, which 2.0.0's provider imports.
+
 ## 0.1.2
 
 - `useSignOutSession` loads `landingUrl` with `location.replace`, so Back after a sign-out no longer

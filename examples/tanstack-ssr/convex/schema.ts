@@ -6,6 +6,7 @@ export default defineSchema({
     "by_user",
     ["userId"],
   ),
-  // One document for each Convex Auth user. The auth components keep the accounts and sessions.
-  users: defineTable({ name: v.string() }),
+  // One document for each Convex Auth user. The auth components keep the usernames, the passwords,
+  // and the sessions.
+  users: defineTable({}),
 });

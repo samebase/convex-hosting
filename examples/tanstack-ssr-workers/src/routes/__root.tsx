@@ -44,7 +44,11 @@ export const Route = createRootRouteWithContext<{
 function Root() {
   const { convexQueryClient, token } = Route.useRouteContext();
   return (
-    <SessionProvider client={convexQueryClient.convexClient} token={token}>
+    <SessionProvider
+      client={convexQueryClient.convexClient}
+      token={token}
+      isAuthenticated={api.auth.isAuthenticated}
+    >
       <html lang="en">
         <head>
           <HeadContent />

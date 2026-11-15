@@ -1,9 +1,10 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
+import { components } from "./_generated/api.js";
 import type { Id } from "./_generated/dataModel.js";
 import { mutation, query } from "./_generated/server.js";
 
-// The site is public and sign-in is anonymous, so each user and each todo stays small.
+// The site is public and anyone can sign up, so each user and each todo stays small.
 const MAX_TODOS_PER_USER = 50;
 const MAX_TEXT_LENGTH = 280;
 
@@ -17,8 +18,10 @@ export const latest = query({
     const names = new Map<Id<"users">, string>();
     for (const todo of todos) {
       if (!names.has(todo.userId)) {
-        const user = await ctx.db.get("users", todo.userId);
-        names.set(todo.userId, user?.name ?? "Guest");
+        const name = await ctx.runQuery(components.authUsername.public.getUsername, {
+          userId: todo.userId,
+        });
+        names.set(todo.userId, name ?? "Guest");
       }
     }
     return todos.map((todo) => ({

@@ -19,7 +19,7 @@ const github: OauthProviderRefs = {
   completeSignIn: makeFunctionReference<"mutation">("auth:completeSignInWithGithub"),
 };
 
-const session = { accessToken: "access-1", accessTokenExpiresAt: 0, userId: "user-1" };
+const session = { accessToken: "access-1", userId: "user-1" };
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -106,6 +106,8 @@ test("redeems the code through the sign-in route and cleans the URL with the rou
 });
 
 const thrown = new Error("The sign-in route answered 500.");
+// The app's `createUser` or `onSignIn` turning the sign-in down.
+const rejected = new ConvexError({ reason: "not invited" });
 
 test.each([
   { url: "/?convexAuthError=access_denied", flowError: { error: "ACCESS_DENIED" } },
@@ -119,9 +121,9 @@ test.each([
   {
     url: "/?convexAuthCode=code-1",
     completeSignIn: async () => {
-      throw new ConvexError({ reason: "not invited" });
+      throw rejected;
     },
-    flowError: { error: "REJECTED", data: { reason: "not invited" } },
+    flowError: { error: "OTHER_ERROR", cause: rejected },
   },
   {
     url: "/?convexAuthError=oauth_error",

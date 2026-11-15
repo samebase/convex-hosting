@@ -3,7 +3,7 @@ packages:
   - "examples/*"
 
 catalog:
-  "@convex-dev/auth": 2.0.0-beta.0
+  "@convex-dev/auth": 2.0.0
   "@convex-dev/react-query": 0.1.0
   "@edge-runtime/vm": 5.0.0
   "@tanstack/react-query": 5.104.2
@@ -13,7 +13,7 @@ catalog:
   "@types/react": 19.3.0
   "@types/react-dom": 19.3.0
   "@vitejs/plugin-react": 6.1.2
-  convex: 1.46.0
+  convex: 1.48.0
   ignore: 7.0.12
   mime: 4.1.1
   convex-test: 0.0.61
@@ -43,8 +43,12 @@ minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 minimumReleaseAgeIgnoreMissingTime: false
 minimumReleaseAgeExclude:
-  # 2.0.0-beta.0 of 2026-10-15; remove after 2026-10-22.
-  - "@convex-dev/auth@2.0.0-beta.0"
+  # Convex Auth 2.0.0, the stable release, published 2026-11-12 17:22 UTC. Remove after
+  # 2026-11-19 17:23 UTC.
+  - "@convex-dev/auth@2.0.0"
+  # Convex Auth 2.0.0's password hashing, a dependency of it, published 2026-11-09 23:53 UTC.
+  # Remove after 2026-11-16 23:54 UTC.
+  - "password-hash-wasm@0.0.0"
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
 trustPolicyExclude:

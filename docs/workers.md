@@ -54,4 +54,5 @@ with:
   the production build variables, and the project's preview deploy key in Previews Base. Builds
   reads the Node and pnpm versions from the repository's `.node-version` and `packageManager`.
 
-The example's README describes the Convex side: the signing keys of production and of previews.
+The Convex side needs nothing else: each deployment, previews included, signs the session tokens
+with its own key.
