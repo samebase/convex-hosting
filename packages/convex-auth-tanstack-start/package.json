@@ -52,7 +52,7 @@
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "@convex-dev/auth": "2.0.0-beta.0",
+    "@convex-dev/auth": "2.1.0",
     "@convex-dev/react-query": "^0.1.0",
     "@tanstack/react-router": "^1.170.38",
     "@tanstack/react-start": "^1.168.60",
